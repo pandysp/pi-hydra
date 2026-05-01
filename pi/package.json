@@ -1,0 +1,15 @@
+{
+	"name": "andon-pi",
+	"version": "0.1.0",
+	"description": "Andon as a pi extension — fork-per-turn observer with byte-true cache parity",
+	"type": "module",
+	"private": true,
+	"pi": {
+		"extensions": ["./index.ts"]
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-ai": "*",
+		"@mariozechner/pi-coding-agent": "*",
+		"@mariozechner/pi-tui": "*"
+	}
+}
