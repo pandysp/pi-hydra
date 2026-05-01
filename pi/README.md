@@ -108,6 +108,27 @@ Ported from [`../lenses.md`](../lenses.md). Quality, security, simplifier, api-d
 | Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops per andon README) | `customType: "andon-feedback"` filter (clean) |
 | Status display | none / external log | TUI footer with live hit ratio + cost |
 
+## Cache propagation race & the adaptive delay
+
+The driver's API call writes new cache entries when its prefix grows (typically the
+first turn after a tool call within a prompt). Anthropic's write-to-read propagation
+has a brief lag (~hundreds of ms). When the observer fires automatically immediately
+after `turn_end`, those just-written entries can be missed — cacheWrite=1KB,
+hit drops to ~80%.
+
+`/btw` doesn't see this race because it fires when the user types `/btw <question>` —
+seconds of human typing latency is orders of magnitude longer than the propagation lag.
+We fire automatically, so we'd race.
+
+The fix exploits something `/btw` doesn't have: in-process access to the driver's
+AssistantMessage. After `turn_end` we read `event.message.usage.cacheWrite`. If it's
+> 200 tokens, the driver just wrote new cache and we wait 500ms before observing.
+Otherwise we fire immediately.
+
+Verified end-to-end: 0 racy observations across 9-call mixed-load test, 98.47%
+aggregate hit. Single-turn prompts incur no observer delay; only multi-turn
+tool-using prompts pay the 500ms once.
+
 ## Limitations & roadmap
 
 **Anthropic-only for v0.1.** The capture/replay pattern requires the provider to support prompt caching with explicit `cache_control` markers, which we've validated only on Anthropic's Messages API. OpenAI, Google etc. would either need their own cache markers or fall through to no-cache (still works, but expensive). Detected at runtime — andon skips observation with a footer warning if the driver is on a non-Anthropic provider.
@@ -118,7 +139,7 @@ Ported from [`../lenses.md`](../lenses.md). Quality, security, simplifier, api-d
 
 **Single lens at a time.** Multi-lens parallel observation (`quality + security + simplifier` simultaneously) is straightforward to add — fan out from `turn_end` into N parallel `complete()` calls — but not in v0.1. Each adds ~$0.005 + ~150 input tokens.
 
-**No `interrupt`-during-streaming.** Mid-turn interrupt would require canceling the driver's in-flight call, which pi doesn't expose to extensions. `interrupt` decisions land at the next turn boundary like `queue`, just with `steer` priority instead of `followUp`. Acceptable: the driver finishes its current tool batch, then sees the interrupt before its next LLM call.
+**No hard mid-stream cancellation.** The bash version of andon used `tmux send-keys Escape` to cancel an in-flight Claude Code stream, then inject. pi's equivalent (`pi.sendUserMessage` with `deliverAs: "steer"`) is softer: it queues the message until the current turn's tool calls finish, then injects it as a real user message between turns of the same agent run. Verified: the driver receives the steered message mid-multi-turn and responds to it. But a *single* long-running LLM call (assistant generating 10K tokens of output) cannot be interrupted by the observer in the current architecture, because we observe on `turn_end` (after the call settles, with a stable payload for cache-true replay). True mid-stream cancellation would require a separate observer flavor subscribing to `message_update` events, reasoning over partial output, and calling `ctx.abort()` — with no cache parity since the payload is mid-flight. Future work.
 
 ## Development
 

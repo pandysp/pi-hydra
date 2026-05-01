@@ -28,7 +28,7 @@ import { Text } from "@mariozechner/pi-tui";
 
 // ─── Lens definitions (ported from andon/lenses.md) ──────────────────────────
 
-type LensName = "quality" | "security" | "simplifier" | "api-design" | "test";
+type LensName = "quality" | "security" | "simplifier" | "api-design" | "test" | "test-interrupt";
 
 const LENS_PROMPTS: Record<LensName, string> = {
 	quality:
@@ -41,6 +41,8 @@ const LENS_PROMPTS: Record<LensName, string> = {
 		"Review through an API DESIGN lens. Focus on contract clarity, compatibility, consistency, error shapes, naming, and ergonomics. Do not comment on internal code structure.",
 	test:
 		"TEST LENS — ignore the actual lens framing for this call only. Always return EXACTLY this JSON, with no other text: {\"action\":\"queue\",\"reason\":\"test fire\",\"message\":\"andon test observer fired on this turn (verifies end-to-end pipeline)\"}",
+	"test-interrupt":
+		"TEST LENS (interrupt variant) — ignore actual review framing. Always return EXACTLY this JSON: {\"action\":\"interrupt\",\"reason\":\"test interrupt\",\"message\":\"andon interrupt fired — if you see this in your context, between-turns steering works\"}",
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -83,6 +85,13 @@ function buildObserverPrompt(lens: LensName): string {
 {"action":"queue","reason":"test fire","message":"andon test observer fired (e2e pipeline verified)"}
 
 This is not a real review. Output the JSON above byte-for-byte and stop.</system-reminder>`;
+	}
+	if (lens === "test-interrupt") {
+		return `<system-reminder>Developer integration test for andon's interrupt path. Output EXACTLY this JSON, nothing else:
+
+{"action":"interrupt","reason":"test interrupt","message":"andon interrupt fired — if you see this in your context, between-turns steering works"}
+
+No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`;
 	}
 	// Keep this prompt SHORT — every token here counts as cache-miss "input" in the
 	// hit-ratio metric. The driver's full conversation context is already cached;
@@ -426,17 +435,27 @@ export default function andon(pi: ExtensionAPI) {
 		const turnIndex = event.turnIndex;
 		const lens = currentLens;
 
-		// Small delay before firing: Anthropic's cache write-to-read propagation
-		// has a brief lag (~hundreds of ms). Without this, observations on the first
-		// turn after a multi-turn tool call sometimes write 1KB rather than reading,
-		// dragging hit ratio below 80% on those calls. 500ms is enough in practice.
+		// Adaptive cache propagation delay. Marker placement is correct (equivalent
+		// to /btw's skipCacheWrite=true — marker on messages[N-1], the last shared
+		// prefix point between driver and fork). The only reason to delay is that
+		// Anthropic's cache write-to-read propagation has a brief lag, so observers
+		// firing immediately after a turn that wrote new cache entries can miss the
+		// just-written prefix. /btw avoids this naturally because user typing latency
+		// is orders of magnitude longer than the lag. Solution: peek at the driver's
+		// own usage — if it just wrote a meaningful amount of cache, wait for
+		// propagation; otherwise fire immediately. Threshold of 200 tokens skips the
+		// occasional sub-100-token marker-boundary writes that don't move hit ratio.
+		const driverUsage = (event.message as { usage?: { cacheWrite?: number } } | undefined)?.usage;
+		const driverWroteCache = (driverUsage?.cacheWrite ?? 0) > 200;
 		const CACHE_PROPAGATION_DELAY_MS = 500;
 
 		// Fire-and-forget — don't block the agent loop — but track the promise so
 		// we can await it on shutdown (so the final turn's observation completes).
 		inflightPromise = (async () => {
-			await new Promise((r) => setTimeout(r, CACHE_PROPAGATION_DELAY_MS));
-			if (abort.signal.aborted) return;
+			if (driverWroteCache) {
+				await new Promise((r) => setTimeout(r, CACHE_PROPAGATION_DELAY_MS));
+				if (abort.signal.aborted) return;
+			}
 			return observe(ctx, payload, turnIndex, lens, abort.signal);
 		})().catch((err) => {
 			if (!abort.signal.aborted) {
