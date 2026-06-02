@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="$(pwd)"
 
 # --- Claude Code integration ---
-CLI_JS="$HOME/.andon-observer/node_modules/@anthropic-ai/claude-code/cli.js"
+CLI_JS="$HOME/.andon-observer/node_modules/@anthropic-ai/claude-code/cli-wrapper.cjs"
 PRELOAD="$SCRIPT_DIR/andon-cache-fix.mjs"
 SESSIONS_DIR="$HOME/.claude/sessions"
 
