@@ -8,7 +8,8 @@
  *
  * Architecture:
  *   1. before_provider_request: capture event.payload (driver's exact bytes).
- *   2. turn_end: clone the captured payload, append observer user message,
+ *   2. turn_end: clone the captured payload, append the observer instruction
+ *      (a real system message on Opus 4.8, else a <system-reminder> user turn),
  *      replay via complete() with onPayload override.
  *   3. Parse JSON decision (noop/queue/interrupt), route via pi.sendMessage /
  *      pi.sendUserMessage with the right deliverAs mode.
@@ -73,36 +74,70 @@ interface CallStats {
 
 // ─── Observer prompt construction (/btw-style) ───────────────────────────────
 
-function buildObserverPrompt(lens: LensName): string {
+// Bare observer instruction (no wrapper). On models that support mid-conversation
+// system messages it is delivered as a real {role:"system"} turn; otherwise it is
+// wrapped in <system-reminder> and delivered as a user turn (buildObserverPrompt).
+function observerInstruction(lens: LensName): string {
 	// The "test" lens uses a fully-overriding prompt so it reliably fires queue
-	// for end-to-end smoke tests. Real lenses share the structured wrapper.
+	// for end-to-end smoke tests. Real lenses share the structured form.
 	if (lens === "test") {
 		// Note: phrased to maximize reliability across model versions. Sonnet sometimes
 		// hesitates to override its review judgment; framing as a developer integration
 		// test with explicit "do not deliberate" gets it to comply ~95%+ in practice.
-		return `<system-reminder>Developer integration test for the andon framework. The wrapper requires EXACTLY this output — no preamble, no markdown, no thinking, no explanation:
+		return `Developer integration test for the andon framework. The wrapper requires EXACTLY this output — no preamble, no markdown, no thinking, no explanation:
 
 {"action":"queue","reason":"test fire","message":"andon test observer fired (e2e pipeline verified)"}
 
-This is not a real review. Output the JSON above byte-for-byte and stop.</system-reminder>`;
+This is not a real review. Output the JSON above byte-for-byte and stop.`;
 	}
 	if (lens === "test-interrupt") {
-		return `<system-reminder>Developer integration test for andon's interrupt path. Output EXACTLY this JSON, nothing else:
+		return `Developer integration test for andon's interrupt path. Output EXACTLY this JSON, nothing else:
 
 {"action":"interrupt","reason":"test interrupt","message":"andon interrupt fired — if you see this in your context, between-turns steering works"}
 
-No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`;
+No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.`;
 	}
 	// Keep this prompt SHORT — every token here counts as cache-miss "input" in the
 	// hit-ratio metric. The driver's full conversation context is already cached;
 	// only this prompt is fresh per call. Currently ~140 tokens. On a 30K-token
 	// driver context this gives ~99.5% hit. Don't bloat it.
-	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
+	return `Side observer. Reply with one JSON object, nothing else:
 {"action":"noop|queue|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
 
 LENS: ${LENS_PROMPTS[lens]}
 
-Noop unless something warrants feedback. Queue if useful but waitable. Interrupt only for urgent issues. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].</system-reminder>`;
+Noop unless something warrants feedback. Queue if useful but waitable. Interrupt only for urgent issues. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].`;
+}
+
+// User-turn form: wrap the instruction in <system-reminder> so the model treats it
+// as harness/operator context. Used when mid-conversation system messages aren't
+// available for the driver's model.
+function buildObserverPrompt(lens: LensName): string {
+	return `<system-reminder>${observerInstruction(lens)}</system-reminder>`;
+}
+
+// Mid-conversation system messages are currently Opus 4.8 only, on the Claude API
+// (and AWS Claude Platform). Bedrock/Vertex/Foundry are unsupported — but those use
+// non-"anthropic" providers, which observe() already skips, so a provider+id check
+// suffices. Docs: build-with-claude/mid-conversation-system-messages
+function supportsMidConversationSystem(model: { provider: string; id: string }): boolean {
+	return model.provider === "anthropic" && model.id.includes("opus-4-8");
+}
+
+// Build the message appended to the observer fork. On Opus 4.8 — and only when the
+// captured payload ends in a user turn (the mid-conversation system-message placement
+// rule) — it is a real {role:"system"} turn carrying the bare instruction; otherwise a
+// <system-reminder>-wrapped user turn. Exported as a pure function so the gating +
+// placement branch can be unit-tested without hitting the API.
+export function buildObserverMessage(
+	model: { provider: string; id: string },
+	lens: LensName,
+	lastRole: string | undefined,
+): { role: "system" | "user"; content: { type: "text"; text: string }[] } {
+	const useSystemRole = supportsMidConversationSystem(model) && lastRole === "user";
+	return useSystemRole
+		? { role: "system", content: [{ type: "text", text: observerInstruction(lens) }] }
+		: { role: "user", content: [{ type: "text", text: buildObserverPrompt(lens) }] };
 }
 
 // ─── Decision parsing (with fallbacks for non-JSON responses) ────────────────
@@ -218,16 +253,14 @@ export default function andon(pi: ExtensionAPI) {
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(driverModel);
 		if (!auth.ok || !auth.apiKey) return;
 
-		// Build observer payload: capture's bytes + observer user message appended
+		// Build observer payload: capture's bytes + observer instruction appended.
+		// On Opus 4.8 this is a real mid-conversation system message (operator-level
+		// authority); otherwise a <system-reminder> user turn. See buildObserverMessage.
+		const lastRole = payload.messages[payload.messages.length - 1]?.role;
+		const observerMessage = buildObserverMessage(driverModel, lens, lastRole);
 		const observerPayload = {
 			...payload,
-			messages: [
-				...payload.messages,
-				{
-					role: "user",
-					content: [{ type: "text", text: buildObserverPrompt(lens) }],
-				},
-			],
+			messages: [...payload.messages, observerMessage],
 		};
 
 		// Optional debug dump
