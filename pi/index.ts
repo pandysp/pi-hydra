@@ -152,8 +152,21 @@ export default function andon(pi: ExtensionAPI) {
 	let currentLens: LensName = "quality";
 	let deliveryMode: DeliveryMode = "print"; // start in print mode for safety
 	let lastPayload: any = null;
-	let inflight: AbortController | null = null;
-	let inflightPromise: Promise<void> | null = null;
+	// Conflating single-slot scheduler. `pending` holds the newest committed state
+	// waiting to be observed — snapshotted at turn_end (post-commit) together with
+	// that turn's own ctx/lens/turnIndex. The pump replays THIS snapshot and NEVER
+	// re-reads live lastPayload (captured pre-commit at before_provider_request, and
+	// possibly mid-stream for the next turn — re-reading would reintroduce a
+	// read-while-streaming cache miss). Turns arriving while an observation runs
+	// overwrite the slot (conflation): the in-flight observation runs to completion,
+	// then the pump picks up the newest.
+	let pending: { ctx: ExtensionContext; payload: any; turnIndex: number; lens: LensName } | null = null;
+	// Non-null iff the pump is running — single source of truth, and the handle
+	// session_shutdown awaits.
+	let drainPromise: Promise<void> | null = null;
+	// Cancellation is lifecycle-only (session shutdown). Observations are never
+	// aborted on turn arrival — they always run to completion.
+	const lifecycleAbort = new AbortController();
 	const seenMessageHashes = new Set<string>();
 	const recentMessageHashes: string[] = []; // for stats UI
 	const callHistory: CallStats[] = [];
@@ -255,7 +268,7 @@ export default function andon(pi: ExtensionAPI) {
 				},
 			);
 		} catch (err) {
-			if (signal.aborted) return; // cancelled by next turn — silent
+			if (signal.aborted) return; // cancelled by session shutdown — silent
 			ctx.ui.notify(
 				`andon: observer call failed: ${err instanceof Error ? err.message : String(err)}`,
 				"error",
@@ -423,55 +436,62 @@ export default function andon(pi: ExtensionAPI) {
 		// no return = no change to driver's payload
 	});
 
-	pi.on("turn_end", async (event, ctx) => {
+	// Conflating single-slot pump: run one observation at a time to completion, then
+	// pick up the newest pending snapshot (dropping any that piled up while busy).
+	// No abort on turn arrival, no debounce — staleness self-bounds to one cycle
+	// because the slot always holds the latest state.
+	//
+	// A completed observation delivers its feedback even if a newer turn has since
+	// superseded it. For print/queue (advisory) that lag is acceptable. For interrupt
+	// mode a superseded steer is a known limitation — currency-gated delivery belongs
+	// to the interrupt-tier work and is out of scope here; the default mode is print.
+	async function drain(): Promise<void> {
+		try {
+			while (pending) {
+				if (!enabled) { pending = null; break; } // honor a disable that lands mid-drain
+				const job = pending;
+				pending = null; // take the slot; turns during observe() refill it with the newest
+				try {
+					await observe(job.ctx, job.payload, job.turnIndex, job.lens, lifecycleAbort.signal);
+				} catch (err) {
+					if (!lifecycleAbort.signal.aborted) {
+						job.ctx.ui.notify(`andon: observe error: ${err instanceof Error ? err.message : String(err)}`, "error");
+					}
+				}
+			}
+		} finally {
+			drainPromise = null;
+		}
+	}
+
+	pi.on("turn_end", (event, ctx) => {
 		if (!enabled || !lastPayload) return;
-
-		// Cancel any in-flight observation — the previous turn is now stale
-		if (inflight) inflight.abort();
-		inflight = new AbortController();
-		const abort = inflight;
-
-		const payload = lastPayload;
-		const turnIndex = event.turnIndex;
-		const lens = currentLens;
-
-		// Adaptive cache propagation delay. Marker placement is correct (equivalent
-		// to /btw's skipCacheWrite=true — marker on messages[N-1], the last shared
-		// prefix point between driver and fork). The only reason to delay is that
-		// Anthropic's cache write-to-read propagation has a brief lag, so observers
-		// firing immediately after a turn that wrote new cache entries can miss the
-		// just-written prefix. /btw avoids this naturally because user typing latency
-		// is orders of magnitude longer than the lag. Solution: peek at the driver's
-		// own usage — if it just wrote a meaningful amount of cache, wait for
-		// propagation; otherwise fire immediately. Threshold of 200 tokens skips the
-		// occasional sub-100-token marker-boundary writes that don't move hit ratio.
-		const driverUsage = (event.message as { usage?: { cacheWrite?: number } } | undefined)?.usage;
-		const driverWroteCache = (driverUsage?.cacheWrite ?? 0) > 200;
-		const CACHE_PROPAGATION_DELAY_MS = 500;
-
-		// Fire-and-forget — don't block the agent loop — but track the promise so
-		// we can await it on shutdown (so the final turn's observation completes).
-		inflightPromise = (async () => {
-			if (driverWroteCache) {
-				await new Promise((r) => setTimeout(r, CACHE_PROPAGATION_DELAY_MS));
-				if (abort.signal.aborted) return;
-			}
-			return observe(ctx, payload, turnIndex, lens, abort.signal);
-		})().catch((err) => {
-			if (!abort.signal.aborted) {
-				ctx.ui.notify(`andon: observe error: ${err instanceof Error ? err.message : String(err)}`, "error");
-			}
-		});
+		// Snapshot the committed state + this turn's ctx at turn_end. Per pi's agent
+		// loop, turn_end fires after the driver's request resolves, so lastPayload
+		// here is a committed prefix. The pump replays THIS snapshot — it never
+		// re-reads live lastPayload, which by drain time may be a mid-stream payload.
+		pending = { ctx, payload: lastPayload, turnIndex: event.turnIndex, lens: currentLens };
+		// Removed here: the former 500ms adaptive cache-propagation delay. Measured
+		// zero post-commit propagation lag and turn_end is post-commit, so the
+		// observer reads a committed prefix. Watched via the live hit-ratio footer —
+		// if tool-heavy turns regress below ~97%, restore a delay or switch to
+		// re-fire-on-miss (see PR for the measurement).
+		//
+		// Conflate: if the pump is already running it picks up this newest snapshot
+		// when the current observation finishes; otherwise start it. (drainPromise
+		// non-null ⇔ running, so it doubles as the single-flight gate.)
+		if (!drainPromise) drainPromise = drain();
 	});
 
 	pi.on("session_shutdown", async () => {
-		// Wait briefly for the in-flight observation to complete so we don't lose
-		// the final turn's data in print mode. Cap at 5s so we don't block exit.
-		if (inflightPromise) {
+		// Wait briefly for the in-flight drain to finish so we don't lose the final
+		// turn's observation in print mode. Cap at 5s so we don't block exit. Only
+		// after that do we cancel — this is the sole lifecycle abort.
+		if (drainPromise) {
 			const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
-			await Promise.race([inflightPromise, timeout]);
+			await Promise.race([drainPromise, timeout]);
 		}
-		if (inflight) inflight.abort();
+		lifecycleAbort.abort();
 	});
 
 	// ── Slash commands ───────────────────────────────────────────────────────
