@@ -55,7 +55,9 @@ Settings persist per session and survive resume. For headless runs (`pi -p`), wh
 
 ### The agent configures its own heads
 
-hydra registers a `hydra` tool the agent can call: list the setup, switch the lens set, write or remove custom lenses, change delivery, toggle the observer. A lens the agent writes applies to the very next observation in the same run, so a workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier. Every agent-made change is announced in the TUI, lands as a plain markdown file you can audit, and persists like any other settings change. The observers see the reconfiguration too, since they replay the agent's own context.
+hydra registers a `hydra` tool the agent can call: list the setup, switch the lens set, write or remove custom lenses, change delivery. A lens the agent writes applies to the very next observation in the same run, so a workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier. Every agent-made change is announced in the TUI, lands as a plain markdown file you can audit, and persists like any other settings change. The observers see the reconfiguration too, since they replay the agent's own context.
+
+There is deliberately no off switch on the tool. The agent silences hydra by removing heads one by one, each removal visible; `/hydra` and pi's extension enable/disable remain user-level controls.
 
 ## How it works
 

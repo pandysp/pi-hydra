@@ -29,7 +29,9 @@
  *   /hydra-debug      dump driver/observer payload pairs for diffing
  *
  * The agent can manage its own heads through the registered `hydra` tool
- * (list, set-lenses, write-lens, remove-lens, set-delivery, enable/disable).
+ * (list, set-lenses, write-lens, remove-lens, set-delivery). There is no off
+ * switch on the tool: the agent silences hydra by removing heads one by one,
+ * while /hydra and pi's extension management stay user-level controls.
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -298,8 +300,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus("hydra", undefined);
 			return;
 		}
+		const lensLabel = lenses.length > 0 ? lenses.join("+") : "no heads";
 		if (calls.length === 0) {
-			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${lenses.join("+")} | ${deliveryMode} | (no obs yet)`));
+			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${lensLabel} | ${deliveryMode} | (no obs yet)`));
 			return;
 		}
 		const { cost, meanHit } = cumulative();
@@ -307,7 +310,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const hitColor = meanHit >= 97 ? "success" : meanHit >= 90 ? "warning" : "error";
 		ctx.ui.setStatus(
 			"hydra",
-			ctx.ui.theme.fg("toolTitle", `hydra:${lenses.join("+")}`) +
+			ctx.ui.theme.fg("toolTitle", `hydra:${lensLabel}`) +
 				" " +
 				ctx.ui.theme.fg("muted", deliveryMode) +
 				" " +
@@ -330,8 +333,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			? config.lenses
 			: typeof config.lens === "string"
 				? [config.lens]
-				: [];
+				: null;
+		if (saved === null) {
+			return;
+		}
 		if (saved.length === 0) {
+			// A deliberately emptied set (all heads removed) is respected on restore.
+			lenses = [];
+			productLenses = [];
 			return;
 		}
 		const next = sanitizeLensSet(saved.filter((name) => typeof name === "string"));
@@ -588,7 +597,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	// One observation per active lens, all from the same captured snapshot.
+	// An empty set observes nothing (reached by removing heads one by one).
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
+		if (lenses.length === 0) {
+			return;
+		}
 		pending = lenses.map((name) => ({
 			ctx,
 			payload: capturedPayload,
@@ -725,7 +738,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			"and remove-lens to retire one. list shows the current setup.",
 		].join(" "),
 		parameters: Type.Object({
-			action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens", "set-delivery", "enable", "disable"] as const, {
+			action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens", "set-delivery"] as const, {
 				description: "What to do",
 			}),
 			lenses: Type.Optional(Type.Array(Type.String(), { description: "set-lenses: the lens set to observe with" })),
@@ -797,10 +810,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					rmSync(join(lensDir, `${name}.md`));
 					customLenses.delete(name);
 					const remaining = lenses.filter((active) => active !== name);
-					setLensSet(ctx, remaining.length > 0 ? remaining : ["quality"]);
+					if (remaining.length > 0) {
+						setLensSet(ctx, remaining);
+					} else {
+						// Removing the last head is the deliberate, head-by-head path
+						// to silence; there is no bulk off switch on this tool.
+						lenses = [];
+						productLenses = [];
+						persistConfig();
+						updateFooter(ctx);
+					}
 					ctx.ui.notify(`hydra: agent removed lens "${name}"`, "info");
 					return reply(
-						`lens "${name}" removed${name in LENS_PROMPTS ? " (built-in restored)" : ""}; active set: ${lenses.join(", ")}`,
+						`lens "${name}" removed${name in LENS_PROMPTS ? " (built-in restored)" : ""}; active set: ${
+							lenses.length > 0 ? lenses.join(", ") : "empty (hydra observes nothing until a lens is set)"
+						}`,
 					);
 				}
 				case "set-delivery": {
@@ -812,14 +836,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					updateFooter(ctx);
 					ctx.ui.notify(`hydra: agent set delivery=${deliveryMode}`, "info");
 					return reply(`delivery: ${deliveryMode}`);
-				}
-				case "enable":
-				case "disable": {
-					enabled = params.action === "enable";
-					persistConfig();
-					updateFooter(ctx);
-					ctx.ui.notify(`hydra: agent ${params.action}d the observer`, "info");
-					return reply(`observer ${params.action}d`);
 				}
 			}
 		},
