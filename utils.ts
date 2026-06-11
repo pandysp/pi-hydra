@@ -163,16 +163,24 @@ export interface FinalAssistantCandidate {
 
 /**
  * Pick the run's final assistant message M for the run-end fork: the last
- * usable assistant message, required to postdate the captured request (it
- * must be that request's own response). Anything older is already serialized
- * inside the captured payload, and appending it again would duplicate it in
- * the observer's context. Runs whose final generation aborted or errored hit
- * exactly that case and select nothing.
+ * usable assistant message, required to BE the captured request's own
+ * response. Anything else is already serialized inside the captured payload,
+ * and appending it again would duplicate it in the observer's context. Runs
+ * whose final generation aborted or errored hit exactly that case and select
+ * nothing.
+ *
+ * Identity is matched on the timestamp recorded at the response's own
+ * message_start (null when the captured request never started a response).
+ * Wall-clock comparison against the capture time is a coin flip: pi
+ * constructs the response message ~1ms before before_provider_request fires.
  */
 export function selectFinalAssistant<T extends FinalAssistantCandidate>(
 	messages: T[],
-	capturedAtMs: number,
+	responseTimestamp: number | null,
 ): T | null {
+	if (responseTimestamp === null) {
+		return null;
+	}
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role !== "assistant") {
@@ -184,7 +192,7 @@ export function selectFinalAssistant<T extends FinalAssistantCandidate>(
 		if (!Array.isArray(message.content) || message.content.length === 0) {
 			continue;
 		}
-		return (message.timestamp ?? 0) >= capturedAtMs ? message : null;
+		return message.timestamp === responseTimestamp ? message : null;
 	}
 	return null;
 }

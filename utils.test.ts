@@ -274,33 +274,45 @@ describe("selectFinalAssistant", () => {
 		content,
 		timestamp,
 	});
-	const CAPTURED_AT = 1000;
+	const RESPONSE_TS = 1500;
 
-	it("returns the final assistant message when it postdates the capture", () => {
-		const m = asst(1500);
-		expect(selectFinalAssistant([asst(500), { role: "user" }, m], CAPTURED_AT)).toBe(m);
+	it("returns the final assistant message when it is the captured request's response", () => {
+		const m = asst(RESPONSE_TS);
+		expect(selectFinalAssistant([asst(500), { role: "user" }, m], RESPONSE_TS)).toBe(m);
+	});
+
+	it("matches by identity, not clock order: pi stamps M ~1ms before the capture hook fires", () => {
+		// Regression: a >= capturedAtMs comparison silently dropped M whenever
+		// the message construction landed in the millisecond before the hook.
+		const m = asst(RESPONSE_TS);
+		expect(selectFinalAssistant([m], RESPONSE_TS)).toBe(m);
+		expect(selectFinalAssistant([m], RESPONSE_TS + 1)).toBeNull();
+	});
+
+	it("returns null when the captured request never started a response", () => {
+		expect(selectFinalAssistant([asst(500)], null)).toBeNull();
 	});
 
 	it("returns null when the final generation aborted (older M is already in the payload)", () => {
-		expect(selectFinalAssistant([asst(500), asst(1500, "aborted")], CAPTURED_AT)).toBeNull();
+		expect(selectFinalAssistant([asst(500), asst(RESPONSE_TS, "aborted")], RESPONSE_TS)).toBeNull();
 	});
 
 	it("returns null when the final generation errored", () => {
-		expect(selectFinalAssistant([asst(500), asst(1500, "error")], CAPTURED_AT)).toBeNull();
+		expect(selectFinalAssistant([asst(500), asst(RESPONSE_TS, "error")], RESPONSE_TS)).toBeNull();
 	});
 
 	it("skips trailing non-assistant messages", () => {
-		const m = asst(1500, "toolUse");
-		expect(selectFinalAssistant([m, { role: "toolResult" }], CAPTURED_AT)).toBe(m);
+		const m = asst(RESPONSE_TS, "toolUse");
+		expect(selectFinalAssistant([m, { role: "toolResult" }], RESPONSE_TS)).toBe(m);
 	});
 
 	it("rejects empty content and messages with errorMessage", () => {
-		expect(selectFinalAssistant([asst(1500, "stop", [])], CAPTURED_AT)).toBeNull();
-		expect(selectFinalAssistant([{ ...asst(1500), errorMessage: "boom" }], CAPTURED_AT)).toBeNull();
+		expect(selectFinalAssistant([asst(RESPONSE_TS, "stop", [])], RESPONSE_TS)).toBeNull();
+		expect(selectFinalAssistant([{ ...asst(RESPONSE_TS), errorMessage: "boom" }], RESPONSE_TS)).toBeNull();
 	});
 
 	it("returns null for an empty run", () => {
-		expect(selectFinalAssistant([], CAPTURED_AT)).toBeNull();
+		expect(selectFinalAssistant([], RESPONSE_TS)).toBeNull();
 	});
 });
 

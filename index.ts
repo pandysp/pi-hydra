@@ -259,11 +259,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	// Driver capture: the exact provider payload of the most recent request,
-	// plus enough run state to know what it represents. capturedAtMs lets the
-	// run-end trigger require that M postdates the capture (an older message
-	// is already serialized inside the payload).
+	// plus enough run state to know what it represents. responseTimestamp is
+	// the timestamp of the captured request's own response, recorded at its
+	// message_start; the run-end trigger matches M against it by identity (an
+	// older message is already serialized inside the payload).
 	let capturedPayload: unknown = null;
-	let capturedAtMs = 0;
+	let responseTimestamp: number | null = null;
 	let capturedThisRun = false;
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
@@ -659,7 +660,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		// Capture the driver's exact bytes; never modify them.
 		capturedPayload = structuredClone(event.payload);
-		capturedAtMs = Date.now();
+		responseTimestamp = null;
 		capturedThisRun = true;
 	});
 
@@ -672,6 +673,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.on("message_start", (event, ctx) => {
 		if (!enabled || !capturedPayload || event.message.role !== "assistant") {
 			return;
+		}
+		// The first assistant message after a capture is that request's own
+		// response; remember its timestamp so the run-end trigger can match M
+		// by identity.
+		if (responseTimestamp === null) {
+			responseTimestamp = (event.message as AssistantMessage).timestamp ?? null;
 		}
 		if (awaitingFirstResponseOfRun) {
 			awaitingFirstResponseOfRun = false;
@@ -690,7 +697,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 		// selectFinalAssistant guarantees role "assistant" with block content.
-		const assistant = selectFinalAssistant(event.messages, capturedAtMs) as AssistantMessage | null;
+		const assistant = selectFinalAssistant(event.messages, responseTimestamp) as AssistantMessage | null;
 		if (!assistant) {
 			return;
 		}
