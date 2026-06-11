@@ -1,32 +1,39 @@
-# Navigator Lenses — Reference
+# Lenses
 
-## Recommended Default Set (3 lenses, minimal overlap)
+A lens is what a hydra head looks through: a focused review perspective with explicit boundaries, so multiple heads catch different things instead of repeating each other. Four ship as built-in lenses (`/hydra-lens`): quality, security, simplifier, and api-design. The rest are reference designs for custom heads.
 
-### 1. Security
+## Built-in Lenses (minimal overlap)
+
+### 1. Quality
+**Lens:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
+**Why:** The broadest net, and hydra's default. The driver believes its own code works; this lens asks what would prove it.
+**Boundary:** Do NOT nitpick style.
+
+### 2. Security
 **Lens:** authentication, authorization, injection, data exposure, input validation, cryptographic choices.
 **Why:** Catches things nobody else sees. Auth logic flaws, IDORs, weak crypto. The driver is thinking about functionality, not attack surface.
 **Boundary:** Do NOT comment on code structure or test coverage.
 
-### 2. Simplifier
+### 3. Simplifier
 **Lens:** unnecessary complexity, over-engineering, code that could be deleted, abstractions that don't earn their keep, redundant operations.
 **Why:** Every other lens adds requirements. This one removes them. Argues for LESS code, which is rare and valuable. Catches DRY violations, redundant queries, dead code.
 **Boundary:** Do NOT comment on bugs, security, or missing features. You argue for less, not more.
 
-### 3. API Design
+### 4. API Design
 **Lens:** REST conventions, response consistency, status codes, error format, API ergonomics, backward compatibility.
-**Why:** Consumer-facing issues are invisible from inside the code. PUT vs PATCH, inconsistent response shapes, missing pagination — the driver doesn't notice because they're thinking about implementation, not the contract.
+**Why:** Consumer-facing issues are invisible from inside the code. PUT vs PATCH, inconsistent response shapes, missing pagination: the driver doesn't notice because they're thinking about implementation, not the contract.
 **Boundary:** Do NOT comment on internal implementation, security, or testing.
 
-## Extended Set (add for complex projects)
+## Extended Set (reference designs, add for complex projects)
 
-### 4. Devil's Advocate
+### 5. Devil's Advocate
 **Lens:** challenge the entire approach. "Why this way and not another?" Question assumptions. Prevent sunk cost fallacy.
 **Why:** Zero overlap with code-level review. Asks strategic questions: should we build this at all? Is SQLite the right choice? Are we solving the right problem?
 **Boundary:** Do NOT comment on code-level bugs or style. Think meta.
 
-### 5. Observability
+### 6. Observability
 **Lens:** logging, monitoring, debugging in production, traceability, metrics, health checks. "Can you diagnose this at 3am?"
-**Why:** Nobody thinks about production operations during development. Missing request IDs, no structured logging, silent failures — all invisible until the pager goes off.
+**Why:** Nobody thinks about production operations during development. Missing request IDs, no structured logging, silent failures: all invisible until the pager goes off.
 **Boundary:** Do NOT comment on code structure, security, or testing.
 
 ## Situational Lenses
@@ -34,12 +41,12 @@
 ### Architecture
 **When:** Large codebases, multi-service systems, early design phases.
 **Lens:** structural design, coupling, SOLID, layer separation.
-**Overlap risk:** Medium — overlaps with Simplifier on DRY, with Performance on design choices.
+**Overlap risk:** Medium; overlaps with Simplifier on DRY, with Performance on design choices.
 
 ### Testing
 **When:** Pre-merge, complex business logic.
 **Lens:** coverage gaps, untested edge cases, error handling paths.
-**Overlap risk:** High with Error Handling. Pick one, not both.
+**Overlap risk:** High with Error Handling; pick one, not both.
 
 ### Performance
 **When:** Data-heavy apps, high-traffic APIs, known scaling concerns.

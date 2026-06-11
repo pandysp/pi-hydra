@@ -1,0 +1,25 @@
+{
+	"name": "pi-hydra",
+	"version": "0.1.0",
+	"description": "Extra heads for your pi coding agent: real-time observers at prompt-cache prices",
+	"license": "MIT",
+	"type": "module",
+	"private": true,
+	"pi": {
+		"extensions": ["./index.ts"]
+	},
+	"scripts": {
+		"check": "tsc",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "^22",
+		"typescript": "^5.7",
+		"vitest": "^3"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	}
+}
