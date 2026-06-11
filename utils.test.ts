@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
-import { mergeObserverPayload, parseDecision, parseLensFile } from "./utils";
+import { mergeObserverPayload, parseDecision, parseLensFile, parseLensList } from "./utils";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
 	if (!Array.isArray(message.content)) {
@@ -181,5 +181,19 @@ describe("parseLensFile", () => {
 	it("returns null when there is no instruction", () => {
 		expect(parseLensFile("empty", "   \n")).toBeNull();
 		expect(parseLensFile("only-frontmatter", "---\ndescription: d\n---\n\n")).toBeNull();
+	});
+});
+
+describe("parseLensList", () => {
+	it("splits on commas and whitespace", () => {
+		expect(parseLensList("quality,security simplifier")).toEqual(["quality", "security", "simplifier"]);
+	});
+
+	it("dedupes and drops empties", () => {
+		expect(parseLensList(" quality,, quality ,")).toEqual(["quality"]);
+	});
+
+	it("returns empty for blank input", () => {
+		expect(parseLensList("  ")).toEqual([]);
 	});
 });

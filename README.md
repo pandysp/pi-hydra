@@ -34,8 +34,9 @@ hydra:quality print hit 98.5% (last 99.1%) $0.0234 (12 obs)
 hydra starts in `print` mode: decisions are rendered in the TUI but never injected into the agent's context. Watch it for a session, and when you trust the lens, let it act:
 
 ```
-/hydra-delivery queue       # feedback joins the agent's next turn
-/hydra-delivery interrupt   # urgent findings preempt the agent between turns
+/hydra-delivery queue            # feedback joins the agent's next turn
+/hydra-delivery interrupt        # urgent findings preempt the agent between turns
+/hydra-lens quality,security     # several heads at once; they fan out in parallel
 ```
 
 ### Commands
@@ -43,14 +44,18 @@ hydra starts in `print` mode: decisions are rendered in the TUI but never inject
 | command | what it does |
 |---|---|
 | `/hydra` | toggle the observer |
-| `/hydra-lens <name>` | pick the lens: `quality`, `security`, `simplifier`, `api-design` |
+| `/hydra-lens <set>` | pick the lens set, comma-separated: `quality`, `security`, `simplifier`, `api-design`, plus your custom lenses |
 | `/hydra-delivery <mode>` | `print` (watch only), `queue` (feedback next turn), `interrupt` (steer between turns) |
 | `/hydra-stats` | cache hit ratio, cost, recent decisions |
 | `/hydra-debug` | dump driver/observer payload pairs for diffing |
 
 Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md). You can add your own heads: a markdown file in `~/.pi/agent/hydra/lenses/` becomes a lens, is re-read at the start of every run, and may override a built-in. Editing a lens file mid-session tunes the head for the very next observation.
 
-Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
+Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens quality,security`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
+
+### The agent configures its own heads
+
+hydra registers a `hydra` tool the agent can call: list the setup, switch the lens set, write or remove custom lenses, change delivery, toggle the observer. A lens the agent writes applies to the very next observation in the same run, so a workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier. Every agent-made change is announced in the TUI, lands as a plain markdown file you can audit, and persists like any other settings change. The observers see the reconfiguration too, since they replay the agent's own context.
 
 ## How it works
 
@@ -60,7 +65,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 Today a head renders one of three verdicts. The architecture supports more than verdicts, and that is the direction:
 
-- **Parallel heads.** Mid-run observations are pure cache reads, so running quality, security, and simplifier simultaneously costs three observer prompts, not three contexts.
+- **Self-tuning heads** ([#5](https://github.com/pandysp/pi-hydra/issues/5)). The agent can already write and swap its lenses mid-session; the remaining piece is closing the loop, where "this head flags too much" becomes the agent tuning the lens file and the next observation using it.
 - **Async heads.** A head that writes documentation as the agent codes. A head that updates project memory with decisions as they are made. A head that evaluates the trajectory in flight, instead of a post-hoc eval agent re-reading the whole transcript at full price. The head was there when it happened, and the cache already holds everything it saw.
 
 If any of these interest you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.

@@ -23,7 +23,7 @@ Smoke-test delivery with the hidden diagnostic lenses (`/hydra-lens test`, `/hyd
 ## What's welcome
 
 - New built-in lenses; prototype them first as custom lens files (`~/.pi/agent/hydra/lenses/`, see [`docs/lenses.md`](docs/lenses.md)) and PR the ones that prove themselves
-- Steps toward parallel and async heads (see the README's direction section)
+- Steps toward async heads and the self-tuning loop (see the README's direction section and issue #5)
 - Provider support beyond Anthropic (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
 - Replications or extensions of the [`experiments/`](experiments/README.md)
 

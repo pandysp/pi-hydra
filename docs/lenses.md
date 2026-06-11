@@ -15,7 +15,9 @@ explanations, and output the user did not ask for. Do not comment on
 code correctness or style.
 ```
 
-Custom lenses appear in `/hydra-lens` completions and work with `--hydra-lens`. A custom lens may override a built-in by using its name (the diagnostic lenses are not overridable). Lens files are re-read at the start of every agent run, so editing one applies to the next run without a reload: when a head flags too much or too little, tell the agent to tune the lens file, and the very next observation uses the tuned lens. Keep the instruction shaped like the built-ins below: one focus, explicit boundaries, and short, since the lens text is the only uncached part of each observation.
+Custom lenses appear in `/hydra-lens` completions and work with `--hydra-lens`. A custom lens may override a built-in by using its name (the diagnostic lenses are not overridable). Lens files are re-read at the start of every agent run, so editing one applies to the next run without a reload: when a head flags too much or too little, tell the agent to tune the lens file, and the very next observation uses the tuned lens. The agent can also manage lenses itself through the `hydra` tool (write, remove, switch the active set); a lens it writes applies immediately, mid-run. Keep the instruction shaped like the built-ins below: one focus, explicit boundaries, and short, since the lens text is the only uncached part of each observation.
+
+Several lenses observe at once: `/hydra-lens quality,security` fans out one head per lens in parallel. A set is any number of product lenses, or exactly one diagnostic lens; the two never mix.
 
 ## Built-in Lenses (minimal overlap)
 

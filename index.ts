@@ -23,22 +23,25 @@
  * Usage:
  *   pi install /path/to/pi-hydra   (or symlink into ~/.pi/agent/extensions)
  *   /hydra            toggle the observer
- *   /hydra-lens       pick the review lens (quality, security, ...)
+ *   /hydra-lens       pick the lens set, comma-separated (built-in + custom)
  *   /hydra-delivery   pick how findings reach you (print, queue, interrupt)
  *   /hydra-stats      cache hit ratio, cost, and recent decisions
  *   /hydra-debug      dump driver/observer payload pairs for diffing
+ *
+ * The agent can manage its own heads through the registered `hydra` tool
+ * (list, set-lenses, write-lens, remove-lens, set-delivery, enable/disable).
  */
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { complete } from "@earendil-works/pi-ai";
+import { complete, StringEnum, Type } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Message, Usage } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
 import type { Action, AnthropicPayload, Decision, LensDefinition } from "./utils";
-import { isAnthropicPayload, mergeObserverPayload, parseDecision, parseLensFile } from "./utils";
+import { isAnthropicPayload, mergeObserverPayload, parseDecision, parseLensFile, parseLensList } from "./utils";
 
 // How long session_shutdown waits for an in-flight observation before
 // aborting it. Headless runs (`pi -p`) exit right after agent_end, so slow
@@ -134,26 +137,32 @@ interface FeedbackDetails {
 	deliveryMode: DeliveryMode;
 }
 
-// Lens, delivery mode, and enabled survive resume and branch navigation as
-// the latest "hydra-config" entry on the branch. CLI flags seed sessions that
-// have no persisted config yet (the only way to configure headless `pi -p`
-// runs, which cannot issue slash commands).
+// Lens set, delivery mode, and enabled survive resume and branch navigation
+// as the latest "hydra-config" entry on the branch. CLI flags seed sessions
+// that have no persisted config yet (the only way to configure headless
+// `pi -p` runs, which cannot issue slash commands). `lens` is the pre-multi-
+// head field name, still read for old sessions.
 interface HydraConfig {
-	lens: string;
+	lenses: string[];
 	deliveryMode: DeliveryMode;
 	enabled: boolean;
+	lens?: string;
 }
 
 const MAX_DELIVERED_KEYS = 200;
 
 export default function hydraExtension(pi: ExtensionAPI) {
 	let enabled = true;
-	let lens = "quality";
-	let productLens = "quality";
+	// The active lens set: one observation fans out per lens, in parallel.
+	// Either a single diagnostic lens or any number of product lenses; the
+	// two never mix, since the diagnostics' one-shot revert restores
+	// productLenses.
+	let lenses: string[] = ["quality"];
+	let productLenses: string[] = ["quality"];
 	let deliveryMode: DeliveryMode = "print";
 
 	pi.registerFlag("hydra-lens", {
-		description: `Initial hydra lens (${BUILT_IN_LENS_NAMES.join("|")} or custom)`,
+		description: `Initial hydra lens set, comma-separated (${BUILT_IN_LENS_NAMES.join("|")} or custom)`,
 		type: "string",
 	});
 	pi.registerFlag("hydra-delivery", {
@@ -211,6 +220,35 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return [...new Set([...BUILT_IN_LENS_NAMES, ...customLenses.keys()])].sort();
 	}
 
+	// Resolve a requested lens set: drop unknown names, collapse to a single
+	// diagnostic when one is present (diagnostics never mix with product
+	// lenses), dedupe the rest.
+	function sanitizeLensSet(requested: string[]): { lenses: string[]; unknown: string[] } {
+		const known = requested.filter((name) => lensExists(name));
+		const unknown = requested.filter((name) => !lensExists(name));
+		const diagnostic = known.find((name) => name in DIAGNOSTIC_PROMPTS);
+		return { lenses: diagnostic ? [diagnostic] : [...new Set(known)], unknown };
+	}
+
+	// Apply a lens set from any surface (command, flag, tool). Returns false
+	// when nothing valid was requested; the current set stays in place.
+	function setLensSet(ctx: ExtensionContext, requested: string[]): boolean {
+		const next = sanitizeLensSet(requested);
+		if (next.unknown.length > 0) {
+			ctx.ui.notify(`hydra: unknown lens: ${next.unknown.join(", ")}. valid: ${lensNames().join(", ")}`, "warning");
+		}
+		if (next.lenses.length === 0) {
+			return false;
+		}
+		lenses = next.lenses;
+		if (!next.lenses.some((name) => name in DIAGNOSTIC_PROMPTS)) {
+			productLenses = next.lenses;
+		}
+		persistConfig();
+		updateFooter(ctx);
+		return true;
+	}
+
 	function observerPromptFor(name: string): string {
 		const instruction =
 			customLenses.get(name)?.prompt ?? LENS_PROMPTS[name as keyof typeof LENS_PROMPTS] ?? LENS_PROMPTS.quality;
@@ -224,12 +262,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
 
-	// Conflating single-slot scheduler: at most one observation in flight, and
-	// a newer snapshot overwrites the waiting slot. Observations always run to
+	// Conflating single-slot scheduler: at most one batch in flight (one
+	// observation per active lens, fanned out in parallel), and a newer
+	// snapshot overwrites the waiting slot. Observations always run to
 	// completion; staleness is bounded to one cycle because the slot always
 	// holds the newest snapshot. drainPromise is non-null iff the pump runs;
 	// session_shutdown awaits it.
-	let pending: Observation | null = null;
+	let pending: Observation[] | null = null;
 	let drainPromise: Promise<void> | null = null;
 	const lifecycleAbort = new AbortController();
 
@@ -260,7 +299,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 		if (calls.length === 0) {
-			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${lens} | ${deliveryMode} | (no obs yet)`));
+			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${lenses.join("+")} | ${deliveryMode} | (no obs yet)`));
 			return;
 		}
 		const { cost, meanHit } = cumulative();
@@ -268,7 +307,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const hitColor = meanHit >= 97 ? "success" : meanHit >= 90 ? "warning" : "error";
 		ctx.ui.setStatus(
 			"hydra",
-			ctx.ui.theme.fg("toolTitle", `hydra:${lens}`) +
+			ctx.ui.theme.fg("toolTitle", `hydra:${lenses.join("+")}`) +
 				" " +
 				ctx.ui.theme.fg("muted", deliveryMode) +
 				" " +
@@ -279,7 +318,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	function persistConfig() {
-		pi.appendEntry<HydraConfig>("hydra-config", { lens, deliveryMode, enabled });
+		pi.appendEntry<HydraConfig>("hydra-config", { lenses, deliveryMode, enabled });
 	}
 
 	function applyConfig(ctx: ExtensionContext, config: HydraConfig) {
@@ -287,13 +326,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (DELIVERY_MODES.includes(config.deliveryMode)) {
 			deliveryMode = config.deliveryMode;
 		}
-		if (typeof config.lens === "string" && lensExists(config.lens)) {
-			lens = config.lens;
-			if (!(lens in DIAGNOSTIC_PROMPTS)) {
-				productLens = lens;
+		const saved = Array.isArray(config.lenses)
+			? config.lenses
+			: typeof config.lens === "string"
+				? [config.lens]
+				: [];
+		if (saved.length === 0) {
+			return;
+		}
+		const next = sanitizeLensSet(saved.filter((name) => typeof name === "string"));
+		if (next.unknown.length > 0) {
+			ctx.ui.notify(`hydra: saved lens no longer exists: ${next.unknown.join(", ")}`, "warning");
+		}
+		if (next.lenses.length > 0) {
+			lenses = next.lenses;
+			if (!next.lenses.some((name) => name in DIAGNOSTIC_PROMPTS)) {
+				productLenses = next.lenses;
 			}
-		} else if (typeof config.lens === "string" && config.lens.length > 0) {
-			ctx.ui.notify(`hydra: saved lens "${config.lens}" no longer exists; using ${lens}`, "warning");
 		}
 	}
 
@@ -304,15 +353,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		let applied = false;
 		const flagLens = pi.getFlag("hydra-lens");
 		if (typeof flagLens === "string" && flagLens.length > 0) {
-			if (lensExists(flagLens)) {
-				lens = flagLens;
-				if (!(flagLens in DIAGNOSTIC_PROMPTS)) {
-					productLens = flagLens;
-				}
-				applied = true;
-			} else {
-				ctx.ui.notify(`hydra: unknown lens in --hydra-lens: ${flagLens}`, "warning");
-			}
+			// setLensSet persists on success; the remaining flags persist below.
+			setLensSet(ctx, parseLensList(flagLens));
 		}
 		const flagDelivery = pi.getFlag("hydra-delivery");
 		if (typeof flagDelivery === "string" && flagDelivery.length > 0) {
@@ -464,10 +506,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Diagnostic lenses are one-shot: revert before routing, otherwise an
 		// interrupt delivery re-triggers itself forever (each injected message
 		// starts a run whose run-end observation would interrupt again).
-		if (job.lens in DIAGNOSTIC_PROMPTS && lens === job.lens) {
-			lens = productLens;
+		if (job.lens in DIAGNOSTIC_PROMPTS && lenses.length === 1 && lenses[0] === job.lens) {
+			lenses = productLenses;
 			persistConfig();
-			job.ctx.ui.notify(`hydra: diagnostic lens "${job.lens}" fired once; reverting to ${productLens}`, "info");
+			job.ctx.ui.notify(`hydra: diagnostic lens "${job.lens}" fired once; reverting to ${productLenses.join("+")}`, "info");
 		}
 		updateFooter(job.ctx);
 
@@ -480,11 +522,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 
 		// The observer reviews overlapping snapshots, so identical findings
-		// recur; deliver each one once. Diagnostic lenses are exempt: their
-		// message is fixed by design, and every smoke-test firing must be
+		// recur; deliver each one once per lens. Diagnostic lenses are exempt:
+		// their message is fixed by design, and every smoke-test firing must be
 		// visible.
 		if (!(decisionLens in DIAGNOSTIC_PROMPTS)) {
-			const key = `${decision.action}|${decision.message}`;
+			const key = `${decisionLens}|${decision.action}|${decision.message}`;
 			if (delivered.has(key)) {
 				return;
 			}
@@ -514,8 +556,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	// Run one observation at a time to completion, then pick up the newest
-	// pending snapshot (conflating whatever piled up while busy).
+	// Run one batch at a time to completion, then pick up the newest pending
+	// snapshot (conflating whatever piled up while busy). Within a batch the
+	// heads fan out in parallel: mid-run they are all pure cache reads; at
+	// run-end each fork pays M's write (the measured economics are in
+	// docs/architecture.md).
 	async function drain(): Promise<void> {
 		try {
 			while (pending) {
@@ -523,23 +568,36 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					pending = null;
 					break;
 				}
-				const job = pending;
+				const batch = pending;
 				pending = null;
-				try {
-					await observe(job, lifecycleAbort.signal);
-				} catch (error) {
-					if (!lifecycleAbort.signal.aborted) {
-						job.ctx.ui.notify(`hydra: observe error: ${error instanceof Error ? error.message : String(error)}`, "error");
-					}
-				}
+				await Promise.all(
+					batch.map(async (job) => {
+						try {
+							await observe(job, lifecycleAbort.signal);
+						} catch (error) {
+							if (!lifecycleAbort.signal.aborted) {
+								job.ctx.ui.notify(`hydra: observe error: ${error instanceof Error ? error.message : String(error)}`, "error");
+							}
+						}
+					}),
+				);
 			}
 		} finally {
 			drainPromise = null;
 		}
 	}
 
-	function schedule(job: Observation) {
-		pending = job;
+	// One observation per active lens, all from the same captured snapshot.
+	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
+		pending = lenses.map((name) => ({
+			ctx,
+			payload: capturedPayload,
+			assistant,
+			turnIndex: currentTurnIndex,
+			lens: name,
+			prompt: observerPromptFor(name),
+			kind,
+		}));
 		if (!drainPromise) {
 			drainPromise = drain();
 		}
@@ -592,15 +650,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			awaitingFirstResponseOfRun = false;
 			return;
 		}
-		schedule({
-			ctx,
-			payload: capturedPayload,
-			assistant: null,
-			turnIndex: currentTurnIndex,
-			lens,
-			prompt: observerPromptFor(lens),
-			kind: "piggyback",
-		});
+		scheduleObservations(ctx, "piggyback", null);
 	});
 
 	// Run-end trigger: the agent handed control back to the user, so nothing
@@ -625,15 +675,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!assistant) {
 			return;
 		}
-		schedule({
-			ctx,
-			payload: capturedPayload,
-			assistant,
-			turnIndex: currentTurnIndex,
-			lens,
-			prompt: observerPromptFor(lens),
-			kind: "run-end",
-		});
+		scheduleObservations(ctx, "run-end", assistant);
 	});
 
 	pi.on("session_shutdown", async () => {
@@ -667,6 +709,122 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return box;
 	});
 
+	// The agent's hand on the tool-changer: full self-configuration of its own
+	// observer. Lens writes are user-scoped markdown files, every change is
+	// announced and visible in the footer, and the observers themselves see
+	// the reconfiguration in the replayed context.
+	pi.registerTool({
+		name: "hydra",
+		label: "Hydra",
+		description: [
+			"Configure your hydra observer heads. Each lens is an independent reviewer",
+			"watching your full context. Use set-lenses when the work changes phase",
+			"(e.g. design wants devil's-advocate thinking, execution wants quality and",
+			"security, review wants simplifier), write-lens to create or tune a head for",
+			"the task at hand (it persists as a markdown file and applies immediately),",
+			"and remove-lens to retire one. list shows the current setup.",
+		].join(" "),
+		parameters: Type.Object({
+			action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens", "set-delivery", "enable", "disable"] as const, {
+				description: "What to do",
+			}),
+			lenses: Type.Optional(Type.Array(Type.String(), { description: "set-lenses: the lens set to observe with" })),
+			name: Type.Optional(Type.String({ description: "write-lens/remove-lens: lens name (kebab-case)" })),
+			instruction: Type.Optional(
+				Type.String({ description: "write-lens: the lens instruction (one focus, explicit do-NOT boundaries, short)" }),
+			),
+			description: Type.Optional(Type.String({ description: "write-lens: one-line description" })),
+			activate: Type.Optional(Type.Boolean({ description: "write-lens: also add to the active set (default true)" })),
+			delivery: Type.Optional(StringEnum(["print", "queue", "interrupt"] as const, { description: "set-delivery: mode" })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const reply = (text: string) => ({
+				content: [{ type: "text" as const, text }],
+				details: { lenses, deliveryMode, enabled },
+			});
+			switch (params.action) {
+				case "list": {
+					const custom = [...customLenses.values()]
+						.map((definition) => `  ${definition.name}${definition.description ? `: ${definition.description}` : ""}`)
+						.join("\n");
+					return reply(
+						[
+							`active: ${lenses.join(", ")} | delivery: ${deliveryMode} | ${enabled ? "enabled" : "disabled"}`,
+							`built-in: ${BUILT_IN_LENS_NAMES.join(", ")}`,
+							custom ? `custom (${lensDir}):\n${custom}` : `custom: none (${lensDir})`,
+						].join("\n"),
+					);
+				}
+				case "set-lenses": {
+					if (!params.lenses || params.lenses.length === 0) {
+						return reply("set-lenses needs `lenses`.");
+					}
+					return setLensSet(ctx, params.lenses)
+						? reply(`observing with: ${lenses.join(", ")}`)
+						: reply(`no valid lenses in ${params.lenses.join(", ")}; still observing with ${lenses.join(", ")}`);
+				}
+				case "write-lens": {
+					const name = params.name?.trim() ?? "";
+					const instruction = params.instruction?.trim() ?? "";
+					if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+						return reply("write-lens needs a kebab-case `name`.");
+					}
+					if (name in DIAGNOSTIC_PROMPTS) {
+						return reply(`"${name}" is a reserved diagnostic lens.`);
+					}
+					if (instruction.length === 0) {
+						return reply("write-lens needs an `instruction`.");
+					}
+					const body = params.description ? `---\ndescription: ${params.description.trim()}\n---\n${instruction}\n` : `${instruction}\n`;
+					mkdirSync(lensDir, { recursive: true });
+					writeFileSync(join(lensDir, `${name}.md`), body);
+					customLenses.set(name, { name, description: params.description?.trim(), prompt: instruction });
+					if (params.activate !== false) {
+						setLensSet(ctx, [...lenses.filter((active) => !(active in DIAGNOSTIC_PROMPTS)), name]);
+					}
+					ctx.ui.notify(`hydra: agent wrote lens "${name}"${params.activate !== false ? " and activated it" : ""}`, "info");
+					return reply(`lens "${name}" written to ${join(lensDir, `${name}.md`)}; active set: ${lenses.join(", ")}`);
+				}
+				case "remove-lens": {
+					const name = params.name?.trim() ?? "";
+					if (!customLenses.has(name)) {
+						return reply(
+							name in LENS_PROMPTS
+								? `"${name}" is built-in; you can override it with write-lens, but not remove it.`
+								: `no custom lens named "${name}".`,
+						);
+					}
+					rmSync(join(lensDir, `${name}.md`));
+					customLenses.delete(name);
+					const remaining = lenses.filter((active) => active !== name);
+					setLensSet(ctx, remaining.length > 0 ? remaining : ["quality"]);
+					ctx.ui.notify(`hydra: agent removed lens "${name}"`, "info");
+					return reply(
+						`lens "${name}" removed${name in LENS_PROMPTS ? " (built-in restored)" : ""}; active set: ${lenses.join(", ")}`,
+					);
+				}
+				case "set-delivery": {
+					if (!params.delivery) {
+						return reply("set-delivery needs `delivery`.");
+					}
+					deliveryMode = params.delivery;
+					persistConfig();
+					updateFooter(ctx);
+					ctx.ui.notify(`hydra: agent set delivery=${deliveryMode}`, "info");
+					return reply(`delivery: ${deliveryMode}`);
+				}
+				case "enable":
+				case "disable": {
+					enabled = params.action === "enable";
+					persistConfig();
+					updateFooter(ctx);
+					ctx.ui.notify(`hydra: agent ${params.action}d the observer`, "info");
+					return reply(`observer ${params.action}d`);
+				}
+			}
+		},
+	});
+
 	pi.registerCommand("hydra", {
 		description: "Toggle hydra observer on/off",
 		handler: async (_args, ctx) => {
@@ -678,24 +836,26 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("hydra-lens", {
-		description: `Set hydra lens: ${BUILT_IN_LENS_NAMES.join(" | ")} or a custom lens from ~/.pi/agent/hydra/lenses`,
-		getArgumentCompletions: (prefix: string) =>
-			lensNames()
-				.filter((name) => name.startsWith(prefix))
-				.map((name) => ({ value: name, label: customLenses.has(name) ? `${name} (custom)` : name })),
+		description: `Set the hydra lens set (comma-separated): ${BUILT_IN_LENS_NAMES.join(" | ")} or custom lenses from ~/.pi/agent/hydra/lenses`,
+		getArgumentCompletions: (prefix: string) => {
+			// Complete the segment after the last separator, so lens sets can be
+			// typed as "quality,sec<tab>".
+			const split = prefix.match(/^(.*[,\s])?([^,\s]*)$/);
+			const base = split?.[1] ?? "";
+			const partial = split?.[2] ?? "";
+			return lensNames()
+				.filter((name) => name.startsWith(partial))
+				.map((name) => ({ value: base + name, label: customLenses.has(name) ? `${name} (custom)` : name }));
+		},
 		handler: async (args, ctx) => {
-			const requested = args.trim();
-			if (!lensExists(requested)) {
-				ctx.ui.notify(`hydra: unknown lens. valid: ${lensNames().join(", ")}`, "warning");
+			const requested = parseLensList(args);
+			if (requested.length === 0) {
+				ctx.ui.notify(`hydra: usage: /hydra-lens <name>[,<name>...]. valid: ${lensNames().join(", ")}`, "warning");
 				return;
 			}
-			lens = requested;
-			if (!(requested in DIAGNOSTIC_PROMPTS)) {
-				productLens = requested;
+			if (setLensSet(ctx, requested)) {
+				ctx.ui.notify(`hydra: lenses=${lenses.join("+")}`, "info");
 			}
-			persistConfig();
-			updateFooter(ctx);
-			ctx.ui.notify(`hydra: lens=${lens}`, "info");
 		},
 	});
 

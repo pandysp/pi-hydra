@@ -26,7 +26,7 @@ interrupt → pi.sendUserMessage({ deliverAs: "steer" })
 
 Same model, same system prompt, same tools, same thinking config; the only difference is one extra user message at the end. Cache hit ratio is determined by the size of the observer prompt (~220 tokens) relative to the driver context.
 
-Observations run through a conflating single-slot scheduler: at most one in flight, a newer snapshot overwrites the waiting slot, and an in-flight observation always runs to completion. Staleness is bounded to one cycle because the slot always holds the newest snapshot.
+Observations run through a conflating single-slot scheduler: at most one batch in flight (one observation per active lens, fanned out in parallel), a newer snapshot overwrites the waiting slot, and an in-flight batch always runs to completion. Staleness is bounded to one cycle because the slot always holds the newest snapshot.
 
 ## Cache hit ratio (the load-bearing metric)
 
@@ -80,7 +80,7 @@ jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage 
 
 **Headless (`pi -p`) may truncate the run-end observation.** The process exits shortly after `agent_end`; `session_shutdown` awaits the in-flight observation up to 5s, which slow models (fable/xhigh: 10s+) can exceed. Raise via `HYDRA_SHUTDOWN_GRACE_MS` for headless use (`0` means exit without waiting). Interactive mode is unaffected; the observation completes while you read the response.
 
-**Single lens at a time.** Multi-head parallel observation (quality + security + simplifier simultaneously) is straightforward to add (fan out N parallel `complete()` calls per trigger) but not in v0.1. Mid-run piggybacks fan out for free, since all are pure reads. At run-end, simultaneous markered forks each pay M's write (~$0.01–0.02 on fable); see the experiments README for the message_start-coordination pattern if that ever matters.
+**Multi-head fan-out is latency-first.** The active lens set fans out one observation per head, in parallel, per trigger. Mid-run this is free beyond the prompts, since every head is a pure cache read of the same committed prefix. At run-end the markered forks race and each pays M's write (~$0.01–0.02 per head on fable, measured); the experiments README documents a message_start-coordination pattern that would let followers free-ride on the first fork's write, deliberately not implemented because the contended amount stays a single-digit percent of observer spend and feedback latency is the product metric.
 
 **No hard mid-stream cancellation.** The archived bash version used `tmux send-keys Escape` to cancel an in-flight Claude Code stream, then inject. pi's equivalent (`pi.sendUserMessage` with `deliverAs: "steer"`) is softer: it queues the message until the current turn's tool calls finish, then injects it as a real user message between turns of the same agent run. The piggyback timing helps here: mid-run observations fire when a response begins, so their verdicts often land while that response is still streaming, in time to steer the next turn. But the observation reviews the request snapshot, not the in-flight output: a single long-running LLM call cannot be judged or interrupted on its partial output. That would require reasoning over `message_update` deltas and calling `ctx.abort()`, with no cache parity since the content is mid-flight. Future work.
 

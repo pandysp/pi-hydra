@@ -59,6 +59,11 @@ export function parseDecision(text: string): Decision {
 	return { action: "noop", reason: "unparseable response", message: "" };
 }
 
+/** Parse a user-supplied lens list ("quality,security" or "quality security"). */
+export function parseLensList(value: string): string[] {
+	return [...new Set(value.split(/[\s,]+/).map((name) => name.trim()).filter((name) => name.length > 0))];
+}
+
 export interface LensDefinition {
 	name: string;
 	description?: string;
