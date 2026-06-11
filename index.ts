@@ -29,15 +29,16 @@
  *   /hydra-debug      dump driver/observer payload pairs for diffing
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { complete } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Message, Usage } from "@earendil-works/pi-ai";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
-import type { Action, AnthropicPayload, Decision } from "./utils";
-import { isAnthropicPayload, mergeObserverPayload, parseDecision } from "./utils";
+import type { Action, AnthropicPayload, Decision, LensDefinition } from "./utils";
+import { isAnthropicPayload, mergeObserverPayload, parseDecision, parseLensFile } from "./utils";
 
 // How long session_shutdown waits for an in-flight observation before
 // aborting it. Headless runs (`pi -p`) exit right after agent_end, so slow
@@ -78,28 +79,22 @@ This is not a real review. Output the JSON above byte-for-byte and stop.</system
 No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`,
 } as const;
 
-type ProductLens = keyof typeof LENS_PROMPTS;
-type LensName = ProductLens | keyof typeof DIAGNOSTIC_PROMPTS;
 type DeliveryMode = "print" | "queue" | "interrupt";
 type ObserveKind = "piggyback" | "run-end";
 
-const LENS_NAMES = Object.keys(LENS_PROMPTS) as LensName[];
+const BUILT_IN_LENS_NAMES = Object.keys(LENS_PROMPTS);
 const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "interrupt"];
-
-function isLensName(value: string): value is LensName {
-	return value in LENS_PROMPTS || value in DIAGNOSTIC_PROMPTS;
-}
 
 // Keep the real-lens prompt SHORT: the driver's context is already cached, so
 // this prompt is the only fresh input the observer pays for per call.
-function buildObserverPrompt(lens: LensName): string {
+function buildObserverPrompt(lens: string, instruction: string): string {
 	if (lens in DIAGNOSTIC_PROMPTS) {
 		return DIAGNOSTIC_PROMPTS[lens as keyof typeof DIAGNOSTIC_PROMPTS];
 	}
 	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
 {"action":"noop|queue|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
 
-LENS: ${LENS_PROMPTS[lens as keyof typeof LENS_PROMPTS]}
+LENS: ${instruction}
 
 Noop unless something warrants feedback. Queue if useful but waitable. Interrupt only for urgent issues. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].</system-reminder>`;
 }
@@ -109,7 +104,7 @@ Noop unless something warrants feedback. Queue if useful but waitable. Interrupt
 interface HydraCall {
 	timestamp: number;
 	turnIndex: number;
-	lens: LensName;
+	lens: string;
 	kind?: ObserveKind;
 	action: Action;
 	input: number;
@@ -127,12 +122,13 @@ interface Observation {
 	payload: unknown;
 	assistant: AssistantMessage | null;
 	turnIndex: number;
-	lens: LensName;
+	lens: string;
+	prompt: string; // resolved at scheduling time, so lens edits never race an in-flight job
 	kind: ObserveKind;
 }
 
 interface FeedbackDetails {
-	lens: LensName;
+	lens: string;
 	action: Action;
 	reason: string;
 	deliveryMode: DeliveryMode;
@@ -143,7 +139,7 @@ interface FeedbackDetails {
 // have no persisted config yet (the only way to configure headless `pi -p`
 // runs, which cannot issue slash commands).
 interface HydraConfig {
-	lens: LensName;
+	lens: string;
 	deliveryMode: DeliveryMode;
 	enabled: boolean;
 }
@@ -152,12 +148,12 @@ const MAX_DELIVERED_KEYS = 200;
 
 export default function hydraExtension(pi: ExtensionAPI) {
 	let enabled = true;
-	let lens: LensName = "quality";
-	let productLens: ProductLens = "quality";
+	let lens = "quality";
+	let productLens = "quality";
 	let deliveryMode: DeliveryMode = "print";
 
 	pi.registerFlag("hydra-lens", {
-		description: `Initial hydra lens (${LENS_NAMES.join("|")})`,
+		description: `Initial hydra lens (${BUILT_IN_LENS_NAMES.join("|")} or custom)`,
 		type: "string",
 	});
 	pi.registerFlag("hydra-delivery", {
@@ -169,6 +165,57 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		type: "boolean",
 		default: false,
 	});
+
+	// Custom lenses: one markdown file per lens in ~/.pi/agent/hydra/lenses
+	// (filename = lens name, optional frontmatter description, body = the lens
+	// instruction). Re-read at every agent_start, so editing a lens applies to
+	// the next run without a reload. A custom lens may override a built-in by
+	// name; the diagnostic lenses are not overridable.
+	const lensDir = join(getAgentDir(), "hydra", "lenses");
+	let customLenses = new Map<string, LensDefinition>();
+
+	function discoverLenses(ctx: ExtensionContext) {
+		const found = new Map<string, LensDefinition>();
+		let files: string[];
+		try {
+			files = readdirSync(lensDir);
+		} catch {
+			customLenses = found; // no directory means no custom lenses
+			return;
+		}
+		for (const file of files) {
+			if (!file.endsWith(".md")) {
+				continue;
+			}
+			const name = file.slice(0, -".md".length);
+			if (name in DIAGNOSTIC_PROMPTS) {
+				continue;
+			}
+			try {
+				const definition = parseLensFile(name, readFileSync(join(lensDir, file), "utf8"));
+				if (definition) {
+					found.set(name, definition);
+				}
+			} catch (error) {
+				ctx.ui.notify(`hydra: failed to read lens ${file}: ${error instanceof Error ? error.message : String(error)}`, "warning");
+			}
+		}
+		customLenses = found;
+	}
+
+	function lensExists(name: string): boolean {
+		return name in LENS_PROMPTS || name in DIAGNOSTIC_PROMPTS || customLenses.has(name);
+	}
+
+	function lensNames(): string[] {
+		return [...new Set([...BUILT_IN_LENS_NAMES, ...customLenses.keys()])].sort();
+	}
+
+	function observerPromptFor(name: string): string {
+		const instruction =
+			customLenses.get(name)?.prompt ?? LENS_PROMPTS[name as keyof typeof LENS_PROMPTS] ?? LENS_PROMPTS.quality;
+		return buildObserverPrompt(name, instruction);
+	}
 
 	// Driver capture: the exact provider payload of the most recent request,
 	// plus enough run state to know what it represents.
@@ -235,16 +282,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		pi.appendEntry<HydraConfig>("hydra-config", { lens, deliveryMode, enabled });
 	}
 
-	function applyConfig(config: HydraConfig) {
+	function applyConfig(ctx: ExtensionContext, config: HydraConfig) {
 		enabled = config.enabled;
 		if (DELIVERY_MODES.includes(config.deliveryMode)) {
 			deliveryMode = config.deliveryMode;
 		}
-		if (typeof config.lens === "string" && isLensName(config.lens)) {
+		if (typeof config.lens === "string" && lensExists(config.lens)) {
 			lens = config.lens;
 			if (!(lens in DIAGNOSTIC_PROMPTS)) {
-				productLens = lens as ProductLens;
+				productLens = lens;
 			}
+		} else if (typeof config.lens === "string" && config.lens.length > 0) {
+			ctx.ui.notify(`hydra: saved lens "${config.lens}" no longer exists; using ${lens}`, "warning");
 		}
 	}
 
@@ -255,10 +304,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		let applied = false;
 		const flagLens = pi.getFlag("hydra-lens");
 		if (typeof flagLens === "string" && flagLens.length > 0) {
-			if (isLensName(flagLens)) {
+			if (lensExists(flagLens)) {
 				lens = flagLens;
 				if (!(flagLens in DIAGNOSTIC_PROMPTS)) {
-					productLens = flagLens as ProductLens;
+					productLens = flagLens;
 				}
 				applied = true;
 			} else {
@@ -303,7 +352,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 		}
 		if (config) {
-			applyConfig(config);
+			applyConfig(ctx, config);
 		}
 		updateFooter(ctx);
 		return config !== undefined;
@@ -343,7 +392,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// the captured prefix; see mergeObserverPayload for the cache story.
 		const prompt: Message = {
 			role: "user",
-			content: [{ type: "text", text: buildObserverPrompt(job.lens) }],
+			content: [{ type: "text", text: job.prompt }],
 			timestamp: Date.now(),
 		};
 		const contextMessages: Message[] = job.assistant ? [job.assistant, prompt] : [prompt];
@@ -425,7 +474,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeDecision(job.ctx, decision, job.lens);
 	}
 
-	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionLens: LensName) {
+	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionLens: string) {
 		if (decision.action === "noop" || !decision.message) {
 			return;
 		}
@@ -497,6 +546,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", (_event, ctx) => {
+		discoverLenses(ctx);
 		if (!restoreFromBranch(ctx)) {
 			applyFlags(ctx);
 			updateFooter(ctx);
@@ -508,9 +558,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		restoreFromBranch(ctx);
 	});
 
-	pi.on("agent_start", () => {
+	pi.on("agent_start", (_event, ctx) => {
 		awaitingFirstResponseOfRun = true;
 		capturedThisRun = false;
+		// Pick up lens edits made since the last run (the in-session tuning loop).
+		discoverLenses(ctx);
 	});
 
 	pi.on("turn_start", (event) => {
@@ -540,7 +592,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			awaitingFirstResponseOfRun = false;
 			return;
 		}
-		schedule({ ctx, payload: capturedPayload, assistant: null, turnIndex: currentTurnIndex, lens, kind: "piggyback" });
+		schedule({
+			ctx,
+			payload: capturedPayload,
+			assistant: null,
+			turnIndex: currentTurnIndex,
+			lens,
+			prompt: observerPromptFor(lens),
+			kind: "piggyback",
+		});
 	});
 
 	// Run-end trigger: the agent handed control back to the user, so nothing
@@ -565,7 +625,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!assistant) {
 			return;
 		}
-		schedule({ ctx, payload: capturedPayload, assistant, turnIndex: currentTurnIndex, lens, kind: "run-end" });
+		schedule({
+			ctx,
+			payload: capturedPayload,
+			assistant,
+			turnIndex: currentTurnIndex,
+			lens,
+			prompt: observerPromptFor(lens),
+			kind: "run-end",
+		});
 	});
 
 	pi.on("session_shutdown", async () => {
@@ -610,18 +678,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("hydra-lens", {
-		description: `Set hydra lens: ${LENS_NAMES.join(" | ")}`,
+		description: `Set hydra lens: ${BUILT_IN_LENS_NAMES.join(" | ")} or a custom lens from ~/.pi/agent/hydra/lenses`,
 		getArgumentCompletions: (prefix: string) =>
-			LENS_NAMES.filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
+			lensNames()
+				.filter((name) => name.startsWith(prefix))
+				.map((name) => ({ value: name, label: customLenses.has(name) ? `${name} (custom)` : name })),
 		handler: async (args, ctx) => {
 			const requested = args.trim();
-			if (!isLensName(requested)) {
-				ctx.ui.notify(`hydra: unknown lens. valid: ${LENS_NAMES.join(", ")}`, "warning");
+			if (!lensExists(requested)) {
+				ctx.ui.notify(`hydra: unknown lens. valid: ${lensNames().join(", ")}`, "warning");
 				return;
 			}
 			lens = requested;
 			if (!(requested in DIAGNOSTIC_PROMPTS)) {
-				productLens = requested as ProductLens;
+				productLens = requested;
 			}
 			persistConfig();
 			updateFooter(ctx);

@@ -1,6 +1,21 @@
 # Lenses
 
-A lens is what a hydra head looks through: a focused review perspective with explicit boundaries, so multiple heads catch different things instead of repeating each other. Four ship as built-in lenses (`/hydra-lens`): quality, security, simplifier, and api-design. The rest are reference designs for custom heads.
+A lens is what a hydra head looks through: a focused review perspective with explicit boundaries, so multiple heads catch different things instead of repeating each other. Four ship as built-in lenses (`/hydra-lens`): quality, security, simplifier, and api-design. The rest are reference designs you can turn into custom lenses.
+
+## Custom lenses
+
+Drop a markdown file into `~/.pi/agent/hydra/lenses/`; the filename is the lens name, an optional frontmatter `description:` labels it in completions, and the body is the lens instruction:
+
+```markdown
+---
+description: Flags wordy or repetitive agent output
+---
+Review through a BREVITY lens. Focus on verbose responses, repeated
+explanations, and output the user did not ask for. Do not comment on
+code correctness or style.
+```
+
+Custom lenses appear in `/hydra-lens` completions and work with `--hydra-lens`. A custom lens may override a built-in by using its name (the diagnostic lenses are not overridable). Lens files are re-read at the start of every agent run, so editing one applies to the next run without a reload: when a head flags too much or too little, tell the agent to tune the lens file, and the very next observation uses the tuned lens. Keep the instruction shaped like the built-ins below: one focus, explicit boundaries, and short, since the lens text is the only uncached part of each observation.
 
 ## Built-in Lenses (minimal overlap)
 

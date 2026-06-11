@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
-import { mergeObserverPayload, parseDecision } from "./utils";
+import { mergeObserverPayload, parseDecision, parseLensFile } from "./utils";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
 	if (!Array.isArray(message.content)) {
@@ -149,5 +149,37 @@ describe("mergeObserverPayload", () => {
 		mergeObserverPayload(captured, tail);
 		expect(captured).toEqual(capturedBefore);
 		expect(tail).toEqual(tailBefore);
+	});
+});
+
+describe("parseLensFile", () => {
+	it("parses a plain body", () => {
+		expect(parseLensFile("brevity", "Review for verbosity.\n")).toEqual({
+			name: "brevity",
+			description: undefined,
+			prompt: "Review for verbosity.",
+		});
+	});
+
+	it("parses frontmatter with a description", () => {
+		const content = "---\ndescription: Flags wordy output\n---\nReview for verbosity.";
+		expect(parseLensFile("brevity", content)).toEqual({
+			name: "brevity",
+			description: "Flags wordy output",
+			prompt: "Review for verbosity.",
+		});
+	});
+
+	it("ignores frontmatter without a description", () => {
+		expect(parseLensFile("x", "---\nauthor: me\n---\nBody.")).toEqual({
+			name: "x",
+			description: undefined,
+			prompt: "Body.",
+		});
+	});
+
+	it("returns null when there is no instruction", () => {
+		expect(parseLensFile("empty", "   \n")).toBeNull();
+		expect(parseLensFile("only-frontmatter", "---\ndescription: d\n---\n\n")).toBeNull();
 	});
 });

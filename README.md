@@ -48,7 +48,7 @@ hydra starts in `print` mode: decisions are rendered in the TUI but never inject
 | `/hydra-stats` | cache hit ratio, cost, recent decisions |
 | `/hydra-debug` | dump driver/observer payload pairs for diffing |
 
-Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md).
+Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md). You can add your own heads: a markdown file in `~/.pi/agent/hydra/lenses/` becomes a lens, is re-read at the start of every run, and may override a built-in. Editing a lens file mid-session tunes the head for the very next observation.
 
 Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
 

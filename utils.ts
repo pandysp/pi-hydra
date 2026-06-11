@@ -59,6 +59,35 @@ export function parseDecision(text: string): Decision {
 	return { action: "noop", reason: "unparseable response", message: "" };
 }
 
+export interface LensDefinition {
+	name: string;
+	description?: string;
+	prompt: string;
+}
+
+/**
+ * Parse a custom lens file: optional `---` frontmatter carrying a description,
+ * followed by the lens instruction text. Returns null when there is no
+ * instruction to observe with.
+ */
+export function parseLensFile(name: string, content: string): LensDefinition | null {
+	let body = content;
+	let description: string | undefined;
+	const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n?/);
+	if (frontmatter) {
+		body = content.slice(frontmatter[0].length);
+		const descriptionLine = frontmatter[1].split("\n").find((line) => line.startsWith("description:"));
+		if (descriptionLine) {
+			description = descriptionLine.slice("description:".length).trim();
+		}
+	}
+	const prompt = body.trim();
+	if (prompt.length === 0) {
+		return null;
+	}
+	return { name, description, prompt };
+}
+
 // The slice of an Anthropic Messages payload that hydra reads and rewrites.
 // Structural on purpose: the payload arrives as `unknown` from pi's
 // before_provider_request hook, and hydra must pass through every field it
