@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
-import { mergeObserverPayload, parseDecision, parseLensFile, parseLensList } from "./utils";
+import {
+	buildLensFile,
+	DELIVERY_MODES,
+	effectiveForce,
+	isValidLensName,
+	mergeObserverPayload,
+	parseDecision,
+	parseLensFile,
+	parseLensList,
+	parseShutdownGrace,
+	sanitizeLensSet,
+	savedLensList,
+	selectFinalAssistant,
+} from "./utils";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
 	if (!Array.isArray(message.content)) {
@@ -195,5 +208,142 @@ describe("parseLensList", () => {
 
 	it("returns empty for blank input", () => {
 		expect(parseLensList("  ")).toEqual([]);
+	});
+});
+
+describe("effectiveForce", () => {
+	it("caps verdict force at the delivery mode, full matrix", () => {
+		const expected: Record<string, Record<string, number>> = {
+			print: { noop: 0, queue: 0, steer: 0, interrupt: 0 },
+			queue: { noop: 0, queue: 1, steer: 1, interrupt: 1 },
+			steer: { noop: 0, queue: 1, steer: 2, interrupt: 2 },
+			interrupt: { noop: 0, queue: 1, steer: 2, interrupt: 3 },
+		};
+		for (const mode of DELIVERY_MODES) {
+			for (const action of ["noop", "queue", "steer", "interrupt"] as const) {
+				expect(effectiveForce(action, mode), `${action} in ${mode}`).toBe(expected[mode][action]);
+			}
+		}
+	});
+});
+
+describe("sanitizeLensSet", () => {
+	const catalog = {
+		exists: (name: string) => ["quality", "security", "test"].includes(name),
+		isDiagnostic: (name: string) => name === "test",
+	};
+
+	it("dedupes and splits unknown names", () => {
+		expect(sanitizeLensSet(["quality", "quality", "nope"], catalog)).toEqual({
+			lenses: ["quality"],
+			unknown: ["nope"],
+		});
+	});
+
+	it("collapses to a single diagnostic when one is present", () => {
+		expect(sanitizeLensSet(["quality", "test", "security"], catalog).lenses).toEqual(["test"]);
+	});
+
+	it("returns empty lenses when nothing is known", () => {
+		expect(sanitizeLensSet(["nope"], catalog).lenses).toEqual([]);
+	});
+});
+
+describe("savedLensList", () => {
+	it("prefers the lenses array and filters non-strings", () => {
+		expect(savedLensList({ lenses: ["a", 1, "b"] })).toEqual(["a", "b"]);
+	});
+
+	it("respects an explicit empty array", () => {
+		expect(savedLensList({ lenses: [] })).toEqual([]);
+	});
+
+	it("reads the pre-multi-head lens string", () => {
+		expect(savedLensList({ lens: "quality" })).toEqual(["quality"]);
+	});
+
+	it("returns null when the entry carries neither", () => {
+		expect(savedLensList({})).toBeNull();
+	});
+});
+
+describe("selectFinalAssistant", () => {
+	const asst = (timestamp: number, stopReason = "stop", content: unknown = [{ type: "text", text: "x" }]) => ({
+		role: "assistant",
+		stopReason,
+		content,
+		timestamp,
+	});
+	const CAPTURED_AT = 1000;
+
+	it("returns the final assistant message when it postdates the capture", () => {
+		const m = asst(1500);
+		expect(selectFinalAssistant([asst(500), { role: "user" }, m], CAPTURED_AT)).toBe(m);
+	});
+
+	it("returns null when the final generation aborted (older M is already in the payload)", () => {
+		expect(selectFinalAssistant([asst(500), asst(1500, "aborted")], CAPTURED_AT)).toBeNull();
+	});
+
+	it("returns null when the final generation errored", () => {
+		expect(selectFinalAssistant([asst(500), asst(1500, "error")], CAPTURED_AT)).toBeNull();
+	});
+
+	it("skips trailing non-assistant messages", () => {
+		const m = asst(1500, "toolUse");
+		expect(selectFinalAssistant([m, { role: "toolResult" }], CAPTURED_AT)).toBe(m);
+	});
+
+	it("rejects empty content and messages with errorMessage", () => {
+		expect(selectFinalAssistant([asst(1500, "stop", [])], CAPTURED_AT)).toBeNull();
+		expect(selectFinalAssistant([{ ...asst(1500), errorMessage: "boom" }], CAPTURED_AT)).toBeNull();
+	});
+
+	it("returns null for an empty run", () => {
+		expect(selectFinalAssistant([], CAPTURED_AT)).toBeNull();
+	});
+});
+
+describe("parseShutdownGrace", () => {
+	it("accepts zero as do-not-wait and plain numbers", () => {
+		expect(parseShutdownGrace("0", 5000)).toBe(0);
+		expect(parseShutdownGrace("120000", 5000)).toBe(120000);
+	});
+
+	it("falls back on unset, blank, negative, and garbage", () => {
+		expect(parseShutdownGrace(undefined, 5000)).toBe(5000);
+		expect(parseShutdownGrace("  ", 5000)).toBe(5000);
+		expect(parseShutdownGrace("-5", 5000)).toBe(5000);
+		expect(parseShutdownGrace("abc", 5000)).toBe(5000);
+	});
+});
+
+describe("isValidLensName", () => {
+	it("accepts kebab-case and rejects the rest", () => {
+		expect(isValidLensName("docs-drift")).toBe(true);
+		expect(isValidLensName("a1")).toBe(true);
+		expect(isValidLensName("Docs")).toBe(false);
+		expect(isValidLensName("-x")).toBe(false);
+		expect(isValidLensName("")).toBe(false);
+	});
+});
+
+describe("buildLensFile", () => {
+	it("round-trips through parseLensFile", () => {
+		const definition = { name: "brevity", description: "Flags wordy output", prompt: "Review for verbosity." };
+		expect(parseLensFile("brevity", buildLensFile(definition))).toEqual(definition);
+	});
+
+	it("round-trips without a description", () => {
+		expect(parseLensFile("x", buildLensFile({ name: "x", prompt: "Body." }))).toEqual({
+			name: "x",
+			description: undefined,
+			prompt: "Body.",
+		});
+	});
+
+	it("flattens newlines in the description so frontmatter cannot be corrupted", () => {
+		const built = buildLensFile({ name: "x", description: "line one\nline two", prompt: "Body." });
+		expect(parseLensFile("x", built)).toEqual({ name: "x", description: "line one line two", prompt: "Body." });
 	});
 });

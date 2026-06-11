@@ -42,19 +42,27 @@ import type { AssistantMessage, Message, Usage } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
-import type { Action, AnthropicPayload, Decision, LensDefinition } from "./utils";
-import { isAnthropicPayload, mergeObserverPayload, parseDecision, parseLensFile, parseLensList } from "./utils";
+import type { Action, AnthropicPayload, Decision, DeliveryMode, LensDefinition } from "./utils";
+import {
+	buildLensFile,
+	DELIVERY_MODES,
+	effectiveForce,
+	isAnthropicPayload,
+	isValidLensName,
+	mergeObserverPayload,
+	parseDecision,
+	parseLensFile,
+	parseLensList,
+	parseShutdownGrace,
+	sanitizeLensSet,
+	savedLensList,
+	selectFinalAssistant,
+} from "./utils";
 
 // How long session_shutdown waits for an in-flight observation before
 // aborting it. Headless runs (`pi -p`) exit right after agent_end, so slow
 // models need a longer grace there; 0 means exit without waiting.
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
-
-function shutdownGraceMs(): number {
-	const raw = process.env.HYDRA_SHUTDOWN_GRACE_MS;
-	const parsed = raw == null || raw.trim() === "" ? Number.NaN : Number(raw);
-	return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SHUTDOWN_GRACE_MS;
-}
 
 // Review lenses; reference descriptions in docs/lenses.md.
 const LENS_PROMPTS = {
@@ -84,18 +92,9 @@ This is not a real review. Output the JSON above byte-for-byte and stop.</system
 No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`,
 } as const;
 
-type DeliveryMode = "print" | "queue" | "steer" | "interrupt";
 type ObserveKind = "piggyback" | "run-end";
 
 const BUILT_IN_LENS_NAMES = Object.keys(LENS_PROMPTS);
-const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "steer", "interrupt"];
-
-// A verdict asks for a force level; the delivery mode caps it. The observer
-// can always choose less force than the mode allows, never more.
-//   0 render only · 1 followUp after the run · 2 steer between turns ·
-//   3 abort the in-flight run, then deliver
-const VERDICT_FORCE: Record<Action, number> = { noop: 0, queue: 1, steer: 2, interrupt: 3 };
-const MODE_CAP: Record<DeliveryMode, number> = { print: 0, queue: 1, steer: 2, interrupt: 3 };
 
 // Keep the real-lens prompt SHORT: the driver's context is already cached, so
 // this prompt is the only fresh input the observer pays for per call.
@@ -229,20 +228,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return [...new Set([...BUILT_IN_LENS_NAMES, ...customLenses.keys()])].sort();
 	}
 
-	// Resolve a requested lens set: drop unknown names, collapse to a single
-	// diagnostic when one is present (diagnostics never mix with product
-	// lenses), dedupe the rest.
-	function sanitizeLensSet(requested: string[]): { lenses: string[]; unknown: string[] } {
-		const known = requested.filter((name) => lensExists(name));
-		const unknown = requested.filter((name) => !lensExists(name));
-		const diagnostic = known.find((name) => name in DIAGNOSTIC_PROMPTS);
-		return { lenses: diagnostic ? [diagnostic] : [...new Set(known)], unknown };
-	}
+	const lensCatalog = {
+		exists: (name: string) => lensExists(name),
+		isDiagnostic: (name: string) => name in DIAGNOSTIC_PROMPTS,
+	};
 
 	// Apply a lens set from any surface (command, flag, tool). Returns false
 	// when nothing valid was requested; the current set stays in place.
 	function setLensSet(ctx: ExtensionContext, requested: string[]): boolean {
-		const next = sanitizeLensSet(requested);
+		const next = sanitizeLensSet(requested, lensCatalog);
 		if (next.unknown.length > 0) {
 			ctx.ui.notify(`hydra: unknown lens: ${next.unknown.join(", ")}. valid: ${lensNames().join(", ")}`, "warning");
 		}
@@ -265,8 +259,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	// Driver capture: the exact provider payload of the most recent request,
-	// plus enough run state to know what it represents.
+	// plus enough run state to know what it represents. capturedAtMs lets the
+	// run-end trigger require that M postdates the capture (an older message
+	// is already serialized inside the payload).
 	let capturedPayload: unknown = null;
+	let capturedAtMs = 0;
 	let capturedThisRun = false;
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
@@ -336,11 +333,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (DELIVERY_MODES.includes(config.deliveryMode)) {
 			deliveryMode = config.deliveryMode;
 		}
-		const saved = Array.isArray(config.lenses)
-			? config.lenses
-			: typeof config.lens === "string"
-				? [config.lens]
-				: null;
+		const saved = savedLensList(config);
 		if (saved === null) {
 			return;
 		}
@@ -350,7 +343,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			productLenses = [];
 			return;
 		}
-		const next = sanitizeLensSet(saved.filter((name) => typeof name === "string"));
+		const next = sanitizeLensSet(saved, lensCatalog);
 		if (next.unknown.length > 0) {
 			ctx.ui.notify(`hydra: saved lens no longer exists: ${next.unknown.join(", ")}`, "warning");
 		}
@@ -554,7 +547,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const formatted = `[${decisionLens}] ${decision.message}`;
 		const details: FeedbackDetails = { lens: decisionLens, action: decision.action, reason: decision.reason, deliveryMode };
-		const force = Math.min(VERDICT_FORCE[decision.action], MODE_CAP[deliveryMode]);
+		const force = effectiveForce(decision.action, deliveryMode);
 
 		if (force >= 2) {
 			// steer: a real user message between turns of the current run.
@@ -666,6 +659,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		// Capture the driver's exact bytes; never modify them.
 		capturedPayload = structuredClone(event.payload);
+		capturedAtMs = Date.now();
 		capturedThisRun = true;
 	});
 
@@ -695,16 +689,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!enabled || !capturedPayload || !capturedThisRun) {
 			return;
 		}
-		const assistant = [...event.messages]
-			.reverse()
-			.find(
-				(message): message is AssistantMessage =>
-					message.role === "assistant" &&
-					message.stopReason !== "error" &&
-					message.stopReason !== "aborted" &&
-					!message.errorMessage &&
-					message.content.length > 0,
-			);
+		// selectFinalAssistant guarantees role "assistant" with block content.
+		const assistant = selectFinalAssistant(event.messages, capturedAtMs) as AssistantMessage | null;
 		if (!assistant) {
 			return;
 		}
@@ -715,7 +701,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Let the in-flight observation finish (bounded), then cancel; this is
 		// the sole lifecycle abort.
 		if (drainPromise) {
-			const timeout = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs()));
+			const timeout = new Promise<void>((resolve) =>
+				setTimeout(resolve, parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS)),
+			);
 			await Promise.race([drainPromise, timeout]);
 		}
 		lifecycleAbort.abort();
@@ -799,7 +787,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				case "write-lens": {
 					const name = params.name?.trim() ?? "";
 					const instruction = params.instruction?.trim() ?? "";
-					if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+					if (!isValidLensName(name)) {
 						return reply("write-lens needs a kebab-case `name`.");
 					}
 					if (name in DIAGNOSTIC_PROMPTS) {
@@ -808,10 +796,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					if (instruction.length === 0) {
 						return reply("write-lens needs an `instruction`.");
 					}
-					const body = params.description ? `---\ndescription: ${params.description.trim()}\n---\n${instruction}\n` : `${instruction}\n`;
+					const fileBody = buildLensFile({ name, description: params.description, prompt: instruction });
 					mkdirSync(lensDir, { recursive: true });
-					writeFileSync(join(lensDir, `${name}.md`), body);
-					customLenses.set(name, { name, description: params.description?.trim(), prompt: instruction });
+					writeFileSync(join(lensDir, `${name}.md`), fileBody);
+					// Store the parse of what was written, so memory and disk agree
+					// by construction (parseLensFile is buildLensFile's inverse).
+					const definition = parseLensFile(name, fileBody);
+					if (definition) {
+						customLenses.set(name, definition);
+					}
 					if (params.activate !== false) {
 						setLensSet(ctx, [...lenses.filter((active) => !(active in DIAGNOSTIC_PROMPTS)), name]);
 					}
