@@ -106,7 +106,7 @@ Noop unless something warrants feedback. Queue if useful but waitable. Interrupt
 
 // One observer call, persisted to the session as a custom "hydra-call" entry
 // so /hydra-stats survives resume and branch navigation.
-interface AndonCall {
+interface HydraCall {
 	timestamp: number;
 	turnIndex: number;
 	lens: LensName;
@@ -138,13 +138,37 @@ interface FeedbackDetails {
 	deliveryMode: DeliveryMode;
 }
 
+// Lens, delivery mode, and enabled survive resume and branch navigation as
+// the latest "hydra-config" entry on the branch. CLI flags seed sessions that
+// have no persisted config yet (the only way to configure headless `pi -p`
+// runs, which cannot issue slash commands).
+interface HydraConfig {
+	lens: LensName;
+	deliveryMode: DeliveryMode;
+	enabled: boolean;
+}
+
 const MAX_DELIVERED_KEYS = 200;
 
-export default function (pi: ExtensionAPI) {
+export default function hydraExtension(pi: ExtensionAPI) {
 	let enabled = true;
 	let lens: LensName = "quality";
 	let productLens: ProductLens = "quality";
 	let deliveryMode: DeliveryMode = "print";
+
+	pi.registerFlag("hydra-lens", {
+		description: `Initial hydra lens (${LENS_NAMES.join("|")})`,
+		type: "string",
+	});
+	pi.registerFlag("hydra-delivery", {
+		description: "Initial hydra delivery mode (print|queue|interrupt)",
+		type: "string",
+	});
+	pi.registerFlag("hydra-off", {
+		description: "Start with the hydra observer disabled",
+		type: "boolean",
+		default: false,
+	});
 
 	// Driver capture: the exact provider payload of the most recent request,
 	// plus enough run state to know what it represents.
@@ -163,7 +187,7 @@ export default function (pi: ExtensionAPI) {
 	const lifecycleAbort = new AbortController();
 
 	// Stats, rebuilt from the current session branch on restore.
-	let calls: AndonCall[] = [];
+	let calls: HydraCall[] = [];
 	const delivered = new Set<string>();
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
@@ -207,17 +231,82 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
-	function restoreStats(ctx: ExtensionContext) {
+	function persistConfig() {
+		pi.appendEntry<HydraConfig>("hydra-config", { lens, deliveryMode, enabled });
+	}
+
+	function applyConfig(config: HydraConfig) {
+		enabled = config.enabled;
+		if (DELIVERY_MODES.includes(config.deliveryMode)) {
+			deliveryMode = config.deliveryMode;
+		}
+		if (typeof config.lens === "string" && isLensName(config.lens)) {
+			lens = config.lens;
+			if (!(lens in DIAGNOSTIC_PROMPTS)) {
+				productLens = lens as ProductLens;
+			}
+		}
+	}
+
+	// CLI flags seed fresh sessions only; once a config entry exists on the
+	// branch, the persisted settings win. Seeded settings persist like any
+	// other settings change, so they survive resume.
+	function applyFlags(ctx: ExtensionContext) {
+		let applied = false;
+		const flagLens = pi.getFlag("hydra-lens");
+		if (typeof flagLens === "string" && flagLens.length > 0) {
+			if (isLensName(flagLens)) {
+				lens = flagLens;
+				if (!(flagLens in DIAGNOSTIC_PROMPTS)) {
+					productLens = flagLens as ProductLens;
+				}
+				applied = true;
+			} else {
+				ctx.ui.notify(`hydra: unknown lens in --hydra-lens: ${flagLens}`, "warning");
+			}
+		}
+		const flagDelivery = pi.getFlag("hydra-delivery");
+		if (typeof flagDelivery === "string" && flagDelivery.length > 0) {
+			if ((DELIVERY_MODES as string[]).includes(flagDelivery)) {
+				deliveryMode = flagDelivery as DeliveryMode;
+				applied = true;
+			} else {
+				ctx.ui.notify(`hydra: unknown mode in --hydra-delivery: ${flagDelivery}`, "warning");
+			}
+		}
+		if (pi.getFlag("hydra-off") === true) {
+			enabled = false;
+			applied = true;
+		}
+		if (applied) {
+			persistConfig();
+		}
+	}
+
+	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		calls = [];
+		let config: HydraConfig | undefined;
 		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type === "custom" && entry.customType === "hydra-call") {
-				const data = entry.data as AndonCall | undefined;
+			if (entry.type !== "custom") {
+				continue;
+			}
+			if (entry.customType === "hydra-call") {
+				const data = entry.data as HydraCall | undefined;
 				if (data && typeof data === "object") {
 					calls.push(data);
 				}
+			} else if (entry.customType === "hydra-config") {
+				const data = entry.data as HydraConfig | undefined;
+				if (data && typeof data === "object") {
+					config = data;
+				}
 			}
 		}
+		if (config) {
+			applyConfig(config);
+		}
 		updateFooter(ctx);
+		return config !== undefined;
 	}
 
 	async function observe(job: Observation, signal: AbortSignal) {
@@ -305,7 +394,7 @@ export default function (pi: ExtensionAPI) {
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 		const decision = parseDecision(text);
 
-		const call: AndonCall = {
+		const call: HydraCall = {
 			timestamp: Date.now(),
 			turnIndex: job.turnIndex,
 			lens: job.lens,
@@ -321,13 +410,14 @@ export default function (pi: ExtensionAPI) {
 			rawResponse: text.length > 200 ? `${text.slice(0, 200)}…` : text,
 		};
 		calls.push(call);
-		pi.appendEntry<AndonCall>("hydra-call", call);
+		pi.appendEntry<HydraCall>("hydra-call", call);
 
 		// Diagnostic lenses are one-shot: revert before routing, otherwise an
 		// interrupt delivery re-triggers itself forever (each injected message
 		// starts a run whose run-end observation would interrupt again).
 		if (job.lens in DIAGNOSTIC_PROMPTS && lens === job.lens) {
 			lens = productLens;
+			persistConfig();
 			job.ctx.ui.notify(`hydra: diagnostic lens "${job.lens}" fired once; reverting to ${productLens}`, "info");
 		}
 		updateFooter(job.ctx);
@@ -407,12 +497,15 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", (_event, ctx) => {
-		restoreStats(ctx);
+		if (!restoreFromBranch(ctx)) {
+			applyFlags(ctx);
+			updateFooter(ctx);
+		}
 	});
 
 	pi.on("session_tree", (_event, ctx) => {
-		// Branch navigation changes which hydra-call entries are in scope.
-		restoreStats(ctx);
+		// Branch navigation changes which hydra entries are in scope.
+		restoreFromBranch(ctx);
 	});
 
 	pi.on("agent_start", () => {
@@ -510,6 +603,7 @@ export default function (pi: ExtensionAPI) {
 		description: "Toggle hydra observer on/off",
 		handler: async (_args, ctx) => {
 			enabled = !enabled;
+			persistConfig();
 			updateFooter(ctx);
 			ctx.ui.notify(`hydra: ${enabled ? "enabled" : "disabled"}`, "info");
 		},
@@ -529,6 +623,7 @@ export default function (pi: ExtensionAPI) {
 			if (!(requested in DIAGNOSTIC_PROMPTS)) {
 				productLens = requested as ProductLens;
 			}
+			persistConfig();
 			updateFooter(ctx);
 			ctx.ui.notify(`hydra: lens=${lens}`, "info");
 		},
@@ -545,6 +640,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			deliveryMode = requested;
+			persistConfig();
 			updateFooter(ctx);
 			ctx.ui.notify(`hydra: delivery=${deliveryMode}`, "info");
 		},

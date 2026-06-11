@@ -50,6 +50,8 @@ hydra starts in `print` mode: decisions are rendered in the TUI but never inject
 
 Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md).
 
+Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
+
 ## How it works
 
 hydra captures the agent's provider requests byte-for-byte and replays them, with one observer prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and the cache stays warm for the agent. Every mechanism behind that sentence is measured rather than assumed; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
