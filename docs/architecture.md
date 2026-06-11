@@ -21,7 +21,9 @@ parse JSON decision
   ↓
 noop      → log only
 queue     → pi.sendMessage({ deliverAs: "followUp" })
-interrupt → pi.sendUserMessage({ deliverAs: "steer" })
+steer     → pi.sendUserMessage({ deliverAs: "steer" })
+interrupt → ctx.abort() + pi.sendUserMessage({ deliverAs: "followUp" })
+(the delivery mode caps the force a verdict can request)
 ```
 
 Same model, same system prompt, same tools, same thinking config; the only difference is one extra user message at the end. Cache hit ratio is determined by the size of the observer prompt (~220 tokens) relative to the driver context.
@@ -82,7 +84,7 @@ jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage 
 
 **Multi-head fan-out is latency-first.** The active lens set fans out one observation per head, in parallel, per trigger. Mid-run this is free beyond the prompts, since every head is a pure cache read of the same committed prefix. At run-end the markered forks race and each pays M's write (~$0.01–0.02 per head on fable, measured); the experiments README documents a message_start-coordination pattern that would let followers free-ride on the first fork's write, deliberately not implemented because the contended amount stays a single-digit percent of observer spend and feedback latency is the product metric.
 
-**No hard mid-stream cancellation.** The archived bash version used `tmux send-keys Escape` to cancel an in-flight Claude Code stream, then inject. pi's equivalent (`pi.sendUserMessage` with `deliverAs: "steer"`) is softer: it queues the message until the current turn's tool calls finish, then injects it as a real user message between turns of the same agent run. The piggyback timing helps here: mid-run observations fire when a response begins, so their verdicts often land while that response is still streaming, in time to steer the next turn. But the observation reviews the request snapshot, not the in-flight output: a single long-running LLM call cannot be judged or interrupted on its partial output. That would require reasoning over `message_update` deltas and calling `ctx.abort()`, with no cache parity since the content is mid-flight. Future work.
+**Verdicts judge committed snapshots, not in-flight output.** Interrupt delivery does cancel: an `interrupt` verdict calls `ctx.abort()` on the in-flight run and the finding opens the next one, matching the archived bash version's Escape-then-inject behavior. Steer delivery is the softer rung: the message waits for the current turn's tool calls to finish, then lands between turns of the same run, and the piggyback timing means verdicts often arrive while a response is still streaming, in time for the very next turn boundary. What remains future work is judging *partial* output: every verdict is formed from a committed request snapshot, so a single long-running LLM call is never evaluated mid-generation. That would require reasoning over `message_update` deltas, with no cache parity since the content is mid-flight.
 
 ## Development
 
@@ -124,5 +126,5 @@ hydra began as [andon](../archive/README.md), a bash and tmux contraption around
 | Observer state | JSON file in `~/.local/state/andon-observer/` | session custom entries via `pi.appendEntry("hydra-call", ...)` |
 | Delivery | `tmux send-keys` | `pi.sendMessage` / `pi.sendUserMessage` |
 | Polling | JSONL mtime watch loop | driver commit events (`message_start`) + `agent_end` |
-| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | delivered-set dedup + print-mode default; queued feedback becomes part of the replayed context by design, since the observer sees exactly what the driver sees |
+| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | delivered-set dedup; queued feedback becomes part of the replayed context by design, since the observer sees exactly what the driver sees |
 | Status display | none / external log | TUI footer with live hit ratio + cost |

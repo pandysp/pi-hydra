@@ -4,7 +4,7 @@
 
 > Extra heads for your coding agent.
 
-hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own lens (quality, security, simplifier, API design) that sees exactly what the agent sees, judges every step, and answers with one of three decisions: stay quiet, queue feedback, or interrupt. One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
+hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own lens (quality, security, simplifier, API design) that sees exactly what the agent sees, judges every step, and answers with one of four decisions: stay quiet, queue feedback, steer the agent between turns, or interrupt and stop the run. One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
 
 ## Why
 
@@ -25,17 +25,17 @@ pi
 
 (For development, clone and symlink instead: see [CONTRIBUTING.md](CONTRIBUTING.md).)
 
-The footer shows `hydra: quality | print | (no obs yet)`. Work normally; after the first agent run you will see observations arrive:
+The footer shows `hydra: quality | steer | (no obs yet)`. Work normally; after the first agent run you will see observations arrive:
 
 ```
-hydra:quality print hit 98.5% (last 99.1%) $0.0234 (12 obs)
+hydra:quality steer hit 98.5% (last 99.1%) $0.0234 (12 obs)
 ```
 
-hydra starts in `print` mode: decisions are rendered in the TUI but never injected into the agent's context. Watch it for a session, and when you trust the lens, let it act:
+hydra starts in `steer` mode: waitable findings queue for the agent's next turn, urgent ones are injected between turns of the current run. Adjust to taste:
 
 ```
-/hydra-delivery queue            # feedback joins the agent's next turn
-/hydra-delivery interrupt        # urgent findings preempt the agent between turns
+/hydra-delivery print            # watch-only until you trust the heads
+/hydra-delivery interrupt        # emergencies abort the in-flight run
 /hydra-lens quality,security     # several heads at once; they fan out in parallel
 ```
 
@@ -45,9 +45,20 @@ hydra starts in `print` mode: decisions are rendered in the TUI but never inject
 |---|---|
 | `/hydra` | toggle the observer |
 | `/hydra-lens <set>` | pick the lens set, comma-separated: `quality`, `security`, `simplifier`, `api-design`, plus your custom lenses |
-| `/hydra-delivery <mode>` | `print` (watch only), `queue` (feedback next turn), `interrupt` (steer between turns) |
+| `/hydra-delivery <mode>` | cap how forcefully findings land: `print`, `queue`, `steer` (default), `interrupt` |
 | `/hydra-stats` | cache hit ratio, cost, recent decisions |
 | `/hydra-debug` | dump driver/observer payload pairs for diffing |
+
+### Delivery modes
+
+A head's verdict asks for a force level (`noop`, `queue`, `steer`, `interrupt`); the delivery mode caps it. A head can always choose less force than the mode allows, never more. The mode names are pi's own delivery vocabulary:
+
+- `print`: findings render in the TUI but never enter the agent's context. Watch-only.
+- `queue`: findings wait until the run ends, then join the context of the agent's next turn.
+- `steer` (default): urgent findings are injected as a real user message between turns of the current run, so the agent corrects course while still working. Waitable findings still queue.
+- `interrupt`: the cord. An `interrupt` verdict aborts the in-flight run, and the finding opens the next one. Lesser verdicts behave as in `steer` mode.
+
+### Lenses
 
 Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md). You can add your own heads: a markdown file in `~/.pi/agent/hydra/lenses/` becomes a lens, is re-read at the start of every run, and may override a built-in. Editing a lens file mid-session tunes the head for the very next observation.
 

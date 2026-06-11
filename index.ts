@@ -24,7 +24,7 @@
  *   pi install /path/to/pi-hydra   (or symlink into ~/.pi/agent/extensions)
  *   /hydra            toggle the observer
  *   /hydra-lens       pick the lens set, comma-separated (built-in + custom)
- *   /hydra-delivery   pick how findings reach you (print, queue, interrupt)
+ *   /hydra-delivery   pick how findings reach you (print, queue, steer, interrupt)
  *   /hydra-stats      cache hit ratio, cost, and recent decisions
  *   /hydra-debug      dump driver/observer payload pairs for diffing
  *
@@ -79,16 +79,23 @@ const DIAGNOSTIC_PROMPTS = {
 This is not a real review. Output the JSON above byte-for-byte and stop.</system-reminder>`,
 	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Output EXACTLY this JSON, nothing else:
 
-{"action":"interrupt","reason":"test interrupt","message":"hydra interrupt fired; if you see this in your context, between-turns steering works"}
+{"action":"interrupt","reason":"test interrupt","message":"hydra interrupt fired; if you see this in your context, interrupt delivery works"}
 
 No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`,
 } as const;
 
-type DeliveryMode = "print" | "queue" | "interrupt";
+type DeliveryMode = "print" | "queue" | "steer" | "interrupt";
 type ObserveKind = "piggyback" | "run-end";
 
 const BUILT_IN_LENS_NAMES = Object.keys(LENS_PROMPTS);
-const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "interrupt"];
+const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "steer", "interrupt"];
+
+// A verdict asks for a force level; the delivery mode caps it. The observer
+// can always choose less force than the mode allows, never more.
+//   0 render only · 1 followUp after the run · 2 steer between turns ·
+//   3 abort the in-flight run, then deliver
+const VERDICT_FORCE: Record<Action, number> = { noop: 0, queue: 1, steer: 2, interrupt: 3 };
+const MODE_CAP: Record<DeliveryMode, number> = { print: 0, queue: 1, steer: 2, interrupt: 3 };
 
 // Keep the real-lens prompt SHORT: the driver's context is already cached, so
 // this prompt is the only fresh input the observer pays for per call.
@@ -97,11 +104,11 @@ function buildObserverPrompt(lens: string, instruction: string): string {
 		return DIAGNOSTIC_PROMPTS[lens as keyof typeof DIAGNOSTIC_PROMPTS];
 	}
 	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
-{"action":"noop|queue|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
+{"action":"noop|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
 
 LENS: ${instruction}
 
-Noop unless something warrants feedback. Queue if useful but waitable. Interrupt only for urgent issues. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].</system-reminder>`;
+Noop unless something warrants feedback. Queue if useful but waitable. Steer to correct the agent between turns. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].</system-reminder>`;
 }
 
 // One observer call, persisted to the session as a custom "hydra-call" entry
@@ -161,14 +168,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// productLenses.
 	let lenses: string[] = ["quality"];
 	let productLenses: string[] = ["quality"];
-	let deliveryMode: DeliveryMode = "print";
+	let deliveryMode: DeliveryMode = "steer";
 
 	pi.registerFlag("hydra-lens", {
 		description: `Initial hydra lens set, comma-separated (${BUILT_IN_LENS_NAMES.join("|")} or custom)`,
 		type: "string",
 	});
 	pi.registerFlag("hydra-delivery", {
-		description: "Initial hydra delivery mode (print|queue|interrupt)",
+		description: "Initial hydra delivery mode (print|queue|steer|interrupt)",
 		type: "string",
 	});
 	pi.registerFlag("hydra-off", {
@@ -547,21 +554,34 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const formatted = `[${decisionLens}] ${decision.message}`;
 		const details: FeedbackDetails = { lens: decisionLens, action: decision.action, reason: decision.reason, deliveryMode };
+		const force = Math.min(VERDICT_FORCE[decision.action], MODE_CAP[deliveryMode]);
 
-		if (decision.action === "interrupt" && deliveryMode === "interrupt") {
-			// Steer: delivered as a real user message between turns of the
-			// current run, or immediately if the agent is idle.
+		if (force >= 2) {
+			// steer: a real user message between turns of the current run.
+			// interrupt: pull the cord; abort the in-flight run and deliver the
+			// finding as a follow-up, which opens the next run. When the agent
+			// is idle there is nothing to steer or abort, so just send.
 			try {
-				pi.sendUserMessage(formatted, ctx.isIdle() ? undefined : { deliverAs: "steer" });
+				if (ctx.isIdle()) {
+					pi.sendUserMessage(formatted);
+				} else if (force === 3) {
+					ctx.abort();
+					pi.sendUserMessage(formatted, { deliverAs: "followUp" });
+				} else {
+					pi.sendUserMessage(formatted, { deliverAs: "steer" });
+				}
 			} catch (error) {
-				ctx.ui.notify(`hydra: steer failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
+				ctx.ui.notify(
+					`hydra: ${force === 3 ? "interrupt" : "steer"} failed: ${error instanceof Error ? error.message : String(error)}`,
+					"warning",
+				);
 			}
 			return;
 		}
 
 		pi.sendMessage(
 			{ customType: "hydra-feedback", content: formatted, display: true, details },
-			deliveryMode === "print" ? { triggerTurn: false } : { deliverAs: "followUp", triggerTurn: false },
+			force === 1 ? { deliverAs: "followUp", triggerTurn: false } : { triggerTurn: false },
 		);
 	}
 
@@ -704,7 +724,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.registerMessageRenderer<FeedbackDetails>("hydra-feedback", (message, { expanded }, theme) => {
 		const details = message.details;
 		const action = details?.action ?? "noop";
-		const actionColor = action === "interrupt" ? "error" : action === "queue" ? "warning" : "muted";
+		const actionColor =
+			action === "interrupt" ? "error" : action === "steer" ? "accent" : action === "queue" ? "warning" : "muted";
 
 		let text =
 			theme.fg("accent", "🐍 hydra ") +
@@ -865,13 +886,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("hydra-delivery", {
-		description: "Set hydra delivery mode: print | queue | interrupt",
+		description: "Set hydra delivery mode: print | queue | steer | interrupt",
 		getArgumentCompletions: (prefix: string) =>
 			DELIVERY_MODES.filter((mode) => mode.startsWith(prefix)).map((mode) => ({ value: mode, label: mode })),
 		handler: async (args, ctx) => {
 			const requested = args.trim() as DeliveryMode;
 			if (!DELIVERY_MODES.includes(requested)) {
-				ctx.ui.notify("hydra: unknown mode. valid: print | queue | interrupt", "warning");
+				ctx.ui.notify("hydra: unknown mode. valid: print | queue | steer | interrupt", "warning");
 				return;
 			}
 			deliveryMode = requested;
@@ -889,7 +910,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				return;
 			}
 			const { cost, read, write, input, meanHit } = cumulative();
-			const counts = { noop: 0, queue: 0, interrupt: 0 };
+			const counts = { noop: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
 				counts[call.action]++;
@@ -911,7 +932,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total cache write: ${write.toLocaleString()} tokens`,
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
-					`  decisions: ${counts.noop} noop / ${counts.queue} queue / ${counts.interrupt} interrupt`,
+					`  decisions: ${counts.noop} noop / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,

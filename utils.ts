@@ -3,7 +3,7 @@
  * Extracted for testability; no pi or I/O dependencies.
  */
 
-export type Action = "noop" | "queue" | "interrupt";
+export type Action = "noop" | "queue" | "steer" | "interrupt";
 
 export interface Decision {
 	action: Action;
@@ -11,7 +11,7 @@ export interface Decision {
 	message: string;
 }
 
-const ACTIONS: readonly string[] = ["noop", "queue", "interrupt"];
+const ACTIONS: readonly string[] = ["noop", "queue", "steer", "interrupt"];
 
 function asDecision(value: unknown): Decision | null {
 	if (typeof value !== "object" || value === null) {
