@@ -29,9 +29,9 @@
  *   /hydra-debug      dump driver/observer payload pairs for diffing
  *
  * The agent can manage its own heads through the registered `hydra` tool
- * (list, set-lenses, write-lens, remove-lens, set-delivery). There is no off
- * switch on the tool: the agent silences hydra by removing heads one by one,
- * while /hydra and pi's extension management stay user-level controls.
+ * (list, set-lenses, write-lens, remove-lens). Delivery mode, /hydra, and
+ * pi's extension management stay user-level controls: the agent shapes what
+ * its observers look for, never how forcefully they reach the session.
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -738,7 +738,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			"and remove-lens to retire one. list shows the current setup.",
 		].join(" "),
 		parameters: Type.Object({
-			action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens", "set-delivery"] as const, {
+			action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens"] as const, {
 				description: "What to do",
 			}),
 			lenses: Type.Optional(Type.Array(Type.String(), { description: "set-lenses: the lens set to observe with" })),
@@ -748,7 +748,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			),
 			description: Type.Optional(Type.String({ description: "write-lens: one-line description" })),
 			activate: Type.Optional(Type.Boolean({ description: "write-lens: also add to the active set (default true)" })),
-			delivery: Type.Optional(StringEnum(["print", "queue", "interrupt"] as const, { description: "set-delivery: mode" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const reply = (text: string) => ({
@@ -826,16 +825,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 							lenses.length > 0 ? lenses.join(", ") : "empty (hydra observes nothing until a lens is set)"
 						}`,
 					);
-				}
-				case "set-delivery": {
-					if (!params.delivery) {
-						return reply("set-delivery needs `delivery`.");
-					}
-					deliveryMode = params.delivery;
-					persistConfig();
-					updateFooter(ctx);
-					ctx.ui.notify(`hydra: agent set delivery=${deliveryMode}`, "info");
-					return reply(`delivery: ${deliveryMode}`);
 				}
 			}
 		},
