@@ -17,6 +17,7 @@
 	"type": "module",
 	"private": true,
 	"pi": {
+		"image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
 		"extensions": [
 			"./index.ts"
 		]
