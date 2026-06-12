@@ -20,7 +20,7 @@ runAgentLoop(); onPayload splices pi-ai's own serialization onto the captured by
 parse JSON decision
   ↓
 noop      → log only
-print     → pi.sendMessage (renders in the TUI, never enters the agent's context)
+print     → ctx.ui.notify (renders in the TUI, never enters the agent's context)
 queue     → pi.sendMessage({ deliverAs: "followUp" })
 steer     → pi.sendUserMessage({ deliverAs: "steer" })
 interrupt → ctx.abort() + pi.sendUserMessage({ deliverAs: "followUp" })
