@@ -4,11 +4,11 @@ How hydra observes a pi session at prompt-cache prices. For the what and why, st
 
 ## Commit-point observation
 
-hydra replays the driver's exact provider payload with one observer prompt appended. Because the prefix is byte-identical, every observation is a prompt-cache read of the entry the driver itself just wrote. Observations fire at the driver's own cache commit points, on two triggers:
+hydra replays the driver's exact provider payload with one observer prompt appended (the driver: pi's main agent, the one you talk to; the observers are the heads watching it). Because the prefix is byte-identical, every observation is a prompt-cache read of the entry the driver itself just wrote. Observations fire at the driver's own cache commit points, on two triggers:
 
-**Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observer prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its decision typically lands while the driver's response is still streaming.
+**Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observer prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its decision typically lands while the driver's response is still streaming. The run's first response is skipped: the previous run-end observation already reviewed everything before it.
 
-**Run-end (agent_end).** When the agent hands control back to the user, no next driver request will carry the final assistant message M into the cache, so hydra forks from n: it hands M to the observer's `runAgentLoop` call so pi-ai's own provider code serializes it (thinking blocks, signatures, surrogate sanitization; parity by construction rather than by mirroring), then the `onPayload` hook splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observer pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observer TTFT.
+**Run-end (agent_end).** When the driver hands control back to the user, no next request will carry the final assistant message M into the cache, so the observer appends M itself. It hands M to its `runAgentLoop` call, and pi-ai's own provider code serializes it: thinking blocks, signatures, surrogate sanitization, parity by construction rather than by mirroring. The `onPayload` hook then splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observer pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observer TTFT.
 
 ```
 mid-run:  request N+1 dispatched ─► payload captured
@@ -61,16 +61,16 @@ The measurement above is from the earlier turn_end-era architecture. The current
 
 ## Observation timing
 
-Earlier versions observed at `turn_end` and worried about cache propagation races (an adaptive 500ms delay existed at one point). The experiments in [`../experiments/`](../experiments/README.md) settled the mechanics:
+Two measured facts fix the timing (the measurements live in [`../experiments/`](../experiments/README.md)):
 
-- A cache entry becomes readable when the writing request's response begins (`message_start` ≈ TTFT). Post-commit propagation is indistinguishable from zero; commit+0 free rides verified on haiku and fable, with and without thinking.
-- A response is never cached by the request that produced it. The old `turn_end` fork was therefore structurally stale by exactly the latest assistant message, which caused the stale-review bug this design fixes.
+- A cache entry becomes readable the moment the writing request's response begins (`message_start` ≈ TTFT). Post-commit propagation is indistinguishable from zero; commit+0 free rides verified on haiku and fable, with and without thinking.
+- A response is never cached by the request that produced it. An observer that does not append M itself reviews a context that is exactly one assistant message stale.
 
-Hence the two triggers: mid-run observations fire at the driver's own commit (`message_start` of its response), where everything is already cached and fresh through the tool results; run-end observations fork-from-n and pay for the final M once, pre-warming the driver's next turn. No delays, no propagation heuristics. The driver's cadence provides the cache-coherent observation points.
+Hence the two triggers: mid-run observations fire at the driver's own commit (`message_start` of its response), where everything is already cached and fresh through the tool results; run-end observations append M and pay its write once, pre-warming the driver's next turn. No delays, no propagation heuristics. The driver's cadence provides the cache-coherent observation points.
 
 M's serialization is parity by construction: the observer hands M to its `runAgentLoop` call, and the `onPayload` hook splices pi-ai's own provider output onto the captured prefix. The fork's bytes match the driver's next request through the exact code path that will produce it, including surrogate sanitization and the dropping of aborted or errored messages. There is no hand-maintained mirror to drift when pi-ai changes.
 
-Selecting M is identity matching, not clock comparison. pi constructs the response message about a millisecond before `before_provider_request` fires, so the original `timestamp >= capturedAtMs` check was a same-millisecond coin flip that silently dropped M on the losing side (measured: -1ms, 0ms, -1ms across three runs). hydra now records the response's own timestamp at its `message_start` and attaches M only when it matches; the stale cases (errored or aborted final request) fall out exactly, because no response started and there is nothing to match.
+Selecting M is identity matching, not clock comparison. pi constructs the response message about a millisecond before `before_provider_request` fires, so any wall-clock comparison against the capture time is a same-millisecond coin flip that silently drops M on the losing side (measured: -1ms, 0ms, -1ms across three runs). hydra records the response's own timestamp at its `message_start` and attaches M only on an exact match; runs whose final request errored or aborted have no response to match and correctly attach nothing.
 
 Verified end-to-end in June 2026, cross-process (stricter than the normal in-session case, since the session is re-serialized from disk): the piggyback observation was a pure cache read (read 4995, the full committed prefix, write 0); the run-end fork wrote exactly M (342 tok); and the driver's next first request read prefix+M to the token (5337 = 4995 + 342), writing only its new user message (25 tok). Re-verify after pi upgrades with two headless runs. The second run's first `cacheRead` must equal run 1's total (prefix + M), and its `cacheWrite` must be about the new prompt, not about M:
 
@@ -133,12 +133,18 @@ Smoke-test the delivery pipeline with the hidden diagnostic heads: `/hydra-heads
 /hydra-debug        # toggles dumping
 # do some work
 /hydra-debug        # toggles off
-# inspect:
+# inspect (filenames carry timestamp, head, and sequence):
 ls /tmp/hydra-debug-*/
-# diff a driver payload against its observer payload:
-jq -S 'del(.messages[-1])' /tmp/hydra-debug-*/hydra-driver-*.json > /tmp/drv.json
-jq -S 'del(.messages[-1])' /tmp/hydra-debug-*/hydra-observer-*.json > /tmp/obs.json
-diff /tmp/drv.json /tmp/obs.json   # expected: empty (driver and observer share identical prefix)
+# A piggyback pair differs only by the appended observer prompt; dropping it
+# from the observer payload must reproduce the driver payload byte-for-byte:
+jq -S '.' <driver.json> > /tmp/drv.json
+jq -S 'del(.messages[-1])' <observer.json> > /tmp/obs.json
+diff /tmp/drv.json /tmp/obs.json   # expected: empty
+# A run-end fork additionally appends M and moves the message-level cache
+# marker onto it, so drop both tail messages and the markers before diffing:
+jq -S 'walk(if type == "object" then del(.cache_control) else . end)' <driver.json> > /tmp/drv.json
+jq -S 'del(.messages[-2:]) | walk(if type == "object" then del(.cache_control) else . end)' <observer.json> > /tmp/obs.json
+diff /tmp/drv.json /tmp/obs.json   # expected: empty
 ```
 
 ## Compared to the archived andon (bash) version

@@ -2,6 +2,17 @@
 	"name": "pi-hydra",
 	"version": "0.1.0",
 	"description": "Extra heads for your pi coding agent: real-time observers at prompt-cache prices",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"extension",
+		"code-review",
+		"prompt-caching"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/pandysp/pi-hydra.git"
+	},
 	"license": "MIT",
 	"type": "module",
 	"private": true,

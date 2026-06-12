@@ -61,7 +61,7 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 ## Tools: acting heads
 
-By default a head may use every tool the agent has (read, bash, edit, write, grep, find, ls, and the `hydra` tool itself) through pi's own agent loop before it decides. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
+By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it decides. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
 `tools:` narrows this. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head: a hard no-tools wrapper and the snappy single-call path. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
 
@@ -82,7 +82,7 @@ Every observation ends in a decision. The decision names the finding's delivery:
 - `steer`: the finding is injected as a real user message between turns of the current run, so the agent corrects course while still working.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Queue against steer is a timeliness choice, not an escalation: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. There is no setting that caps any of this. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+Queue against steer is a timeliness choice, not an escalation: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. There is no setting that caps any of this. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
 
 ## Heads that manage heads
 
@@ -120,7 +120,7 @@ most, and never edit your own file. Print the edit you made; otherwise
 noop.
 ```
 
-Both deliver to you, never to the agent: a print renders in the TUI while the agent's context stays untouched, so every re-crewing and every tuning edit is visible as it happens. The two combine well: a foreman can activate the tuner when a session warrants it.
+Their decisions deliver to you: a print renders in the TUI and never enters the agent's context, so every re-crewing and every tuning edit is visible as it happens. The tuner's file edits also get the standard write notice the agent sees; that is provenance, not feedback. The two combine well: a foreman can activate the tuner when a session warrants it.
 
 ## Example heads (minimal overlap)
 
@@ -129,22 +129,22 @@ The four review examples are designed to catch different things rather than repe
 ### Quality
 **Focus:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
 **Why:** The broadest net, and the recommended default. The agent believes its own code works; this head asks what would prove it.
-**Boundary:** Do NOT nitpick style.
+**Boundary:** Do not nitpick style.
 
 ### Security
-**Focus:** authentication, authorization, injection, data exposure, input validation, cryptographic choices.
-**Why:** Catches things nobody else sees. Auth logic flaws, IDORs, weak crypto. The agent is thinking about functionality, not attack surface.
-**Boundary:** Do NOT comment on code structure or test coverage.
+**Focus:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
+**Why:** Catches things nobody else sees. Auth logic flaws, leaked secrets, unsafe shell calls. The agent is thinking about functionality, not attack surface.
+**Boundary:** Do not comment on style or product scope.
 
 ### Simplifier
-**Focus:** unnecessary complexity, over-engineering, code that could be deleted, abstractions that don't earn their keep, redundant operations.
+**Focus:** unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, over-built solutions.
 **Why:** Every other head adds requirements. This one removes them. Argues for LESS code, which is rare and valuable.
-**Boundary:** Do NOT comment on bugs, security, or missing features. You argue for less, not more.
+**Boundary:** Do not comment on unrelated bugs or security. You argue for less, not more.
 
 ### API Design
-**Focus:** REST conventions, response consistency, status codes, error format, API ergonomics, backward compatibility.
-**Why:** Consumer-facing issues are invisible from inside the code. PUT vs PATCH, inconsistent response shapes, missing pagination: the agent is thinking about implementation, not the contract.
-**Boundary:** Do NOT comment on internal implementation, security, or testing.
+**Focus:** contract clarity, compatibility, consistency, error shapes, naming, ergonomics.
+**Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about implementation, not the contract.
+**Boundary:** Do not comment on internal code structure.
 
 ## More perspectives worth turning into heads
 
@@ -166,4 +166,4 @@ Reference designs for complex projects; each is one head file away:
 4. **Bounded:** Clear "do NOT comment on..." prevents overlap.
 5. **Short:** The instruction is the only uncached part of each observation; keep it tight.
 
-Overlap rules from practice: never run Testing and Error Handling together (>50% overlap); Simplifier and Performance overlap on redundant operations (~20%); Devil's Advocate and Observability overlap with nothing.
+Overlap notes: Simplifier and Performance both catch redundant operations, so run one or the other; Devil's Advocate and Observability overlap with nothing.

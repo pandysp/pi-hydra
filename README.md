@@ -20,12 +20,11 @@ You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity rep
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
-git clone https://github.com/pandysp/pi-hydra
-mkdir -p ~/.pi/agent/hydra && cp pi-hydra/heads/*.md ~/.pi/agent/hydra/
+mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
 pi
 ```
 
-(Or skip the clone and ask your agent to write a head: the `hydra` tool teaches it the format. For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md). To install for your whole team, `pi install -l` records the package in the repo's `.pi/settings.json`, and pi installs it for everyone on startup.)
+(The copy reads from the clone `pi install` just made, so the examples match the installed version. Or skip the copy and ask your agent to write a head: the `hydra` tool teaches it the format. For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md). To install for your whole team, `pi install -l` records the package in the repo's `.pi/settings.json`, and pi installs it for everyone on startup.)
 
 The example `quality` head is marked `autostart`, so after the first agent run you will see observations arrive in the footer:
 

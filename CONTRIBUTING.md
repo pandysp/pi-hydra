@@ -6,10 +6,13 @@ Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi w
 
 ```bash
 git clone https://github.com/pandysp/pi-hydra
-ln -s "$(pwd)/pi-hydra" ~/.pi/agent/extensions/hydra
+mkdir -p ~/.pi/agent/extensions
+ln -sfn "$(pwd)/pi-hydra" ~/.pi/agent/extensions/hydra
 cd pi-hydra
 npm install      # dev tooling only
 ```
+
+If you installed hydra via the README quickstart, run `pi remove git:github.com/pandysp/pi-hydra` first; the git package and the symlink are separate load paths, and keeping both loads hydra twice.
 
 Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra simply stops existing (no commands, no flags, no observations). Before sending a PR:
 
@@ -23,7 +26,7 @@ Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hyd
 ## What's welcome
 
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
-- Steps toward mid-generation interrupts (see the README's direction section)
+- Steps toward mid-generation interrupts (see "Where this is going" in the README)
 - Provider support beyond Anthropic (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
 - Replications or extensions of the [`experiments/`](experiments/README.md)
 
