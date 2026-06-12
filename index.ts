@@ -194,6 +194,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let heads = new Map<string, DiscoveredHead>();
 	let announcedDiscovery = "";
 
+	// Headless mode implements ctx.ui.notify as a no-op, and headless runs
+	// are exactly where a silent failure costs the most; warnings and errors
+	// fall back to stderr there.
+	function notifyUser(ctx: ExtensionContext, message: string, level: "warning" | "error") {
+		if (ctx.hasUI) {
+			ctx.ui.notify(message, level);
+		} else {
+			process.stderr.write(`${message}\n`);
+		}
+	}
+
 	// Discovery and capture run constantly; a standing problem must warn
 	// once, not once per run until it is fixed.
 	const warned = new Set<string>();
@@ -202,7 +213,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 		warned.add(message);
-		ctx.ui.notify(message, "warning");
+		notifyUser(ctx, message, "warning");
 	}
 
 	function isDirectory(path: string): boolean {
@@ -298,7 +309,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				announcedDiscovery = signature;
 				ctx.ui.notify(`hydra: project heads from ${projectDir}: ${[...project.keys()].join(", ")}`, "info");
 				if (shadowed.length > 0) {
-					ctx.ui.notify(`hydra: project head shadows your user head: ${shadowed.join(", ")}`, "warning");
+					notifyUser(ctx, `hydra: project head shadows your user head: ${shadowed.join(", ")}`, "warning");
 				}
 			}
 		}
@@ -308,7 +319,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const pruned = activeHeads.filter((name) => headExists(name));
 		if (pruned.length !== activeHeads.length) {
 			const dropped = activeHeads.filter((name) => !headExists(name));
-			ctx.ui.notify(`hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
+			notifyUser(ctx, `hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
 			activeHeads = pruned;
 			productHeads = productHeads.filter((name) => headExists(name));
 			updateFooter(ctx);
@@ -342,7 +353,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function setHeadSet(ctx: ExtensionContext, requested: string[]): boolean {
 		const next = sanitizeHeadSet(requested, headCatalog);
 		if (next.unknown.length > 0) {
-			ctx.ui.notify(`hydra: unknown head: ${next.unknown.join(", ")}. available: ${headNames().join(", ") || "none"}`, "warning");
+			notifyUser(ctx, `hydra: unknown head: ${next.unknown.join(", ")}. available: ${headNames().join(", ") || "none"}`, "warning");
 		}
 		if (next.heads.length === 0) {
 			return false;
@@ -458,7 +469,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const next = sanitizeHeadSet(saved, headCatalog);
 		if (next.unknown.length > 0) {
-			ctx.ui.notify(`hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
+			notifyUser(ctx, `hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
 		}
 		if (next.heads.length > 0) {
 			adoptHeadSet(next.heads);
@@ -530,10 +541,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (model.provider !== "anthropic") {
 			if (!warnedProviders.has(model.provider)) {
 				warnedProviders.add(model.provider);
-				job.ctx.ui.notify(
-					`hydra: observations disabled for provider "${model.provider}" (cache-parity replay is validated on Anthropic only)`,
-					"warning",
-				);
+				notifyUser(job.ctx, `hydra: observations disabled for provider "${model.provider}" (cache-parity replay is validated on Anthropic only)`, "warning");
 			}
 			return;
 		}
@@ -546,7 +554,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const auth = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (!auth.ok || !auth.apiKey) {
 			const reason = auth.ok ? "no API key" : auth.error;
-			job.ctx.ui.notify(`hydra: no credentials for ${model.provider}: ${reason}`, "warning");
+			notifyUser(job.ctx, `hydra: no credentials for ${model.provider}: ${reason}`, "warning");
 			return;
 		}
 
@@ -585,7 +593,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// A zero-usage, zero-content response is a provider hiccup (e.g. an
 		// overload surfaced as an empty result), not an observation.
 		if (summary.input + summary.cacheRead + summary.cacheWrite === 0 && response.content.length === 0) {
-			job.ctx.ui.notify("hydra: observer call returned empty response (provider overloaded?)", "warning");
+			notifyUser(job.ctx, "hydra: observer call returned empty response (provider overloaded?)", "warning");
 			return;
 		}
 
@@ -707,19 +715,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			);
 		} catch (error) {
 			if (!signal.aborted) {
-				job.ctx.ui.notify(`hydra: observer loop failed: ${errorText(error)}`, "error");
+				notifyUser(job.ctx, `hydra: observer loop failed: ${errorText(error)}`, "error");
 			}
 			return null;
 		}
 
 		const response = [...messages].reverse().find((message): message is AssistantMessage => message.role === "assistant");
 		if (!response) {
-			job.ctx.ui.notify("hydra: observer loop produced no response", "warning");
+			notifyUser(job.ctx, "hydra: observer loop produced no response", "warning");
 			return null;
 		}
 		if (response.stopReason === "error" || response.stopReason === "aborted") {
 			if (!signal.aborted) {
-				job.ctx.ui.notify(`hydra: observer loop failed: ${response.errorMessage ?? "aborted"}`, "error");
+				notifyUser(job.ctx, `hydra: observer loop failed: ${response.errorMessage ?? "aborted"}`, "error");
 			}
 			return null;
 		}
@@ -843,7 +851,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				{ deliverAs: "followUp", triggerTurn: false },
 			);
 		} catch (error) {
-			ctx.ui.notify(`hydra: ${action} delivery failed: ${errorText(error)}`, "warning");
+			notifyUser(ctx, `hydra: ${action} delivery failed: ${errorText(error)}`, "warning");
 		}
 	}
 
@@ -863,7 +871,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					await observe(job, lifecycleAbort.signal);
 				} catch (error) {
 					if (!lifecycleAbort.signal.aborted) {
-						job.ctx.ui.notify(`hydra: observe error: ${errorText(error)}`, "error");
+						notifyUser(job.ctx, `hydra: observe error: ${errorText(error)}`, "error");
 					}
 				}
 			}
@@ -1110,7 +1118,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	async function openHeadPicker(ctx: ExtensionContext): Promise<void> {
 		const items = [...heads.values()].sort((a, b) => a.name.localeCompare(b.name));
 		if (items.length === 0) {
-			ctx.ui.notify(`hydra: no heads found. Drop a markdown file into ${userHeadDir} (see docs/heads.md).`, "warning");
+			notifyUser(ctx, `hydra: no heads found. Drop a markdown file into ${userHeadDir} (see docs/heads.md).`, "warning");
 			return;
 		}
 		const selection = await ctx.ui.custom<string[] | null>((tui, theme, _keybindings, done) => {
@@ -1276,7 +1284,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			try {
 				mkdirSync(dir, { recursive: true });
 			} catch (error) {
-				ctx.ui.notify(`hydra: failed to create debug dir: ${errorText(error)}`, "error");
+				notifyUser(ctx, `hydra: failed to create debug dir: ${errorText(error)}`, "error");
 				return;
 			}
 			debugDir = dir;
