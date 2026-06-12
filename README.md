@@ -20,7 +20,8 @@ You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity rep
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
-git clone https://github.com/pandysp/pi-hydra && cp pi-hydra/heads/*.md ~/.pi/agent/hydra/
+git clone https://github.com/pandysp/pi-hydra
+mkdir -p ~/.pi/agent/hydra && cp pi-hydra/heads/*.md ~/.pi/agent/hydra/
 pi
 ```
 

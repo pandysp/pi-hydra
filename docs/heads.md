@@ -41,7 +41,7 @@ Head files are re-read at the start of every agent run and on every `hydra` tool
 There are no built-in heads. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (quality, security, simplifier, api-design); copy what you want:
 
 ```bash
-cp heads/*.md ~/.pi/agent/hydra/
+mkdir -p ~/.pi/agent/hydra && cp heads/*.md ~/.pi/agent/hydra/
 ```
 
 Or skip the copy entirely and tell your agent what you want watched; the `hydra` tool teaches it the file format, and a head the agent writes is a file you can read, edit, and delete.

@@ -102,6 +102,12 @@ No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-
 
 type ObserveKind = "piggyback" | "run-end";
 
+// What hydra can execute for a head: the seven standard tools plus its own.
+// A `tools:` entry outside this set can never run (hydra has no execute for
+// other extensions' tools or MCP), so discovery warns about it; the head
+// still loads, since the rest of its list works.
+const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+
 const DECISION_SHAPE = '{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
 
 // Keep the head prompt SHORT: the driver's context is already cached, so
@@ -267,6 +273,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			if (loaded.has(head.name)) {
 				ctx.ui.notify(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`, "warning");
 				continue;
+			}
+			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
+			if (unexecutable.length > 0) {
+				ctx.ui.notify(
+					`hydra: head "${head.name}" lists tools hydra cannot execute: ${unexecutable.join(", ")} (valid: ${EXECUTABLE_TOOL_NAMES.join(", ")})`,
+					"warning",
+				);
 			}
 			loaded.set(head.name, { ...head, source });
 		}
