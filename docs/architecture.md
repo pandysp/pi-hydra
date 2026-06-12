@@ -8,14 +8,14 @@ hydra replays the driver's exact provider payload with one observer prompt appen
 
 **Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observer prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its decision typically lands while the driver's response is still streaming.
 
-**Run-end (agent_end).** When the agent hands control back to the user, no next driver request will carry the final assistant message M into the cache, so hydra forks from n: it passes M through `complete()` so pi-ai's own provider code serializes it (thinking blocks, signatures, surrogate sanitization; parity by construction rather than by mirroring), then the `onPayload` hook splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observer pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observer TTFT.
+**Run-end (agent_end).** When the agent hands control back to the user, no next driver request will carry the final assistant message M into the cache, so hydra forks from n: it hands M to the observer's `runAgentLoop` call so pi-ai's own provider code serializes it (thinking blocks, signatures, surrogate sanitization; parity by construction rather than by mirroring), then the `onPayload` hook splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observer pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observer TTFT.
 
 ```
 mid-run:  request N+1 dispatched ─► payload captured
           response N+1 begins    ─► PIGGYBACK: replay payload + prompt (pure read)
 run end:  agent_end              ─► RUN-END: payload + M(marker) appended (fork-from-n)
   ↓
-complete(); onPayload splices pi-ai's own serialization onto the captured bytes
+runAgentLoop(); onPayload splices pi-ai's own serialization onto the captured bytes
   ↓
 parse JSON decision
   ↓
@@ -68,7 +68,7 @@ Earlier versions observed at `turn_end` and worried about cache propagation race
 
 Hence the two triggers: mid-run observations fire at the driver's own commit (`message_start` of its response), where everything is already cached and fresh through the tool results; run-end observations fork-from-n and pay for the final M once, pre-warming the driver's next turn. No delays, no propagation heuristics. The driver's cadence provides the cache-coherent observation points.
 
-M's serialization is parity by construction: the observer passes M through `complete()`, and the `onPayload` hook splices pi-ai's own provider output onto the captured prefix. The fork's bytes match the driver's next request through the exact code path that will produce it, including surrogate sanitization and the dropping of aborted or errored messages. There is no hand-maintained mirror to drift when pi-ai changes.
+M's serialization is parity by construction: the observer hands M to its `runAgentLoop` call, and the `onPayload` hook splices pi-ai's own provider output onto the captured prefix. The fork's bytes match the driver's next request through the exact code path that will produce it, including surrogate sanitization and the dropping of aborted or errored messages. There is no hand-maintained mirror to drift when pi-ai changes.
 
 Selecting M is identity matching, not clock comparison. pi constructs the response message about a millisecond before `before_provider_request` fires, so the original `timestamp >= capturedAtMs` check was a same-millisecond coin flip that silently dropped M on the losing side (measured: -1ms, 0ms, -1ms across three runs). hydra now records the response's own timestamp at its `message_start` and attaches M only when it matches; the stale cases (errored or aborted final request) fall out exactly, because no response started and there is nothing to match.
 
@@ -147,8 +147,8 @@ hydra began as [andon](../archive/README.md), a bash and tmux contraption around
 
 | | andon (bash, archived) | pi-hydra |
 |---|---|---|
-| Cache parity | 8 normalization rules in `andon-cache-fix.mjs` patching `globalThis.fetch` | byte-true replay via `before_provider_request` capture + `complete()` `onPayload` override |
-| Driver inheritance | `claude --resume <id> --fork-session --print` subprocess | `complete()` SDK call from inside the driver process |
+| Cache parity | 8 normalization rules in `andon-cache-fix.mjs` patching `globalThis.fetch` | byte-true replay via `before_provider_request` capture + `onPayload` override on the observer's own provider call |
+| Driver inheritance | `claude --resume <id> --fork-session --print` subprocess | `runAgentLoop` call from inside the driver process |
 | Observer state | JSON file in `~/.local/state/andon-observer/` | session custom entries via `pi.appendEntry("hydra-call", ...)` |
 | Delivery | `tmux send-keys` | `pi.sendMessage` / `pi.sendUserMessage` |
 | Polling | JSONL mtime watch loop | driver commit events (`message_start`) + `agent_end` |

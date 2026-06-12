@@ -38,7 +38,7 @@ A project head with the same name as a user head wins, like project agents and p
 
 Head files are re-read at the start of every agent run and on every `hydra` tool call, so edits apply to the next observation without a reload: when a head flags too much or too little, tune the file and the very next run uses the tuned head. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
 
-There are no built-in heads. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (quality, security, simplifier, api-design); copy what you want:
+There are no built-in heads. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
 
 ```bash
 mkdir -p ~/.pi/agent/hydra && cp heads/*.md ~/.pi/agent/hydra/
@@ -86,16 +86,15 @@ Queue against steer is a timeliness choice, not an escalation: queue when the fe
 
 ## Heads that manage heads
 
-A head's job can be the other heads. Two reference designs:
+A head's job can be the other heads. Two ship as examples in [`heads/`](../heads):
 
-The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions.
+The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Mark it `autostart: true` and it staffs every fresh session.
 
 ```markdown
 ---
 name: foreman
 description: Matches the active heads to the work at hand
 tools: hydra, read, write
-autostart: true
 ---
 You manage which heads observe this session. Early in the session, infer
 what the work is (designing, implementing, reviewing, debugging) and staff
@@ -125,7 +124,7 @@ Both deliver to you, never to the agent: a print renders in the TUI while the ag
 
 ## Example heads (minimal overlap)
 
-The four shipped examples are designed to catch different things rather than repeat each other:
+The four review examples are designed to catch different things rather than repeat each other:
 
 ### Quality
 **Focus:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
