@@ -45,7 +45,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { complete, StringEnum, Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Message, Model, Static, ToolCall } from "@earendil-works/pi-ai";
 import {
 	createBashTool,
@@ -507,8 +507,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		productHeads = autostart;
 	}
 
-	// One observation's outcome, the same shape for both head kinds: a
-	// judging head is the single-call case.
+	// One observation's outcome. A judging head is the zero-tool case: the
+	// loop exits after one turn, so iterations stays 1.
 	interface ObserveOutcome {
 		response: AssistantMessage;
 		usages: ObserverUsage[];
@@ -576,11 +576,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return merged;
 		};
 
-		const acting = job.tools === undefined || job.tools.length > 0;
 		const t0 = Date.now();
-		const outcome = acting
-			? await observeActing(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal)
-			: await observeJudging(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal);
+		const outcome = await runObserverLoop(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal);
 		if (!outcome || signal.aborted) {
 			return;
 		}
@@ -617,7 +614,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			durationMs: Date.now() - t0,
 			hitRatio: summary.hitRatio,
 			rawResponse: text.length > 200 ? `${text.slice(0, 200)}…` : text,
-			iterations: acting ? iterations : undefined,
+			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
 		calls.push(call);
@@ -641,37 +638,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
 	}
 
-	async function observeJudging(
-		job: Observation,
-		model: Model<"anthropic-messages">,
-		apiKey: string,
-		headers: Record<string, string> | undefined,
-		prompt: Message,
-		onPayload: (built: unknown) => unknown,
-		signal: AbortSignal,
-	): Promise<ObserveOutcome | null> {
-		const contextMessages: Message[] = job.assistant ? [job.assistant, prompt] : [prompt];
-		let response: AssistantMessage;
-		try {
-			response = await complete(model, { messages: contextMessages }, { apiKey, headers, signal, onPayload });
-		} catch (error) {
-			if (!signal.aborted) {
-				job.ctx.ui.notify(`hydra: observer call failed: ${error instanceof Error ? error.message : String(error)}`, "error");
-			}
-			return null;
-		}
-		return { response, usages: [flattenUsage(response.usage)], iterations: 1, toolsUsed: [] };
-	}
-
-	// Acting heads run pi's own agent loop rather than a hand-rolled
-	// imitation: argument validation, unknown-tool error results, parallel vs
-	// sequential execution policy, and abort discipline stay pi's code and
-	// evolve with it. Every provider call the loop makes flows through the
-	// same byte-true merge as a judging observation (onPayload discards the
-	// loop's own built context), so the driver prefix stays a pure cache
-	// read and the loop turns are cached once by the marker the merge
-	// advances; see mergeObserverPayload for the cache story.
-	async function observeActing(
+	// Every observation runs through pi's own agent loop rather than a
+	// hand-rolled imitation: argument validation, unknown-tool error results,
+	// parallel vs sequential execution policy, and abort discipline stay
+	// pi's code and evolve with it. A judging head is not a separate path,
+	// just the zero-tool case: it answers its decision in one turn and the
+	// loop exits, one provider call exactly like a bare complete(). Every
+	// provider call the loop makes flows through the same byte-true merge
+	// (onPayload discards the loop's own built context), so the driver
+	// prefix stays a pure cache read and any loop turns are cached once by
+	// the marker the merge advances; see mergeObserverPayload.
+	async function runObserverLoop(
 		job: Observation,
 		model: Model<"anthropic-messages">,
 		apiKey: string,

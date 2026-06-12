@@ -11,7 +11,7 @@ cd pi-hydra
 npm install      # dev tooling only
 ```
 
-Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. Before sending a PR:
+Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra simply stops existing (no commands, no flags, no observations). Before sending a PR:
 
 ```bash
 npm run check    # tsc --strict
