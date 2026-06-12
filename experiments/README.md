@@ -252,7 +252,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    cache writes landed seconds before its run ends (the response streamed in
    between), which is why the 500ms propagation delay once carried by the pi
    extension was unnecessary. Revisit only if footer telemetry shows M-write
-   spend actually mattering (e.g. very verbose turns × many lenses).
+   spend actually mattering (e.g. very verbose turns × many heads).
    Fable strengthens the no-delay call: visibility is writer TTFT (~3–5s on
    fable at small prefixes, more at large) plus ~zero propagation, so a
    reliable fixed stagger costs more latency than ever, while the contended
@@ -265,10 +265,10 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    baseline. In aggregate, N simultaneous markered forks place N marker bets
    of which at most one is read by the driver: overhead +0.25N×M vs unmarked
    forks if nobody reads, and the foregone coordination discount is
-   (N−1)×1.15×M per turn (≈ $0.044/turn for 4 lenses at mean M=1278 on
+   (N−1)×1.15×M per turn (≈ $0.044/turn for 4 heads at mean M=1278 on
    fable; ~6% of the observations' own prefix-read cost). The commit-anchored
    runs validated a precise capture mechanism with no stagger-guessing: fire
-   lens 1 streamed, fire lenses 2..N at its `message_start` event. Commit+0
+   head 1 first, fire heads 2..N at its `message_start` event. Commit+0
    free-rides reliably (×3 runs, both models), and follower delay equals the
    writer's measured TTFT, exactly. Default to latency-first (all parallel at
    run end); offer message_start-coordination as a cost-first config.

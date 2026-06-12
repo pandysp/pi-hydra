@@ -18,12 +18,12 @@ npm run check    # tsc --strict
 npm test         # vitest on the pure helpers
 ```
 
-Smoke-test delivery with the hidden diagnostic lenses (`/hydra-lens test`, `/hydra-lens test-interrupt`); they fire once and revert.
+Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hydra-heads test-interrupt`); they fire once and revert.
 
 ## What's welcome
 
-- New built-in lenses; prototype them first as custom lens files (`~/.pi/agent/hydra/lenses/`, see [`docs/lenses.md`](docs/lenses.md)) and PR the ones that prove themselves
-- Steps toward async heads and the self-tuning loop (see the README's direction section and issue #5)
+- New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
+- Steps toward mid-generation interrupts (see the README's direction section)
 - Provider support beyond Anthropic (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
 - Replications or extensions of the [`experiments/`](experiments/README.md)
 

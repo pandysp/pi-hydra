@@ -6,7 +6,7 @@ How hydra observes a pi session at prompt-cache prices. For the what and why, st
 
 hydra replays the driver's exact provider payload with one observer prompt appended. Because the prefix is byte-identical, every observation is a prompt-cache read of the entry the driver itself just wrote. Observations fire at the driver's own cache commit points, on two triggers:
 
-**Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observer prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its verdict typically lands while the driver's response is still streaming.
+**Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observer prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its decision typically lands while the driver's response is still streaming.
 
 **Run-end (agent_end).** When the agent hands control back to the user, no next driver request will carry the final assistant message M into the cache, so hydra forks from n: it passes M through `complete()` so pi-ai's own provider code serializes it (thinking blocks, signatures, surrogate sanitization; parity by construction rather than by mirroring), then the `onPayload` hook splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observer pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observer TTFT.
 
@@ -20,15 +20,19 @@ complete(); onPayload splices pi-ai's own serialization onto the captured bytes
 parse JSON decision
   ↓
 noop      → log only
+print     → pi.sendMessage (renders in the TUI, never enters the agent's context)
 queue     → pi.sendMessage({ deliverAs: "followUp" })
 steer     → pi.sendUserMessage({ deliverAs: "steer" })
 interrupt → ctx.abort() + pi.sendUserMessage({ deliverAs: "followUp" })
-(the delivery mode caps the force a verdict can request)
 ```
 
 Same model, same system prompt, same tools, same thinking config; the only difference is one extra user message at the end. Cache hit ratio is determined by the size of the observer prompt (~220 tokens) relative to the driver context.
 
-Observations run through a conflating single-slot scheduler, per head: every lens has at most one observation in flight and one waiting slot that a newer snapshot overwrites, and an in-flight observation always runs to completion. Staleness is bounded to one cycle because the slot always holds the newest snapshot. The granularity is per head rather than one global batch so an acting head's minutes-long tool loop cannot starve the verdict heads, and a head that is busy through a commit point still reviews the newest snapshot the moment it frees up.
+Observations run through a conflating single-slot scheduler, per head: every head has at most one observation in flight and one waiting slot that a newer snapshot overwrites, and an in-flight observation always runs to completion. Staleness is bounded to one cycle because the slot always holds the newest snapshot. The granularity is per head rather than one global batch so an acting head's minutes-long tool loop cannot starve the judging heads, and a head that is busy through a commit point still reviews the newest snapshot the moment it frees up.
+
+## Heads are files
+
+A head is fully defined by one markdown file ([`heads.md`](heads.md) has the format). Discovery reads `~/.pi/agent/hydra` and the nearest ancestor `.pi/hydra`, project shadowing user, fresh at every `agent_start` and every `hydra` tool call; a vanished file prunes its head from the active set with a notice rather than observing with a ghost. The active set is the one piece of state not on disk: it persists as `hydra-config` session entries, restored on resume and branch navigation. At session start the precedence is an explicit `--hydra-heads` flag (present intent), then the saved set (recorded intent), then the files' `autostart` markers (the cold-start default, deliberately not persisted so a resumed session re-reads the files). There is no delivery setting anywhere: a decision's force is the head's own choice, shaped by its instruction.
 
 ## Cache hit ratio (the load-bearing metric)
 
@@ -78,21 +82,21 @@ jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage 
 
 ## Acting heads
 
-A custom lens with `tools: true` frontmatter may run tool calls before its verdict. The mechanism extends the replay, it does not replace it:
+By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable set, down to `[]` for a judge-only head (a hard no-tools wrapper and the snappy single-call path). The mechanism extends the replay, it does not replace it:
 
 **The loop is pi's own.** Acting heads run `runAgentLoop` from pi-agent-core (a first-class extension import; the loader aliases it in both bundle modes) rather than a hand-rolled imitation: argument validation, "tool not found" error results, parallel-vs-sequential execution policy, and abort discipline stay pi's code and evolve with it. The same reuse philosophy as M's serialization: run the real thing instead of mirroring it.
 
 **Every loop call replays the captured prefix.** The loop's own built context is discarded by the `onPayload` merge, so iteration N's request is the byte-true driver prefix plus the observer's tail (`[M?, prompt, turn 1, results 1, ..., turn N-1]`). The driver prefix stays a pure cache read on every iteration; measured live, read stayed at the full committed prefix while only tail content was written.
 
-**Tool parity comes from the replay itself.** The model can only call tools in the replayed payload's tools array, which is the driver's active set by construction. hydra executes the seven standard tools (constructed from pi's exported factories at the driver's cwd) plus its own `hydra` tool; a call to anything else (another extension's tool, MCP) gets pi's standard error result and the head proceeds to its verdict. write/edit serialize same-file mutations through pi's process-wide queue, shared with the driver because the loader aliases pi-coding-agent to its bundled instance.
+**Tool parity comes from the replay itself.** The model can only call tools in the replayed payload's tools array, which is the driver's active set by construction. hydra executes the seven standard tools (constructed from pi's exported factories at the driver's cwd) plus its own `hydra` tool, filtered down to the head file's `tools:` list when one is given; a call outside the list, or to anything hydra cannot execute (another extension's tool, MCP), gets pi's standard error result and the head proceeds to its decision. write/edit serialize same-file mutations through pi's process-wide queue, shared with the driver because the loader aliases pi-coding-agent to its bundled instance.
 
 **The cache marker advances with the loop.** Cache writes happen only at explicit breakpoints, the budget is four per request, and the driver's payload already spends all four, so the merge only ever moves the deepest message-level marker: onto M for a run-end fork's first call (the pre-warm bet, unchanged), then onto the tail's last markable block once loop turns exist. Each loop turn is written once (plain ephemeral, deliberately without the driver's TTL: the next iteration is seconds away) and read thereafter, instead of re-paid as input every iteration. The prefix+M entry from the first call keeps serving the driver. Anthropic's serving stack was also observed auto-extending entries to the last assistant block on this traffic class without any marker; the explicit advance reproduces those economics within documented semantics instead of relying on the observation.
 
-**Loops are guarded, not budgeted.** Per the configured intent (no cost ceiling), the only bound is a correctness guard: a loop that has not produced a verdict after 25 model turns is wound down as a `noop` with a warning, and `/hydra` off mid-loop winds down at the next turn boundary. Stats record one `hydra-call` per observation with usage summed across iterations; the hit ratio is taken from the first call alone, since it is the replay-parity signal and later iterations legitimately pay the tail as fresh input.
+**Loops are guarded, not budgeted.** There is no cost ceiling; the only bound is a correctness guard: a loop that has not produced a decision after 25 model turns is wound down as a `noop` with a warning, and removing the head from the active set mid-loop winds it down at the next turn boundary. Stats record one `hydra-call` per observation with usage summed across iterations; the hit ratio is taken from the first call alone, since it is the replay-parity signal and later iterations legitimately pay the tail as fresh input.
 
-**File writes are announced.** Every successful write/edit queues a one-line `hydra-feedback` note (`[docs] wrote docs/notes.md`), bypassing the delivery-mode cap on purpose: it is provenance, not a finding, and even a print-mode session learns its files moved. Writes inside the observer's bash commands are invisible to this; lens authoring guidance in [`lenses.md`](lenses.md) says to keep bash read-only mid-run.
+**File writes are announced.** Every successful write/edit queues a one-line `hydra-feedback` note (`[docs] wrote docs/notes.md`): provenance, not a finding, so the driver is never surprised by files changing under it. Writes inside the observer's bash commands are invisible to this; the authoring guidance in [`heads.md`](heads.md) says to keep bash read-only mid-run.
 
-**Verdicts from stale snapshots cannot pull the cord.** An acting head can finish its loop minutes after its snapshot was captured. If the driver has moved on to a newer request, an `interrupt` verdict demotes to `steer`: a wrong demotion costs one turn of latency, a wrong abort destroys in-flight work.
+**Decisions from stale snapshots cannot pull the cord.** An acting head can finish its loop minutes after its snapshot was captured. If the driver has moved on to a newer request, an `interrupt` decision demotes to `steer`: a wrong demotion costs one turn of latency, a wrong abort destroys in-flight work.
 
 ## Limitations & roadmap
 
@@ -104,9 +108,9 @@ A custom lens with `tools: true` frontmatter may run tool calls before its verdi
 
 **Headless (`pi -p`) may truncate the run-end observation.** The process exits shortly after `agent_end`; `session_shutdown` awaits the in-flight observation up to 5s, which slow models (fable/xhigh: 10s+) can exceed. Raise via `HYDRA_SHUTDOWN_GRACE_MS` for headless use (`0` means exit without waiting). Interactive mode is unaffected; the observation completes while you read the response.
 
-**Multi-head fan-out is latency-first.** The active lens set fans out one observation per head, in parallel, per trigger. Mid-run this is free beyond the prompts, since every head is a pure cache read of the same committed prefix. At run-end the markered forks race and each pays M's write (~$0.01–0.02 per head on fable, measured); the experiments README documents a message_start-coordination pattern that would let followers free-ride on the first fork's write, deliberately not implemented because the contended amount stays a single-digit percent of observer spend and feedback latency is the product metric.
+**Multi-head fan-out is latency-first.** The active head set fans out one observation per head, in parallel, per trigger. Mid-run this is free beyond the prompts, since every head is a pure cache read of the same committed prefix. At run-end the markered forks race and each pays M's write (~$0.01–0.02 per head on fable, measured); the experiments README documents a message_start-coordination pattern that would let followers free-ride on the first fork's write, deliberately not implemented because the contended amount stays a single-digit percent of observer spend and feedback latency is the product metric.
 
-**Verdicts judge committed snapshots, not in-flight output.** Interrupt delivery does cancel: an `interrupt` verdict calls `ctx.abort()` on the in-flight run and the finding opens the next one, matching the archived bash version's Escape-then-inject behavior. Steer delivery is the softer rung: the message waits for the current turn's tool calls to finish, then lands between turns of the same run, and the piggyback timing means verdicts often arrive while a response is still streaming, in time for the very next turn boundary. What remains future work is judging *partial* output: every verdict is formed from a committed request snapshot, so a single long-running LLM call is never evaluated mid-generation. That would require reasoning over `message_update` deltas, with no cache parity since the content is mid-flight.
+**Decisions judge committed snapshots, not in-flight output.** Interrupt does cancel: an `interrupt` decision calls `ctx.abort()` on the in-flight run and the finding opens the next one, matching the archived bash version's Escape-then-inject behavior. Steer is the softer rung: the message waits for the current turn's tool calls to finish, then lands between turns of the same run, and the piggyback timing means decisions often arrive while a response is still streaming, in time for the very next turn boundary. What remains future work is judging *partial* output: every decision is formed from a committed request snapshot, so a single long-running LLM call is never evaluated mid-generation. That would require reasoning over `message_update` deltas, with no cache parity since the content is mid-flight.
 
 ## Development
 
@@ -120,7 +124,7 @@ npm test           # vitest on the pure helpers
 
 There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `utils.ts` holds the pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.
 
-Smoke-test the delivery pipeline with the hidden diagnostic lenses: `/hydra-lens test` forces a `queue` decision, `/hydra-lens test-interrupt` forces an `interrupt`. They are one-shot: after firing once, the lens reverts to the last product lens. That revert is load-bearing. A forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again, forever.
+Smoke-test the delivery pipeline with the hidden diagnostic heads: `/hydra-heads test` forces a `queue` decision, `/hydra-heads test-interrupt` forces an `interrupt`. They are one-shot: after firing once, the set reverts to the last product heads. That revert is load-bearing. A forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again, forever.
 
 ## Verifying cache parity
 

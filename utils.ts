@@ -3,27 +3,19 @@
  * Extracted for testability; no pi or I/O dependencies.
  */
 
-export type Action = "noop" | "queue" | "steer" | "interrupt";
-
-export type DeliveryMode = "print" | "queue" | "steer" | "interrupt";
-
-export const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "steer", "interrupt"];
-
-// A verdict asks for a force level; the delivery mode caps it. The observer
-// can always choose less force than the mode allows, never more.
-const VERDICT_FORCE: Record<Action, number> = { noop: 0, queue: 1, steer: 2, interrupt: 3 };
-const MODE_CAP: Record<DeliveryMode, number> = { print: 0, queue: 1, steer: 2, interrupt: 3 };
+// A decision names its finding's delivery: noop (nothing anywhere), print
+// (TUI only), queue (run end), steer (between turns), interrupt (now,
+// aborting the run).
+export type Action = "noop" | "print" | "queue" | "steer" | "interrupt";
 
 /**
- * 0 render only · 1 followUp after the run · 2 steer between turns · 3 abort,
- * then deliver. A verdict formed on a snapshot the driver has since moved past
- * may not abort the current run: interrupt demotes to steer. The asymmetry
- * favors it; a wrong demotion costs one turn of latency, a wrong abort
+ * A decision formed on a snapshot the driver has since moved past may not
+ * abort the current run: interrupt demotes to steer. The asymmetry favors
+ * demotion; a wrong demotion costs one turn of latency, a wrong abort
  * destroys in-flight work.
  */
-export function effectiveForce(action: Action, mode: DeliveryMode, staleSnapshot = false): number {
-	const force = Math.min(VERDICT_FORCE[action], MODE_CAP[mode]);
-	return force === 3 && staleSnapshot ? 2 : force;
+export function demoteStaleInterrupt(action: Action, staleSnapshot: boolean): Action {
+	return action === "interrupt" && staleSnapshot ? "steer" : action;
 }
 
 export interface Decision {
@@ -32,7 +24,7 @@ export interface Decision {
 	message: string;
 }
 
-const ACTIONS: readonly string[] = ["noop", "queue", "steer", "interrupt"];
+const ACTIONS: readonly string[] = ["noop", "print", "queue", "steer", "interrupt"];
 
 function asDecision(value: unknown): Decision | null {
 	if (typeof value !== "object" || value === null) {
@@ -89,7 +81,7 @@ export interface ObserverUsage {
 }
 
 /**
- * Fold the per-iteration usage of one observation (a verdict head makes one
+ * Fold the per-iteration usage of one observation (a judging head makes one
  * call, an acting head one per loop iteration) into stats for a single
  * HydraCall. Totals sum across iterations; the hit ratio comes from the first
  * iteration alone, since that is the replay-parity regression signal and
@@ -109,87 +101,100 @@ export function summarizeLoopUsage(usages: ObserverUsage[]): ObserverUsage & { h
 	return { ...total, hitRatio: readable > 0 ? (first.cacheRead / readable) * 100 : 0 };
 }
 
-/** Parse a user-supplied lens list ("quality,security" or "quality security"). */
-export function parseLensList(value: string): string[] {
+/** Parse a user-supplied head list ("quality,security" or "quality security"). */
+export function parseHeadList(value: string): string[] {
 	return [...new Set(value.split(/[\s,]+/).map((name) => name.trim()).filter((name) => name.length > 0))];
 }
 
-export interface LensDefinition {
+export interface HeadDefinition {
 	name: string;
-	description?: string;
-	/** Acting head: may run tool calls before its verdict. Default: verdict-only. */
-	tools?: boolean;
+	description: string;
+	/**
+	 * Tool names the head may execute. Undefined means every tool the agent
+	 * has; an empty array means none (the head judges, never acts).
+	 */
+	tools?: string[];
+	/** Joins the active set at session start when no saved set and no flag exist. */
+	autostart?: boolean;
 	prompt: string;
 }
 
+export function isValidHeadName(name: string): boolean {
+	return /^[a-z0-9][a-z0-9-]*$/.test(name) && name !== "none";
+}
+
 /**
- * Parse a custom lens file: optional `---` frontmatter carrying a description
- * and the `tools: true` acting-head marker, followed by the lens instruction
- * text. Returns null when there is no instruction to observe with.
+ * Parse a head file: `---` frontmatter carrying the head's identity and
+ * capabilities, body carrying the instruction. `name` and `description` are
+ * required; a file missing either is skipped (with the returned error as the
+ * warning). The filename is storage, not identity.
  */
-export function parseLensFile(name: string, content: string): LensDefinition | null {
-	let body = content;
-	let description: string | undefined;
-	let tools: boolean | undefined;
+export function parseHeadFile(content: string): { head: HeadDefinition } | { error: string } {
 	const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n?/);
-	if (frontmatter) {
-		body = content.slice(frontmatter[0].length);
-		for (const line of frontmatter[1].split("\n")) {
-			if (line.startsWith("description:")) {
-				description = line.slice("description:".length).trim();
-			} else if (line.startsWith("tools:")) {
-				tools = line.slice("tools:".length).trim() === "true" || undefined;
-			}
+	if (!frontmatter) {
+		return { error: "no frontmatter (name: and description: are required)" };
+	}
+	let name: string | undefined;
+	let description: string | undefined;
+	let tools: string[] | undefined;
+	let autostart: boolean | undefined;
+	for (const line of frontmatter[1].split("\n")) {
+		if (line.startsWith("name:")) {
+			name = line.slice("name:".length).trim();
+		} else if (line.startsWith("description:")) {
+			description = line.slice("description:".length).trim();
+		} else if (line.startsWith("tools:")) {
+			// A present-but-empty value ("tools:" or "tools: []") means none;
+			// an absent key means all. The two must not collapse into each other.
+			const value = line.slice("tools:".length).trim();
+			tools = value === "" || value === "[]" ? [] : parseHeadList(value);
+		} else if (line.startsWith("autostart:")) {
+			autostart = line.slice("autostart:".length).trim() === "true" || undefined;
 		}
 	}
-	const prompt = body.trim();
-	if (prompt.length === 0) {
-		return null;
+	if (!name) {
+		return { error: "missing name:" };
 	}
-	return { name, description, tools, prompt };
+	if (!isValidHeadName(name)) {
+		return { error: `invalid name "${name}" (lowercase kebab-case, "none" is reserved)` };
+	}
+	if (!description) {
+		return { error: "missing description:" };
+	}
+	const prompt = content.slice(frontmatter[0].length).trim();
+	if (prompt.length === 0) {
+		return { error: "missing instruction body" };
+	}
+	return { head: { name, description, tools, autostart, prompt } };
 }
 
-export function isValidLensName(name: string): boolean {
-	return /^[a-z0-9][a-z0-9-]*$/.test(name);
-}
-
-/**
- * Serialize a lens definition to its file form; parseLensFile is the inverse.
- * The description is flattened to one line, since a newline inside it would
- * spill into the frontmatter and corrupt the file.
- */
-export function buildLensFile(definition: LensDefinition): string {
-	const description = definition.description?.replace(/\s+/g, " ").trim();
-	const lines = [
-		...(description ? [`description: ${description}`] : []),
-		...(definition.tools ? ["tools: true"] : []),
-	];
-	return lines.length > 0 ? `---\n${lines.join("\n")}\n---\n${definition.prompt}\n` : `${definition.prompt}\n`;
-}
-
-export interface LensCatalog {
+export interface HeadCatalog {
 	exists(name: string): boolean;
 	isDiagnostic(name: string): boolean;
 }
 
 /**
- * Resolve a requested lens set: drop unknown names, collapse to a single
- * diagnostic when one is present (diagnostics never mix with product lenses;
+ * Resolve a requested head set: drop unknown names, collapse to a single
+ * diagnostic when one is present (diagnostics never mix with product heads;
  * their one-shot revert needs an unambiguous set to restore), dedupe the rest.
  */
-export function sanitizeLensSet(requested: string[], catalog: LensCatalog): { lenses: string[]; unknown: string[] } {
+export function sanitizeHeadSet(requested: string[], catalog: HeadCatalog): { heads: string[]; unknown: string[] } {
 	const known = requested.filter((name) => catalog.exists(name));
 	const unknown = requested.filter((name) => !catalog.exists(name));
 	const diagnostic = known.find((name) => catalog.isDiagnostic(name));
-	return { lenses: diagnostic ? [diagnostic] : [...new Set(known)], unknown };
+	return { heads: diagnostic ? [diagnostic] : [...new Set(known)], unknown };
 }
 
 /**
- * Normalize a persisted config's lens field: a `lenses` array (an explicit
- * empty array means "no heads" and is respected), the pre-multi-head `lens`
- * string, or null when the entry carries neither.
+ * Normalize a persisted config's head field: a `heads` array (an explicit
+ * empty array means "no heads" and is respected), the pre-rename `lenses`
+ * array or `lens` string from older sessions, or null when the entry carries
+ * none of them.
  */
-export function savedLensList(config: { lenses?: unknown; lens?: unknown }): string[] | null {
+export function savedHeadList(config: { heads?: unknown; lenses?: unknown; lens?: unknown }): string[] | null {
+	if (Array.isArray(config.heads)) {
+		return config.heads.filter((name): name is string => typeof name === "string");
+	}
 	if (Array.isArray(config.lenses)) {
 		return config.lenses.filter((name): name is string => typeof name === "string");
 	}

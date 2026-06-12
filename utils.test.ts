@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
-	buildLensFile,
-	DELIVERY_MODES,
-	effectiveForce,
-	isValidLensName,
+	demoteStaleInterrupt,
+	isValidHeadName,
 	mergeObserverPayload,
 	parseDecision,
-	parseLensFile,
-	parseLensList,
+	parseHeadFile,
+	parseHeadList,
 	parseShutdownGrace,
-	sanitizeLensSet,
-	savedLensList,
+	sanitizeHeadSet,
+	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
 } from "./utils";
@@ -51,6 +49,10 @@ describe("parseDecision", () => {
 
 	it("rejects unknown actions", () => {
 		expect(parseDecision('{"action":"explode","reason":"r","message":"m"}').action).toBe("noop");
+	});
+
+	it("accepts print", () => {
+		expect(parseDecision('{"action":"print","reason":"fyi","message":"note"}').action).toBe("print");
 	});
 
 	it("caps reason and message lengths", () => {
@@ -212,85 +214,73 @@ describe("mergeObserverPayload", () => {
 	});
 });
 
-describe("parseLensFile", () => {
-	it("parses a plain body", () => {
-		expect(parseLensFile("brevity", "Review for verbosity.\n")).toEqual({
-			name: "brevity",
-			description: undefined,
-			prompt: "Review for verbosity.",
+describe("parseHeadFile", () => {
+	it("parses a full head file", () => {
+		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\n---\nKeep docs current.";
+		expect(parseHeadFile(content)).toEqual({
+			head: {
+				name: "docs",
+				description: "Keeps docs current",
+				tools: ["read", "write"],
+				autostart: true,
+				prompt: "Keep docs current.",
+			},
 		});
 	});
 
-	it("parses frontmatter with a description", () => {
-		const content = "---\ndescription: Flags wordy output\n---\nReview for verbosity.";
-		expect(parseLensFile("brevity", content)).toEqual({
-			name: "brevity",
-			description: "Flags wordy output",
-			prompt: "Review for verbosity.",
-		});
+	it("distinguishes absent tools (all) from empty tools (none)", () => {
+		const base = (toolsLine: string) => `---\nname: x\ndescription: d\n${toolsLine}---\nBody.`;
+		const head = (content: string) => {
+			const parsed = parseHeadFile(content);
+			if (!("head" in parsed)) throw new Error("expected a head");
+			return parsed.head;
+		};
+		expect(head(base("")).tools).toBeUndefined();
+		expect(head(base("tools: []\n")).tools).toEqual([]);
+		expect(head(base("tools:\n")).tools).toEqual([]);
+		expect(head(base("tools: read, grep\n")).tools).toEqual(["read", "grep"]);
 	});
 
-	it("ignores frontmatter without a description", () => {
-		expect(parseLensFile("x", "---\nauthor: me\n---\nBody.")).toEqual({
-			name: "x",
-			description: undefined,
-			prompt: "Body.",
-		});
+	it("leaves autostart undefined unless literally true", () => {
+		const parsed = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
+		expect(parsed).toEqual({ head: { name: "x", description: "d", tools: undefined, autostart: undefined, prompt: "Body." } });
 	});
 
-	it("returns null when there is no instruction", () => {
-		expect(parseLensFile("empty", "   \n")).toBeNull();
-		expect(parseLensFile("only-frontmatter", "---\ndescription: d\n---\n\n")).toBeNull();
+	it("requires frontmatter, name, description, and a body", () => {
+		expect(parseHeadFile("Just a body.")).toHaveProperty("error");
+		expect(parseHeadFile("---\ndescription: d\n---\nBody.")).toEqual({ error: "missing name:" });
+		expect(parseHeadFile("---\nname: x\n---\nBody.")).toEqual({ error: "missing description:" });
+		expect(parseHeadFile("---\nname: x\ndescription: d\n---\n  \n")).toEqual({ error: "missing instruction body" });
 	});
 
-	it("parses the acting-head marker", () => {
-		expect(parseLensFile("docs", "---\ntools: true\n---\nKeep docs current.")?.tools).toBe(true);
-		expect(parseLensFile("docs", "---\ntools: false\n---\nBody.")?.tools).toBeUndefined();
-		expect(parseLensFile("docs", "Body.")?.tools).toBeUndefined();
-	});
-
-	it("round-trips through buildLensFile", () => {
-		const definition = { name: "docs", description: "Writes docs", tools: true, prompt: "Keep docs current." };
-		expect(parseLensFile("docs", buildLensFile(definition))).toEqual(definition);
-		const verdictOnly = { name: "brevity", description: undefined, tools: undefined, prompt: "Review for verbosity." };
-		expect(parseLensFile("brevity", buildLensFile(verdictOnly))).toEqual(verdictOnly);
+	it("rejects invalid and reserved names", () => {
+		expect(parseHeadFile("---\nname: Docs\ndescription: d\n---\nBody.")).toHaveProperty("error");
+		expect(parseHeadFile("---\nname: none\ndescription: d\n---\nBody.")).toHaveProperty("error");
 	});
 });
 
-describe("parseLensList", () => {
+describe("parseHeadList", () => {
 	it("splits on commas and whitespace", () => {
-		expect(parseLensList("quality,security simplifier")).toEqual(["quality", "security", "simplifier"]);
+		expect(parseHeadList("quality,security simplifier")).toEqual(["quality", "security", "simplifier"]);
 	});
 
 	it("dedupes and drops empties", () => {
-		expect(parseLensList(" quality,, quality ,")).toEqual(["quality"]);
+		expect(parseHeadList(" quality,, quality ,")).toEqual(["quality"]);
 	});
 
 	it("returns empty for blank input", () => {
-		expect(parseLensList("  ")).toEqual([]);
+		expect(parseHeadList("  ")).toEqual([]);
 	});
 });
 
-describe("effectiveForce", () => {
-	it("caps verdict force at the delivery mode, full matrix", () => {
-		const expected: Record<string, Record<string, number>> = {
-			print: { noop: 0, queue: 0, steer: 0, interrupt: 0 },
-			queue: { noop: 0, queue: 1, steer: 1, interrupt: 1 },
-			steer: { noop: 0, queue: 1, steer: 2, interrupt: 2 },
-			interrupt: { noop: 0, queue: 1, steer: 2, interrupt: 3 },
-		};
-		for (const mode of DELIVERY_MODES) {
-			for (const action of ["noop", "queue", "steer", "interrupt"] as const) {
-				expect(effectiveForce(action, mode), `${action} in ${mode}`).toBe(expected[mode][action]);
-			}
-		}
-	});
-
-	it("demotes a stale-snapshot interrupt to steer, leaving everything else alone", () => {
-		expect(effectiveForce("interrupt", "interrupt", true)).toBe(2);
-		expect(effectiveForce("interrupt", "queue", true)).toBe(1);
-		expect(effectiveForce("steer", "interrupt", true)).toBe(2);
-		expect(effectiveForce("noop", "interrupt", true)).toBe(0);
+describe("demoteStaleInterrupt", () => {
+	it("demotes only a stale interrupt, and only to steer", () => {
+		expect(demoteStaleInterrupt("interrupt", true)).toBe("steer");
+		expect(demoteStaleInterrupt("interrupt", false)).toBe("interrupt");
+		expect(demoteStaleInterrupt("steer", true)).toBe("steer");
+		expect(demoteStaleInterrupt("queue", true)).toBe("queue");
+		expect(demoteStaleInterrupt("print", true)).toBe("print");
+		expect(demoteStaleInterrupt("noop", true)).toBe("noop");
 	});
 });
 
@@ -323,43 +313,44 @@ describe("summarizeLoopUsage", () => {
 	});
 });
 
-describe("sanitizeLensSet", () => {
+describe("sanitizeHeadSet", () => {
 	const catalog = {
 		exists: (name: string) => ["quality", "security", "test"].includes(name),
 		isDiagnostic: (name: string) => name === "test",
 	};
 
 	it("dedupes and splits unknown names", () => {
-		expect(sanitizeLensSet(["quality", "quality", "nope"], catalog)).toEqual({
-			lenses: ["quality"],
+		expect(sanitizeHeadSet(["quality", "quality", "nope"], catalog)).toEqual({
+			heads: ["quality"],
 			unknown: ["nope"],
 		});
 	});
 
 	it("collapses to a single diagnostic when one is present", () => {
-		expect(sanitizeLensSet(["quality", "test", "security"], catalog).lenses).toEqual(["test"]);
+		expect(sanitizeHeadSet(["quality", "test", "security"], catalog).heads).toEqual(["test"]);
 	});
 
-	it("returns empty lenses when nothing is known", () => {
-		expect(sanitizeLensSet(["nope"], catalog).lenses).toEqual([]);
+	it("returns empty heads when nothing is known", () => {
+		expect(sanitizeHeadSet(["nope"], catalog).heads).toEqual([]);
 	});
 });
 
-describe("savedLensList", () => {
-	it("prefers the lenses array and filters non-strings", () => {
-		expect(savedLensList({ lenses: ["a", 1, "b"] })).toEqual(["a", "b"]);
+describe("savedHeadList", () => {
+	it("prefers the heads array and filters non-strings", () => {
+		expect(savedHeadList({ heads: ["a", 1, "b"] })).toEqual(["a", "b"]);
 	});
 
 	it("respects an explicit empty array", () => {
-		expect(savedLensList({ lenses: [] })).toEqual([]);
+		expect(savedHeadList({ heads: [] })).toEqual([]);
 	});
 
-	it("reads the pre-multi-head lens string", () => {
-		expect(savedLensList({ lens: "quality" })).toEqual(["quality"]);
+	it("reads the pre-rename lenses array and lens string", () => {
+		expect(savedHeadList({ lenses: ["quality"] })).toEqual(["quality"]);
+		expect(savedHeadList({ lens: "quality" })).toEqual(["quality"]);
 	});
 
-	it("returns null when the entry carries neither", () => {
-		expect(savedLensList({})).toBeNull();
+	it("returns null when the entry carries none of the fields", () => {
+		expect(savedHeadList({})).toBeNull();
 	});
 });
 
@@ -426,32 +417,16 @@ describe("parseShutdownGrace", () => {
 	});
 });
 
-describe("isValidLensName", () => {
+describe("isValidHeadName", () => {
 	it("accepts kebab-case and rejects the rest", () => {
-		expect(isValidLensName("docs-drift")).toBe(true);
-		expect(isValidLensName("a1")).toBe(true);
-		expect(isValidLensName("Docs")).toBe(false);
-		expect(isValidLensName("-x")).toBe(false);
-		expect(isValidLensName("")).toBe(false);
-	});
-});
-
-describe("buildLensFile", () => {
-	it("round-trips through parseLensFile", () => {
-		const definition = { name: "brevity", description: "Flags wordy output", prompt: "Review for verbosity." };
-		expect(parseLensFile("brevity", buildLensFile(definition))).toEqual(definition);
+		expect(isValidHeadName("docs-drift")).toBe(true);
+		expect(isValidHeadName("a1")).toBe(true);
+		expect(isValidHeadName("Docs")).toBe(false);
+		expect(isValidHeadName("-x")).toBe(false);
+		expect(isValidHeadName("")).toBe(false);
 	});
 
-	it("round-trips without a description", () => {
-		expect(parseLensFile("x", buildLensFile({ name: "x", prompt: "Body." }))).toEqual({
-			name: "x",
-			description: undefined,
-			prompt: "Body.",
-		});
-	});
-
-	it("flattens newlines in the description so frontmatter cannot be corrupted", () => {
-		const built = buildLensFile({ name: "x", description: "line one\nline two", prompt: "Body." });
-		expect(parseLensFile("x", built)).toEqual({ name: "x", description: "line one line two", prompt: "Body." });
+	it("reserves none for the clear-the-set command form", () => {
+		expect(isValidHeadName("none")).toBe(false);
 	});
 });

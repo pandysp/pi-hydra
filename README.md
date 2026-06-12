@@ -4,13 +4,13 @@
 
 > Extra heads for your coding agent.
 
-hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own lens (quality, security, simplifier, API design) that sees exactly what the agent sees, judges every step, and answers with one of four decisions: stay quiet, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: a lens marked `tools: true` reads, searches, runs, and writes through the agent's own tools before its verdict (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
+hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own focus (quality, security, simplifier, API design, or anything you write) that sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
 
 ## Why
 
 Review usually happens after the work. The PR is finished, a reviewer (human or agent) loads the whole trajectory into fresh context at full price, and the findings arrive when the design is already set, so fixing them means rework. The same goes for evaluating agent behavior: replaying a finished trajectory into an eval agent costs full input price and happens too late to change anything.
 
-hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observer prompt (~220 tokens) plus a cache read at 10% of input price. Concretely: an observation on a 17K-token session costs about half a cent and hits 99% cache; the verdict usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
+hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observer prompt (~220 tokens) plus a cache read at 10% of input price. Concretely: an observation on a 17K-token session costs about half a cent and hits 99% cache; the decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
 
 A bad assumption caught mid-implementation costs one correction message. Caught in review, it costs a refactor. Caught in production, an incident. The heads do not need to catch much to pay for themselves.
 
@@ -20,57 +20,70 @@ You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity rep
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
+git clone https://github.com/pandysp/pi-hydra && cp pi-hydra/heads/*.md ~/.pi/agent/hydra/
 pi
 ```
 
-(For development, clone and symlink instead: see [CONTRIBUTING.md](CONTRIBUTING.md).)
+(Or skip the clone and ask your agent to write a head: the `hydra` tool teaches it the format. For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md). To install for your whole team, `pi install -l` records the package in the repo's `.pi/settings.json`, and pi installs it for everyone on startup.)
 
-The footer shows `hydra: quality | steer | (no obs yet)`. Work normally; after the first agent run you will see observations arrive:
-
-```
-hydra:quality steer hit 98.5% (last 99.1%) $0.0234 (12 obs)
-```
-
-hydra starts in `steer` mode: waitable findings queue for the agent's next turn, urgent ones are injected between turns of the current run. Adjust to taste:
+The example `quality` head is marked `autostart`, so after the first agent run you will see observations arrive in the footer:
 
 ```
-/hydra-delivery print            # watch-only until you trust the heads
-/hydra-delivery interrupt        # emergencies abort the in-flight run
-/hydra-lens quality,security     # several heads at once; they fan out in parallel
+hydra:quality hit 98.5% (last 99.1%) $0.0234 (12 obs)
 ```
+
+Add heads to taste:
+
+```
+/hydra-heads                     # multi-select picker over every head you have
+/hydra-heads quality,security    # or set the active heads directly
+```
+
+### Heads are files
+
+A head is one markdown file: frontmatter for identity and capabilities, body for the instruction.
+
+```markdown
+---
+name: docs-keeper
+description: Keeps docs/notes.md current with decisions as they happen
+tools: read, write, edit, ls
+---
+You maintain docs/notes.md. When the conversation contains a decision,
+constraint, or surprise not yet in the file, read it, add the missing
+entry, and keep entries one line each. Your decision is usually noop:
+the file is your work product. Do not edit anything else.
+```
+
+Your heads live in `~/.pi/agent/hydra/`; a repo can ship its own in `.pi/hydra/` (a project head overrides a same-named user head, so a team can specialize your generic heads with ones that know the codebase). Files are re-read at the start of every run, so editing a head tunes the very next observation. `tools:` defaults to everything the agent has; `tools: []` makes a judge-only head; a list narrows to a subset. `autostart: true` puts a head in the active set of every fresh session. The full format and a library of example perspectives are in [`docs/heads.md`](docs/heads.md).
 
 ### Commands
 
 | command | what it does |
 |---|---|
-| `/hydra` | toggle the observer |
-| `/hydra-lens <set>` | pick the lens set, comma-separated: `quality`, `security`, `simplifier`, `api-design`, plus your custom lenses |
-| `/hydra-delivery <mode>` | cap how forcefully findings land: `print`, `queue`, `steer` (default), `interrupt` |
+| `/hydra-heads [set\|none]` | no argument opens the picker; an argument sets the active heads declaratively |
 | `/hydra-stats` | cache hit ratio, cost, recent decisions |
 | `/hydra-debug` | dump driver/observer payload pairs for diffing |
 
-### Delivery modes
+The active head set persists per session and survives resume. For headless runs (`pi -p`), seed it with `--hydra-heads quality,security`. An explicit flag beats the saved session set; the saved set beats `autostart`.
 
-A head's verdict asks for a force level (`noop`, `queue`, `steer`, `interrupt`); the delivery mode caps it. A head can always choose less force than the mode allows, never more. The mode names are pi's own delivery vocabulary:
+### Decisions
 
-- `print`: findings render in the TUI but never enter the agent's context. Watch-only.
-- `queue`: findings wait until the run ends, then join the context of the agent's next turn.
-- `steer` (default): urgent findings are injected as a real user message between turns of the current run, so the agent corrects course while still working. Waitable findings still queue.
-- `interrupt`: the cord. An `interrupt` verdict aborts the in-flight run, and the finding opens the next one. Lesser verdicts behave as in `steer` mode.
+Every observation ends in a decision that names the finding's delivery: when and how it reaches the agent, if at all.
 
-### Lenses
+- `noop`: nothing to report, nothing delivered.
+- `print`: a note to you. Renders in the TUI, never enters the agent's context.
+- `queue`: waits until the run ends, then joins the context of the agent's next turn.
+- `steer`: injected as a real user message between turns of the current run, so the agent corrects course while still working.
+- `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md). You can add your own heads: a markdown file in `~/.pi/agent/hydra/lenses/` becomes a lens, is re-read at the start of every run, and may override a built-in. Editing a lens file mid-session tunes the head for the very next observation.
+Queue against steer is a timeliness choice; interrupt is for findings that cannot wait for the run to end. There is no setting that caps any of this: when a head may pull the cord is part of its instruction, and the file is the audit trail.
 
-A lens whose frontmatter says `tools: true` is an **acting head**: instead of judging from the replayed context alone, it runs the agent's own tools (read, bash, write, grep...) through pi's agent loop before deciding. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in. Every file write is announced in the session, every loop call replays the same cached prefix, and a loop that has not produced a verdict after 25 model turns is wound down. See [`docs/lenses.md`](docs/lenses.md) for authoring guidance.
+### The agent manages its own heads
 
-Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens quality,security`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
+hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
 
-### The agent configures its own heads
-
-hydra registers a `hydra` tool the agent can call: list the setup, switch the lens set, write or remove custom lenses. A lens the agent writes applies to the very next observation in the same run, so a workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier. Every agent-made change is announced in the TUI, lands as a plain markdown file you can audit, and persists like any other settings change. The observers see the reconfiguration too, since they replay the agent's own context.
-
-The tool deliberately stops at lenses. The agent shapes what its observers look for, and can silence hydra only by removing heads one by one, each removal visible. How forcefully findings reach the session (`/hydra-delivery`), the `/hydra` toggle, and pi's extension enable/disable stay user-level controls.
+The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which stays yours.
 
 ## How it works
 
@@ -78,14 +91,13 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 ## Where this is going
 
-- **Self-tuning heads** ([#5](https://github.com/pandysp/pi-hydra/issues/5)). The agent can already write and swap its lenses mid-session, and an acting head can retune its peers through the same `hydra` tool; the remaining piece is the habit loop, where "this head flags too much" becomes a lens edit without anyone asking.
-- **Mid-generation verdicts.** Every verdict today is formed from a committed request snapshot, so a single long-running LLM call is never evaluated while it streams. That would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
+- **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If any of these interest you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.
 
 ## History
 
-hydra began as **andon**, named for Toyota's emergency cord: any worker can stop the line when they spot a defect. The original was a bash and tmux contraption that reverse-engineered Claude Code's prompt pipeline to get cache parity, and its only job was interrupting the agent on urgent findings. The project has since outgrown interrupt-only (observers steer, queue, or stay quiet, and soon act asynchronously), and the pi extension replaced all of the reverse engineering with first-class hooks. The original lives in [`archive/`](archive/README.md), including the manufacturing-inspired manifesto that still explains the philosophy.
+hydra began as **andon**, named for Toyota's emergency cord: any worker can stop the line when they spot a defect. The original was a bash and tmux contraption that reverse-engineered Claude Code's prompt pipeline to get cache parity, and its only job was interrupting the agent on urgent findings. The project has since outgrown interrupt-only (observers steer, queue, act, or stay quiet), and the pi extension replaced all of the reverse engineering with first-class hooks. The original lives in [`archive/`](archive/README.md), including the manufacturing-inspired manifesto that still explains the philosophy.
 
 ## License
 

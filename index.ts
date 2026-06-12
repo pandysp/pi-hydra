@@ -5,14 +5,16 @@
  * driver's exact provider payload with one observer prompt appended. Because
  * the prefix is byte-identical, every observation is a prompt-cache read of
  * the entry the driver itself just wrote (97%+ hit ratio). The observer
- * answers with a JSON decision (noop, queue, steer, or interrupt) which
- * hydra routes back into the session.
+ * answers with a JSON decision naming its finding's delivery (noop, print,
+ * queue, steer, or interrupt) which hydra routes back into the session.
  *
- * A custom lens marked `tools: true` is an acting head: before deciding, it
- * may run the driver's own tools through pi's agent loop (a docs head keeps
- * notes current while the driver works, a research head looks something up
- * and steers the finding in). Every loop call replays the same byte-true
- * prefix; every file write is announced to the session.
+ * A head is one markdown file: frontmatter for identity and capabilities,
+ * body for the instruction. Files live in ~/.pi/agent/hydra (user) and
+ * .pi/hydra (project; a project head shadows a same-named user head). By
+ * default a head may run the driver's own tools through pi's agent loop
+ * before deciding; `tools: []` makes a judge-only head, a list narrows the
+ * executable set. Every loop call replays the same byte-true prefix; every
+ * file write is announced to the session.
  *
  * Observations fire at the driver's own cache commit points (see
  * experiments/README.md for the empirical basis):
@@ -27,22 +29,20 @@
  *   write once and pre-warms the driver's next, human-paced turn.
  *
  * Usage:
- *   pi install /path/to/pi-hydra   (or symlink into ~/.pi/agent/extensions)
- *   /hydra            toggle the observer
- *   /hydra-lens       pick the lens set, comma-separated (built-in + custom)
- *   /hydra-delivery   pick how findings reach you (print, queue, steer, interrupt)
+ *   pi install git:github.com/pandysp/pi-hydra
+ *   /hydra-heads      no argument opens the picker; an argument sets the
+ *                     active heads ("quality,security"), `none` clears them
  *   /hydra-stats      cache hit ratio, cost, and recent decisions
  *   /hydra-debug      dump driver/observer payload pairs for diffing
  *
- * The agent can manage its own heads through the registered `hydra` tool
- * (list, set-lenses, write-lens, remove-lens). Delivery mode, /hydra, and
- * pi's extension management stay user-level controls: the agent shapes what
- * its observers look for, never how forcefully they reach the session.
+ * The agent manages head files like any other file and points the heads
+ * through the registered `hydra` tool (add, remove). The active set is
+ * session state; everything else about a head lives in its file.
  */
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { complete, StringEnum, Type } from "@earendil-works/pi-ai";
@@ -58,21 +58,18 @@ import {
 	getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
-import type { Action, AnthropicPayload, Decision, DeliveryMode, LensDefinition, ObserverUsage } from "./utils";
+import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import type { Action, AnthropicPayload, Decision, HeadDefinition, ObserverUsage } from "./utils";
 import {
-	buildLensFile,
-	DELIVERY_MODES,
-	effectiveForce,
+	demoteStaleInterrupt,
 	isAnthropicPayload,
-	isValidLensName,
 	mergeObserverPayload,
 	parseDecision,
-	parseLensFile,
-	parseLensList,
+	parseHeadFile,
+	parseHeadList,
 	parseShutdownGrace,
-	sanitizeLensSet,
-	savedLensList,
+	sanitizeHeadSet,
+	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
 } from "./utils";
@@ -83,25 +80,13 @@ import {
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
 
 // Correctness guard for acting heads, deliberately not a cost ceiling: a
-// loop that has not produced a verdict after this many model turns is not
+// loop that has not produced a decision after this many model turns is not
 // converging and gets wound down (noop, with a warning).
 const MAX_TOOL_ITERATIONS = 25;
 
-// Review lenses; reference descriptions in docs/lenses.md.
-const LENS_PROMPTS = {
-	quality:
-		"Review through a QUALITY lens. Focus on correctness risks, missing verification, dangerous assumptions, obvious regressions, and code that looks likely to break. Do not nitpick style.",
-	security:
-		"Review through a SECURITY lens. Focus on auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, and trust boundaries. Do not comment on style or product scope.",
-	simplifier:
-		"Review through a SIMPLIFIER lens. Focus on unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, and over-built solutions. Do not comment on unrelated bugs or security.",
-	"api-design":
-		"Review through an API DESIGN lens. Focus on contract clarity, compatibility, consistency, error shapes, naming, and ergonomics. Do not comment on internal code structure.",
-} as const;
-
-// Diagnostic lenses force a fixed decision so the delivery pipeline can be
-// smoke-tested end-to-end. Accepted by /hydra-lens but hidden from its
-// completions.
+// Diagnostic heads force a fixed decision so the delivery pipeline can be
+// smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
+// completions and the picker.
 const DIAGNOSTIC_PROMPTS = {
 	test: `<system-reminder>Developer integration test for the hydra framework. The wrapper requires EXACTLY this output, with no preamble, no markdown, no thinking, no explanation:
 
@@ -117,32 +102,34 @@ No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-
 
 type ObserveKind = "piggyback" | "run-end";
 
-const BUILT_IN_LENS_NAMES = Object.keys(LENS_PROMPTS);
+const DECISION_SHAPE = '{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
 
-// Keep the real-lens prompt SHORT: the driver's context is already cached, so
+// Keep the head prompt SHORT: the driver's context is already cached, so
 // this prompt is the only fresh input the observer pays for per call.
-// Verdict lenses (the default) keep the hard tool ban: the observer sits atop
-// a context saturated with driver tool calls, and anything softer leaks into
-// "let me check" excursions. Acting lenses (`tools: true` frontmatter) get
-// the tool-permitting variant instead.
-function buildObserverPrompt(lens: string, instruction: string, tools: boolean): string {
-	if (lens in DIAGNOSTIC_PROMPTS) {
-		return DIAGNOSTIC_PROMPTS[lens as keyof typeof DIAGNOSTIC_PROMPTS];
+// Judge-only heads (`tools: []`) keep the hard tool ban: the observer sits
+// atop a context saturated with driver tool calls, and anything softer leaks
+// into "let me check" excursions. Acting heads get the tool-permitting
+// variant, with the allowance spelled out when the file narrows it.
+function buildObserverPrompt(head: string, instruction: string, tools: string[] | undefined): string {
+	if (head in DIAGNOSTIC_PROMPTS) {
+		return DIAGNOSTIC_PROMPTS[head as keyof typeof DIAGNOSTIC_PROMPTS];
 	}
-	if (tools) {
-		return `<system-reminder>Side observer with tool access. You may use the available tools to check facts or act on your lens; the main agent does not see your tool calls, only files you change and the verdict you send. When done, reply with one JSON object, nothing else:
-{"action":"noop|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
+	const acting = tools === undefined || tools.length > 0;
+	if (acting) {
+		const allowance = tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
+		return `<system-reminder>Side observer with tool access. You may use ${allowance} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and the decision you send. When done, reply with one JSON object, nothing else:
+${DECISION_SHAPE}
 
 LENS: ${instruction}
 
-Noop when your work product is the files you wrote. Queue findings that can wait. Steer to put a finding in front of the agent between turns. Interrupt only for emergencies that must stop the line. Don't prefix message with [${lens}].</system-reminder>`;
+Noop when your work product is the files you wrote. Print a note the user sees but the agent does not. Queue findings that can wait. Steer to put a finding in front of the agent between turns. Interrupt only for emergencies that must stop the line. Don't prefix message with [${head}].</system-reminder>`;
 	}
 	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
-{"action":"noop|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
+${DECISION_SHAPE}
 
 LENS: ${instruction}
 
-Noop unless something warrants feedback. Queue if useful but waitable. Steer to correct the agent between turns. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${lens}].</system-reminder>`;
+Noop unless something warrants feedback. Print a note the user sees but the agent does not. Queue if useful but waitable. Steer to correct the agent between turns. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${head}].</system-reminder>`;
 }
 
 // One observer call, persisted to the session as a custom "hydra-call" entry
@@ -150,7 +137,7 @@ Noop unless something warrants feedback. Queue if useful but waitable. Steer to 
 interface HydraCall {
 	timestamp: number;
 	turnIndex: number;
-	lens: string;
+	head: string;
 	kind?: ObserveKind;
 	action: Action;
 	input: number;
@@ -174,136 +161,209 @@ interface Observation {
 	payload: unknown;
 	assistant: AssistantMessage | null;
 	turnIndex: number;
-	lens: string;
-	prompt: string; // resolved at scheduling time, so lens edits never race an in-flight job
-	tools: boolean; // acting head: may run tool calls before its verdict
+	head: string;
+	prompt: string; // resolved at scheduling time, so head edits never race an in-flight job
+	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
 	kind: ObserveKind;
 }
 
 interface FeedbackDetails {
-	lens: string;
+	head: string;
 	action: Action;
 	reason: string;
-	deliveryMode: DeliveryMode;
+	// Pre-rename entries persisted `lens`; the renderer falls back to it.
+	lens?: string;
 }
 
-// Lens set, delivery mode, and enabled survive resume and branch navigation
-// as the latest "hydra-config" entry on the branch. CLI flags seed sessions
-// that have no persisted config yet (the only way to configure headless
-// `pi -p` runs, which cannot issue slash commands). `lens` is the pre-multi-
-// head field name, still read for old sessions.
+// The active head set survives resume and branch navigation as the latest
+// "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
+// the saved set (present intent over recorded intent); heads marked
+// autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
+// field names, still read for old sessions.
 interface HydraConfig {
-	lenses: string[];
-	deliveryMode: DeliveryMode;
-	enabled: boolean;
+	heads: string[];
+	lenses?: string[];
 	lens?: string;
 }
 
 const MAX_DELIVERED_KEYS = 200;
 
+type DiscoveredHead = HeadDefinition & { source: "user" | "project" };
+
 export default function hydraExtension(pi: ExtensionAPI) {
-	let enabled = true;
-	// The active lens set: one observation fans out per lens, in parallel.
-	// Either a single diagnostic lens or any number of product lenses; the
+	// The active head set: one observation fans out per head, in parallel.
+	// Either a single diagnostic head or any number of product heads; the
 	// two never mix, since the diagnostics' one-shot revert restores
-	// productLenses.
-	let lenses: string[] = ["quality"];
-	let productLenses: string[] = ["quality"];
-	let deliveryMode: DeliveryMode = "steer";
+	// productHeads. Empty means hydra observes nothing.
+	let activeHeads: string[] = [];
+	let productHeads: string[] = [];
 
-	pi.registerFlag("hydra-lens", {
-		description: `Initial hydra lens set, comma-separated (${BUILT_IN_LENS_NAMES.join("|")} or custom)`,
+	pi.registerFlag("hydra-heads", {
+		description: "Initial hydra head set, comma-separated, or `none` (beats the saved session set)",
 		type: "string",
 	});
-	pi.registerFlag("hydra-delivery", {
-		description: "Initial hydra delivery mode (print|queue|steer|interrupt)",
-		type: "string",
-	});
-	pi.registerFlag("hydra-off", {
-		description: "Start with the hydra observer disabled",
-		type: "boolean",
-		default: false,
-	});
 
-	// Custom lenses: one markdown file per lens in ~/.pi/agent/hydra/lenses
-	// (filename = lens name, optional frontmatter description, body = the lens
-	// instruction). Re-read at every agent_start, so editing a lens applies to
-	// the next run without a reload. A custom lens may override a built-in by
-	// name; the diagnostic lenses are not overridable.
-	const lensDir = join(getAgentDir(), "hydra", "lenses");
-	let customLenses = new Map<string, LensDefinition>();
+	// Heads: one markdown file per head, name and capabilities in the
+	// frontmatter, instruction in the body. Two directories, re-read at every
+	// agent_start and hydra tool call so edits apply to the next observation
+	// without a reload. A project head shadows a same-named user head; both
+	// loads are announced, since project files are repo-controlled prompts
+	// (consented through pi's folder trust, like everything else in .pi/).
+	const userHeadDir = join(getAgentDir(), "hydra");
+	let heads = new Map<string, DiscoveredHead>();
+	let announcedDiscovery = "";
 
-	function discoverLenses(ctx: ExtensionContext) {
-		const found = new Map<string, LensDefinition>();
+	function isDirectory(path: string): boolean {
+		try {
+			return statSync(path).isDirectory();
+		} catch {
+			return false;
+		}
+	}
+
+	function findProjectHeadDir(cwd: string): string | null {
+		let current = cwd;
+		while (true) {
+			const candidate = join(current, ".pi", "hydra");
+			if (isDirectory(candidate)) {
+				return candidate;
+			}
+			const parent = dirname(current);
+			if (parent === current) {
+				return null;
+			}
+			current = parent;
+		}
+	}
+
+	function loadHeadsFromDir(ctx: ExtensionContext, dir: string, source: "user" | "project"): Map<string, DiscoveredHead> {
+		const loaded = new Map<string, DiscoveredHead>();
 		let files: string[];
 		try {
-			files = readdirSync(lensDir);
+			files = readdirSync(dir).sort();
 		} catch {
-			customLenses = found; // no directory means no custom lenses
-			return;
+			return loaded; // no directory means no heads
 		}
 		for (const file of files) {
 			if (!file.endsWith(".md")) {
 				continue;
 			}
-			const name = file.slice(0, -".md".length);
-			if (name in DIAGNOSTIC_PROMPTS) {
+			let parsed: ReturnType<typeof parseHeadFile>;
+			try {
+				parsed = parseHeadFile(readFileSync(join(dir, file), "utf8"));
+			} catch (error) {
+				ctx.ui.notify(`hydra: failed to read ${join(dir, file)}: ${error instanceof Error ? error.message : String(error)}`, "warning");
 				continue;
 			}
-			try {
-				const definition = parseLensFile(name, readFileSync(join(lensDir, file), "utf8"));
-				if (definition) {
-					found.set(name, definition);
+			if ("error" in parsed) {
+				ctx.ui.notify(`hydra: skipping ${join(dir, file)}: ${parsed.error}`, "warning");
+				continue;
+			}
+			const { head } = parsed;
+			if (head.name in DIAGNOSTIC_PROMPTS) {
+				ctx.ui.notify(`hydra: skipping ${join(dir, file)}: "${head.name}" is a reserved diagnostic name`, "warning");
+				continue;
+			}
+			if (loaded.has(head.name)) {
+				ctx.ui.notify(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`, "warning");
+				continue;
+			}
+			loaded.set(head.name, { ...head, source });
+		}
+		return loaded;
+	}
+
+	function discoverHeads(ctx: ExtensionContext) {
+		const merged = loadHeadsFromDir(ctx, userHeadDir, "user");
+		const projectDir = findProjectHeadDir(ctx.cwd);
+		const project = projectDir ? loadHeadsFromDir(ctx, projectDir, "project") : new Map<string, DiscoveredHead>();
+		const shadowed: string[] = [];
+		for (const [name, head] of project) {
+			if (merged.has(name)) {
+				shadowed.push(name);
+			}
+			merged.set(name, head);
+		}
+		heads = merged;
+
+		// Announce project heads once per distinct discovery result, not on
+		// every rediscovery (which runs at each agent_start and tool call).
+		if (project.size > 0 && projectDir) {
+			const signature = `${projectDir}|${[...project.keys()].join(",")}|${shadowed.join(",")}`;
+			if (signature !== announcedDiscovery) {
+				announcedDiscovery = signature;
+				ctx.ui.notify(`hydra: project heads from ${projectDir}: ${[...project.keys()].join(", ")}`, "info");
+				if (shadowed.length > 0) {
+					ctx.ui.notify(`hydra: project head shadows your user head: ${shadowed.join(", ")}`, "warning");
 				}
-			} catch (error) {
-				ctx.ui.notify(`hydra: failed to read lens ${file}: ${error instanceof Error ? error.message : String(error)}`, "warning");
 			}
 		}
-		customLenses = found;
+
+		// A vanished file must not leave a ghost in the active set; dropping
+		// it with a notice beats observing with a head that no longer exists.
+		const pruned = activeHeads.filter((name) => headExists(name));
+		if (pruned.length !== activeHeads.length) {
+			const dropped = activeHeads.filter((name) => !headExists(name));
+			ctx.ui.notify(`hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
+			activeHeads = pruned;
+			productHeads = productHeads.filter((name) => headExists(name));
+			updateFooter(ctx);
+		}
 	}
 
-	function lensExists(name: string): boolean {
-		return name in LENS_PROMPTS || name in DIAGNOSTIC_PROMPTS || customLenses.has(name);
+	function headExists(name: string): boolean {
+		return heads.has(name) || name in DIAGNOSTIC_PROMPTS;
 	}
 
-	function lensNames(): string[] {
-		return [...new Set([...BUILT_IN_LENS_NAMES, ...customLenses.keys()])].sort();
+	function headNames(): string[] {
+		return [...heads.keys()].sort();
 	}
 
-	const lensCatalog = {
-		exists: (name: string) => lensExists(name),
+	const headCatalog = {
+		exists: (name: string) => headExists(name),
 		isDiagnostic: (name: string) => name in DIAGNOSTIC_PROMPTS,
 	};
 
-	// Apply a lens set from any surface (command, flag, tool). Returns false
-	// when nothing valid was requested; the current set stays in place.
-	function setLensSet(ctx: ExtensionContext, requested: string[]): boolean {
-		const next = sanitizeLensSet(requested, lensCatalog);
+	// Apply a head set from any surface (command, picker, flag, tool).
+	// Returns false when nothing valid was requested; the current set stays.
+	function setHeadSet(ctx: ExtensionContext, requested: string[]): boolean {
+		const next = sanitizeHeadSet(requested, headCatalog);
 		if (next.unknown.length > 0) {
-			ctx.ui.notify(`hydra: unknown lens: ${next.unknown.join(", ")}. valid: ${lensNames().join(", ")}`, "warning");
+			ctx.ui.notify(`hydra: unknown head: ${next.unknown.join(", ")}. available: ${headNames().join(", ") || "none"}`, "warning");
 		}
-		if (next.lenses.length === 0) {
+		if (next.heads.length === 0) {
 			return false;
 		}
-		lenses = next.lenses;
-		if (!next.lenses.some((name) => name in DIAGNOSTIC_PROMPTS)) {
-			productLenses = next.lenses;
+		activeHeads = next.heads;
+		if (!next.heads.some((name) => name in DIAGNOSTIC_PROMPTS)) {
+			productHeads = next.heads;
 		}
 		persistConfig();
 		updateFooter(ctx);
 		return true;
 	}
 
-	function observerPromptFor(name: string, tools: boolean): string {
-		const instruction =
-			customLenses.get(name)?.prompt ?? LENS_PROMPTS[name as keyof typeof LENS_PROMPTS] ?? LENS_PROMPTS.quality;
+	// The deliberate "observe nothing" state; distinct from setHeadSet, which
+	// refuses to empty the set by accident (e.g. a typo'd name).
+	function clearHeadSet(ctx: ExtensionContext) {
+		activeHeads = [];
+		productHeads = [];
+		persistConfig();
+		updateFooter(ctx);
+	}
+
+	function observerPromptFor(name: string, tools: string[] | undefined): string {
+		const instruction = heads.get(name)?.prompt ?? "";
 		return buildObserverPrompt(name, instruction, tools);
 	}
 
-	// Only a custom lens can declare itself an acting head; built-ins and
-	// diagnostics are verdict-only by definition.
-	function lensUsesTools(name: string): boolean {
-		return customLenses.get(name)?.tools === true;
+	// A head's executable allowance: diagnostics never act; a head file's
+	// omitted `tools:` means everything, `[]` means judging only.
+	function headTools(name: string): string[] | undefined {
+		if (name in DIAGNOSTIC_PROMPTS) {
+			return [];
+		}
+		return heads.get(name)?.tools;
 	}
 
 	// Driver capture: the exact provider payload of the most recent request,
@@ -317,19 +377,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
 
-	// Conflating single-slot scheduler, per head: every lens has at most one
+	// Conflating single-slot scheduler, per head: every head has at most one
 	// observation in flight and one waiting slot that a newer snapshot
 	// overwrites. Observations always run to completion; staleness is bounded
 	// to one cycle because the slot always holds the newest snapshot. The
 	// granularity is per head (not one global batch) so an acting head's
-	// minutes-long tool loop cannot starve the verdict heads, and a head busy
+	// minutes-long tool loop cannot starve the judging heads, and a head busy
 	// through a commit point still reviews the newest snapshot when it frees
 	// up. session_shutdown awaits the in-flight runs.
-	interface Head {
+	interface HeadRunner {
 		pending: Observation | null;
 		running: Promise<void> | null;
 	}
-	const heads = new Map<string, Head>();
+	const runners = new Map<string, HeadRunner>();
 	const lifecycleAbort = new AbortController();
 
 	// Stats, rebuilt from the current session branch on restore.
@@ -354,13 +414,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	function updateFooter(ctx: ExtensionContext) {
-		if (!enabled) {
-			ctx.ui.setStatus("hydra", undefined);
-			return;
-		}
-		const lensLabel = lenses.length > 0 ? lenses.join("+") : "no heads";
+		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
 		if (calls.length === 0) {
-			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${lensLabel} | ${deliveryMode} | (no obs yet)`));
+			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
 			return;
 		}
 		const { cost, meanHit } = cumulative();
@@ -368,9 +424,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const hitColor = meanHit >= 97 ? "success" : meanHit >= 90 ? "warning" : "error";
 		ctx.ui.setStatus(
 			"hydra",
-			ctx.ui.theme.fg("toolTitle", `hydra:${lensLabel}`) +
-				" " +
-				ctx.ui.theme.fg("muted", deliveryMode) +
+			ctx.ui.theme.fg("toolTitle", `hydra:${headLabel}`) +
 				" " +
 				ctx.ui.theme.fg(hitColor, `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`) +
 				" " +
@@ -379,61 +433,29 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	function persistConfig() {
-		pi.appendEntry<HydraConfig>("hydra-config", { lenses, deliveryMode, enabled });
+		pi.appendEntry<HydraConfig>("hydra-config", { heads: activeHeads });
 	}
 
 	function applyConfig(ctx: ExtensionContext, config: HydraConfig) {
-		enabled = config.enabled;
-		if (DELIVERY_MODES.includes(config.deliveryMode)) {
-			deliveryMode = config.deliveryMode;
-		}
-		const saved = savedLensList(config);
+		const saved = savedHeadList(config);
 		if (saved === null) {
 			return;
 		}
 		if (saved.length === 0) {
-			// A deliberately emptied set (all heads removed) is respected on restore.
-			lenses = [];
-			productLenses = [];
+			// A deliberately emptied set is respected on restore.
+			activeHeads = [];
+			productHeads = [];
 			return;
 		}
-		const next = sanitizeLensSet(saved, lensCatalog);
+		const next = sanitizeHeadSet(saved, headCatalog);
 		if (next.unknown.length > 0) {
-			ctx.ui.notify(`hydra: saved lens no longer exists: ${next.unknown.join(", ")}`, "warning");
+			ctx.ui.notify(`hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
 		}
-		if (next.lenses.length > 0) {
-			lenses = next.lenses;
-			if (!next.lenses.some((name) => name in DIAGNOSTIC_PROMPTS)) {
-				productLenses = next.lenses;
+		if (next.heads.length > 0) {
+			activeHeads = next.heads;
+			if (!next.heads.some((name) => name in DIAGNOSTIC_PROMPTS)) {
+				productHeads = next.heads;
 			}
-		}
-	}
-
-	// CLI flags seed fresh sessions only; once a config entry exists on the
-	// branch, the persisted settings win. Seeded settings persist like any
-	// other settings change, so they survive resume.
-	function applyFlags(ctx: ExtensionContext) {
-		let applied = false;
-		const flagLens = pi.getFlag("hydra-lens");
-		if (typeof flagLens === "string" && flagLens.length > 0) {
-			// setLensSet persists on success; the remaining flags persist below.
-			setLensSet(ctx, parseLensList(flagLens));
-		}
-		const flagDelivery = pi.getFlag("hydra-delivery");
-		if (typeof flagDelivery === "string" && flagDelivery.length > 0) {
-			if ((DELIVERY_MODES as string[]).includes(flagDelivery)) {
-				deliveryMode = flagDelivery as DeliveryMode;
-				applied = true;
-			} else {
-				ctx.ui.notify(`hydra: unknown mode in --hydra-delivery: ${flagDelivery}`, "warning");
-			}
-		}
-		if (pi.getFlag("hydra-off") === true) {
-			enabled = false;
-			applied = true;
-		}
-		if (applied) {
-			persistConfig();
 		}
 	}
 
@@ -445,9 +467,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				continue;
 			}
 			if (entry.customType === "hydra-call") {
-				const data = entry.data as HydraCall | undefined;
+				const data = entry.data as (HydraCall & { lens?: string }) | undefined;
 				if (data && typeof data === "object") {
-					calls.push(data);
+					calls.push({ ...data, head: data.head ?? data.lens ?? "?" });
 				}
 			} else if (entry.customType === "hydra-config") {
 				const data = entry.data as HydraConfig | undefined;
@@ -463,8 +485,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return config !== undefined;
 	}
 
+	// Cold-start default: the heads whose files say autostart. Consulted only
+	// when the session has neither a flag nor a saved set, and deliberately
+	// not persisted, so tomorrow's session reads tomorrow's files.
+	function applyAutostart() {
+		const autostart = [...heads.values()].filter((head) => head.autostart).map((head) => head.name).sort();
+		activeHeads = autostart;
+		productHeads = autostart;
+	}
+
 	// One observation's outcome, the same shape for both head kinds: a
-	// verdict head is the single-call case.
+	// judging head is the single-call case.
 	interface ObserveOutcome {
 		response: AssistantMessage;
 		usages: ObserverUsage[];
@@ -532,10 +563,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return merged;
 		};
 
+		const acting = job.tools === undefined || job.tools.length > 0;
 		const t0 = Date.now();
-		const outcome = job.tools
-			? await observeWithTools(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal)
-			: await observeVerdict(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal);
+		const outcome = acting
+			? await observeActing(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal)
+			: await observeJudging(job, model, auth.apiKey, auth.headers, prompt, onPayload, signal);
 		if (!outcome || signal.aborted) {
 			return;
 		}
@@ -550,18 +582,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
-		// An acting head can stop before its verdict (iteration guard, or
-		// /hydra toggled off mid-loop); record that honestly instead of
+		// An acting head can stop before its decision (iteration guard, or the
+		// head deactivated mid-loop); record that honestly instead of
 		// "unparseable response".
 		const decision: Decision =
 			response.stopReason === "toolUse"
-				? { action: "noop", reason: "loop stopped before verdict", message: "" }
+				? { action: "noop", reason: "loop stopped before deciding", message: "" }
 				: parseDecision(text);
 
 		const call: HydraCall = {
 			timestamp: Date.now(),
 			turnIndex: job.turnIndex,
-			lens: job.lens,
+			head: job.head,
 			kind: job.kind,
 			action: decision.action,
 			input: summary.input,
@@ -572,28 +604,31 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			durationMs: Date.now() - t0,
 			hitRatio: summary.hitRatio,
 			rawResponse: text.length > 200 ? `${text.slice(0, 200)}…` : text,
-			iterations: job.tools ? iterations : undefined,
+			iterations: acting ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
 		calls.push(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
 
-		// Diagnostic lenses are one-shot: revert before routing, otherwise an
+		// Diagnostic heads are one-shot: revert before routing, otherwise an
 		// interrupt delivery re-triggers itself forever (each injected message
 		// starts a run whose run-end observation would interrupt again).
-		if (job.lens in DIAGNOSTIC_PROMPTS && lenses.length === 1 && lenses[0] === job.lens) {
-			lenses = productLenses;
+		if (job.head in DIAGNOSTIC_PROMPTS && activeHeads.length === 1 && activeHeads[0] === job.head) {
+			activeHeads = productHeads;
 			persistConfig();
-			job.ctx.ui.notify(`hydra: diagnostic lens "${job.lens}" fired once; reverting to ${productLenses.join("+")}`, "info");
+			job.ctx.ui.notify(
+				`hydra: diagnostic head "${job.head}" fired once; reverting to ${productHeads.join("+") || "no heads"}`,
+				"info",
+			);
 		}
 		updateFooter(job.ctx);
 
-		// A verdict formed on an outdated snapshot may steer but no longer
+		// A decision formed on an outdated snapshot may steer but no longer
 		// abort: the driver has already moved on.
-		routeDecision(job.ctx, decision, job.lens, job.payload !== capturedPayload);
+		routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
 	}
 
-	async function observeVerdict(
+	async function observeJudging(
 		job: Observation,
 		model: Model<"anthropic-messages">,
 		apiKey: string,
@@ -619,11 +654,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// imitation: argument validation, unknown-tool error results, parallel vs
 	// sequential execution policy, and abort discipline stay pi's code and
 	// evolve with it. Every provider call the loop makes flows through the
-	// same byte-true merge as a verdict observation (onPayload discards the
+	// same byte-true merge as a judging observation (onPayload discards the
 	// loop's own built context), so the driver prefix stays a pure cache
 	// read and the loop turns are cached once by the marker the merge
 	// advances; see mergeObserverPayload for the cache story.
-	async function observeWithTools(
+	async function observeActing(
 		job: Observation,
 		model: Model<"anthropic-messages">,
 		apiKey: string,
@@ -639,7 +674,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		try {
 			messages = await runAgentLoop(
 				[prompt],
-				{ systemPrompt: "", messages: job.assistant ? [job.assistant] : [], tools: observerTools(job.ctx) },
+				{ systemPrompt: "", messages: job.assistant ? [job.assistant] : [], tools: observerTools(job.ctx, job.tools) },
 				{
 					model,
 					apiKey,
@@ -653,9 +688,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 								message.role === "user" || message.role === "assistant" || message.role === "toolResult",
 						),
 					// Correctness guard, not a cost ceiling: wind down a loop
-					// that does not converge on a verdict, and wind down early
-					// when hydra is disabled mid-loop.
-					shouldStopAfterTurn: () => !enabled || ++iterations >= MAX_TOOL_ITERATIONS,
+					// that does not converge on a decision, and wind down early
+					// when the head is deactivated mid-loop.
+					shouldStopAfterTurn: () => !activeHeads.includes(job.head) || ++iterations >= MAX_TOOL_ITERATIONS,
 					afterToolCall: async (event) => {
 						toolsUsed.push(event.toolCall.name);
 						if (!event.isError) {
@@ -689,8 +724,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			return null;
 		}
-		if (response.stopReason === "toolUse" && enabled) {
-			job.ctx.ui.notify(`hydra: ${job.lens} hit ${MAX_TOOL_ITERATIONS} turns without a verdict; wound down`, "warning");
+		if (response.stopReason === "toolUse" && activeHeads.includes(job.head)) {
+			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
 		return { response, usages, iterations, toolsUsed };
 	}
@@ -701,11 +736,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// extension loader aliases @earendil-works/pi-coding-agent to its bundled
 	// instance (one module, one queue). The replayed payload's tools array is
 	// what the model can call: parity with the driver comes from the replay
-	// itself, and a call to anything outside this registry (another
-	// extension's tool, MCP) gets pi's standard "tool not found" error result
-	// and the head moves on to its verdict.
+	// itself. A head file's `tools:` list narrows what actually executes; a
+	// call outside the list (or to another extension's tool, or MCP) gets
+	// pi's standard "tool not found" error result and the head moves on.
 	let standardObserverTools: AgentTool[] | null = null;
-	function observerTools(ctx: ExtensionContext): AgentTool[] {
+	function observerTools(ctx: ExtensionContext, allowed: string[] | undefined): AgentTool[] {
 		if (!standardObserverTools) {
 			standardObserverTools = [
 				createReadTool(ctx.cwd),
@@ -717,9 +752,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				createLsTool(ctx.cwd),
 			];
 		}
-		// Plus hydra's own tool: an acting head may retune its peers through
+		// Plus hydra's own tool: an acting head may re-crew its peers through
 		// the same tool the driver uses.
-		return [
+		const all = [
 			...standardObserverTools,
 			{
 				name: hydraToolDefinition.name,
@@ -728,25 +763,25 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				parameters: hydraToolDefinition.parameters,
 				execute: (toolCallId, params, toolSignal, _onUpdate) =>
 					hydraToolDefinition.execute(toolCallId, params as HydraToolParams, toolSignal, undefined, ctx),
-			},
+			} satisfies AgentTool,
 		];
+		return allowed === undefined ? all : all.filter((tool) => allowed.includes(tool.name));
 	}
 
 	// Every observer file write also queues a one-line note, so the driver is
 	// never surprised by files changing under it. Provenance rather than a
-	// finding: it bypasses the delivery-mode cap on purpose (a print-mode
-	// session still learns its files moved). Writes that happen inside the
-	// observer's bash commands are invisible here; documented limitation.
+	// finding. Writes that happen inside the observer's bash commands are
+	// invisible here; documented limitation.
 	function announceWrite(job: Observation, toolCall: ToolCall) {
 		if (toolCall.name !== "write" && toolCall.name !== "edit") {
 			return;
 		}
 		const path = typeof toolCall.arguments.path === "string" ? toolCall.arguments.path : "a file";
-		const details: FeedbackDetails = { lens: job.lens, action: "queue", reason: "observer file write", deliveryMode };
+		const details: FeedbackDetails = { head: job.head, action: "queue", reason: "observer file write" };
 		pi.sendMessage(
 			{
 				customType: "hydra-feedback",
-				content: `[${job.lens}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}`,
+				content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}`,
 				display: true,
 				details,
 			},
@@ -754,17 +789,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionLens: string, staleSnapshot: boolean) {
+	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionHead: string, staleSnapshot: boolean) {
 		if (decision.action === "noop" || !decision.message) {
 			return;
 		}
 
 		// The observer reviews overlapping snapshots, so identical findings
-		// recur; deliver each one once per lens. Diagnostic lenses are exempt:
+		// recur; deliver each one once per head. Diagnostic heads are exempt:
 		// their message is fixed by design, and every smoke-test firing must be
 		// visible.
-		if (!(decisionLens in DIAGNOSTIC_PROMPTS)) {
-			const key = `${decisionLens}|${decision.action}|${decision.message}`;
+		if (!(decisionHead in DIAGNOSTIC_PROMPTS)) {
+			const key = `${decisionHead}|${decision.action}|${decision.message}`;
 			if (delivered.has(key)) {
 				return;
 			}
@@ -774,11 +809,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 		}
 
-		const formatted = `[${decisionLens}] ${decision.message}`;
-		const details: FeedbackDetails = { lens: decisionLens, action: decision.action, reason: decision.reason, deliveryMode };
-		const force = effectiveForce(decision.action, deliveryMode, staleSnapshot);
+		const formatted = `[${decisionHead}] ${decision.message}`;
+		const action = demoteStaleInterrupt(decision.action, staleSnapshot);
+		const details: FeedbackDetails = { head: decisionHead, action, reason: decision.reason };
 
-		if (force >= 2) {
+		if (action === "steer" || action === "interrupt") {
 			// steer: a real user message between turns of the current run.
 			// interrupt: pull the cord; abort the in-flight run and deliver the
 			// finding as a follow-up, which opens the next run. When the agent
@@ -786,24 +821,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			try {
 				if (ctx.isIdle()) {
 					pi.sendUserMessage(formatted);
-				} else if (force === 3) {
+				} else if (action === "interrupt") {
 					ctx.abort();
 					pi.sendUserMessage(formatted, { deliverAs: "followUp" });
 				} else {
 					pi.sendUserMessage(formatted, { deliverAs: "steer" });
 				}
 			} catch (error) {
-				ctx.ui.notify(
-					`hydra: ${force === 3 ? "interrupt" : "steer"} failed: ${error instanceof Error ? error.message : String(error)}`,
-					"warning",
-				);
+				ctx.ui.notify(`hydra: ${action} failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
 			}
 			return;
 		}
 
+		// queue joins the agent's next turn; print renders in the TUI and
+		// never enters the agent's context.
 		pi.sendMessage(
 			{ customType: "hydra-feedback", content: formatted, display: true, details },
-			force === 1 ? { deliverAs: "followUp", triggerTurn: false } : { triggerTurn: false },
+			action === "queue" ? { deliverAs: "followUp", triggerTurn: false } : { triggerTurn: false },
 		);
 	}
 
@@ -811,15 +845,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// (conflating whatever piled up while busy). Heads run in parallel with
 	// each other: mid-run they are all pure cache reads; at run-end each fork
 	// pays M's write (the measured economics are in docs/architecture.md).
-	async function runHead(head: Head): Promise<void> {
+	async function runHead(runner: HeadRunner): Promise<void> {
 		try {
-			while (head.pending) {
-				if (!enabled) {
-					head.pending = null;
-					break;
+			while (runner.pending) {
+				const job = runner.pending;
+				runner.pending = null;
+				if (!activeHeads.includes(job.head)) {
+					continue; // deactivated while waiting
 				}
-				const job = head.pending;
-				head.pending = null;
 				try {
 					await observe(job, lifecycleAbort.signal);
 				} catch (error) {
@@ -829,42 +862,54 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				}
 			}
 		} finally {
-			head.running = null;
+			runner.running = null;
 		}
 	}
 
-	// One observation per active lens, all from the same captured snapshot.
-	// An empty set observes nothing (reached by removing heads one by one).
+	// One observation per active head, all from the same captured snapshot.
+	// An empty set observes nothing.
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
-		for (const name of lenses) {
-			const tools = lensUsesTools(name);
-			let head = heads.get(name);
-			if (!head) {
-				head = { pending: null, running: null };
-				heads.set(name, head);
+		for (const name of activeHeads) {
+			const tools = headTools(name);
+			let runner = runners.get(name);
+			if (!runner) {
+				runner = { pending: null, running: null };
+				runners.set(name, runner);
 			}
-			head.pending = {
+			runner.pending = {
 				ctx,
 				payload: capturedPayload,
 				assistant,
 				turnIndex: currentTurnIndex,
-				lens: name,
+				head: name,
 				prompt: observerPromptFor(name, tools),
 				tools,
 				kind,
 			};
-			if (!head.running) {
-				head.running = runHead(head);
+			if (!runner.running) {
+				runner.running = runHead(runner);
 			}
 		}
 	}
 
 	pi.on("session_start", (_event, ctx) => {
-		discoverLenses(ctx);
-		if (!restoreFromBranch(ctx)) {
-			applyFlags(ctx);
-			updateFooter(ctx);
+		discoverHeads(ctx);
+		const restored = restoreFromBranch(ctx);
+		// An explicit flag on this launch beats the saved set: present intent
+		// over recorded intent. Flag-seeded sets persist (they are the only
+		// way to configure headless runs); autostart seeding does not, so a
+		// resumed session re-reads the files.
+		const flag = pi.getFlag("hydra-heads");
+		if (typeof flag === "string" && flag.length > 0) {
+			if (flag.trim() === "none") {
+				clearHeadSet(ctx);
+			} else if (!setHeadSet(ctx, parseHeadList(flag))) {
+				ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${activeHeads.join("+") || "no heads"}`, "warning");
+			}
+		} else if (!restored) {
+			applyAutostart();
 		}
+		updateFooter(ctx);
 	});
 
 	pi.on("session_tree", (_event, ctx) => {
@@ -875,8 +920,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.on("agent_start", (_event, ctx) => {
 		awaitingFirstResponseOfRun = true;
 		capturedThisRun = false;
-		// Pick up lens edits made since the last run (the in-session tuning loop).
-		discoverLenses(ctx);
+		// Pick up head edits made since the last run (the in-session tuning loop).
+		discoverHeads(ctx);
 	});
 
 	pi.on("turn_start", (event) => {
@@ -884,7 +929,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_provider_request", (event) => {
-		if (!enabled) {
+		if (activeHeads.length === 0) {
 			return;
 		}
 		// Capture the driver's exact bytes; never modify them.
@@ -896,7 +941,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Piggyback trigger: a driver response began streaming, which is the
 	// moment Anthropic commits the request's cache entry (commit-at-TTFT,
 	// verified in the experiments). Observing the captured payload now is a
-	// pure cache read, and the verdict lands while the response is still
+	// pure cache read, and the decision lands while the response is still
 	// streaming. The run's first request is skipped; the previous run-end
 	// observation has already reviewed everything before it.
 	pi.on("message_start", (event, ctx) => {
@@ -905,12 +950,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		// The first assistant message after a capture is that request's own
 		// response; remember its timestamp so the run-end trigger can match M
-		// by identity. Recorded ahead of the enabled gate: it is bookkeeping,
-		// and /hydra can be toggled mid-stream.
+		// by identity. Recorded ahead of the set-size gate: it is bookkeeping,
+		// and heads can be added mid-stream.
 		if (capturedPayload && responseTimestamp === null) {
 			responseTimestamp = (event.message as AssistantMessage).timestamp ?? null;
 		}
-		if (!enabled || !capturedPayload) {
+		if (activeHeads.length === 0 || !capturedPayload) {
 			return;
 		}
 		if (awaitingFirstResponseOfRun) {
@@ -926,7 +971,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Runs that produced no usable M (command-only input, immediate aborts,
 	// error turns) have nothing new to review and schedule nothing.
 	pi.on("agent_end", (event, ctx) => {
-		if (!enabled || !capturedPayload || !capturedThisRun) {
+		if (activeHeads.length === 0 || !capturedPayload || !capturedThisRun) {
 			return;
 		}
 		// selectFinalAssistant guarantees role "assistant" with block content.
@@ -940,7 +985,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		// Let the in-flight observations finish (bounded), then cancel; this
 		// is the sole lifecycle abort.
-		const running = [...heads.values()].flatMap((head) => head.running ?? []);
+		const running = [...runners.values()].flatMap((runner) => runner.running ?? []);
 		if (running.length > 0) {
 			const timeout = new Promise<void>((resolve) =>
 				setTimeout(resolve, parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS)),
@@ -958,13 +1003,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		let text =
 			theme.fg("accent", "🐍 hydra ") +
-			theme.fg("toolTitle", `[${details?.lens ?? "?"}]`) +
+			theme.fg("toolTitle", `[${details?.head ?? details?.lens ?? "?"}]`) +
 			" " +
 			theme.fg(actionColor, `(${action})`) +
 			"\n" +
 			theme.fg("toolOutput", typeof message.content === "string" ? message.content : "");
 		if (expanded && details) {
-			text += `\n${theme.fg("dim", `reason: ${details.reason || "—"} · delivery: ${details.deliveryMode}`)}`;
+			text += `\n${theme.fg("dim", `reason: ${details.reason || "—"}`)}`;
 		}
 
 		const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
@@ -972,40 +1017,31 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return box;
 	});
 
-	// The agent's hand on the tool-changer: full self-configuration of its own
-	// observer. Lens writes are user-scoped markdown files, every change is
-	// announced and visible in the footer, and the observers themselves see
-	// the reconfiguration in the replayed context. The definition is named so
-	// acting heads can execute it too (observerTools).
+	// The agent's hand on the head set. Head files themselves are the
+	// agent's to manage with its ordinary file tools; this tool only points
+	// the heads, which is the one piece of state not on disk. The definition
+	// is named so acting heads can execute it too (observerTools).
 	const hydraToolParameters = Type.Object({
-		action: StringEnum(["list", "set-lenses", "write-lens", "remove-lens"] as const, {
-			description: "What to do",
-		}),
-		lenses: Type.Optional(Type.Array(Type.String(), { description: "set-lenses: the lens set to observe with" })),
-		name: Type.Optional(Type.String({ description: "write-lens/remove-lens: lens name (kebab-case)" })),
-		instruction: Type.Optional(
-			Type.String({ description: "write-lens: the lens instruction (one focus, explicit do-NOT boundaries, short)" }),
-		),
-		description: Type.Optional(Type.String({ description: "write-lens: one-line description" })),
-		tools: Type.Optional(
-			Type.Boolean({ description: "write-lens: acting head that may use tools before its verdict (default false)" }),
-		),
-		activate: Type.Optional(Type.Boolean({ description: "write-lens: also add to the active set (default true)" })),
+		action: StringEnum(["add", "remove"] as const, { description: "What to do" }),
+		head: Type.String({ description: "The head name" }),
 	});
 	type HydraToolParams = Static<typeof hydraToolParameters>;
 	const hydraToolDefinition = {
 		name: "hydra",
 		label: "Hydra",
 		description: [
-			"Configure your hydra observer heads. Each lens is an independent reviewer",
-			"watching your full context. Use set-lenses when the work changes phase",
-			"(e.g. design wants devil's-advocate thinking, execution wants quality and",
-			"security, review wants simplifier), write-lens to create or tune a head for",
-			"the task at hand (it persists as a markdown file and applies immediately),",
-			"and remove-lens to retire one. list shows the current setup. A lens written",
-			"with tools=true becomes an acting head: it may read files, run commands, and",
-			"write files before its verdict (e.g. a docs head that keeps notes current,",
-			"usually ending noop because its work product is the files).",
+			"Point your hydra observer heads: `add` puts a head on the active set,",
+			"`remove` takes it off (both idempotent; the set is session state). Each",
+			"active head independently reviews your full context as you work. Heads",
+			`are markdown files in ${userHeadDir} (user) and .pi/hydra (project):`,
+			"frontmatter `name:` and `description:` are required; `tools:` is omitted",
+			"for all tools, `[]` for a judge-only head, or a comma-separated subset;",
+			"`autostart: true` joins fresh sessions; the body is the head's",
+			"instruction (one focus, explicit do-NOT boundaries, short). To create or",
+			"tune a head, write the file with your file tools, then `add` it: files",
+			"are re-discovered on every call. Swap heads when the work changes phase",
+			"(design wants devil's-advocate thinking, execution wants quality and",
+			"security, review wants simplifier).",
 		].join(" "),
 		parameters: hydraToolParameters,
 		async execute(
@@ -1017,146 +1053,155 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		) {
 			const reply = (text: string) => ({
 				content: [{ type: "text" as const, text }],
-				details: { lenses, deliveryMode, enabled },
+				details: { heads: activeHeads },
 			});
+			const activeLabel = () => (activeHeads.length > 0 ? activeHeads.join(", ") : "none");
+			discoverHeads(ctx);
+			const name = params.head.trim();
 			switch (params.action) {
-				case "list": {
-					const custom = [...customLenses.values()]
-						.map(
-							(definition) =>
-								`  ${definition.name}${definition.tools ? " [acting]" : ""}${definition.description ? `: ${definition.description}` : ""}`,
-						)
-						.join("\n");
-					return reply(
-						[
-							`active: ${lenses.join(", ")} | delivery: ${deliveryMode} | ${enabled ? "enabled" : "disabled"}`,
-							`built-in: ${BUILT_IN_LENS_NAMES.join(", ")}`,
-							custom ? `custom (${lensDir}):\n${custom}` : `custom: none (${lensDir})`,
-						].join("\n"),
-					);
+				case "add": {
+					if (!headExists(name)) {
+						return reply(`Unknown head "${name}". Available: ${headNames().join(", ") || "none"}.`);
+					}
+					if (activeHeads.includes(name)) {
+						return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
+					}
+					setHeadSet(ctx, [...activeHeads, name]);
+					return reply(`Observing with: ${activeLabel()}.`);
 				}
-				case "set-lenses": {
-					if (!params.lenses || params.lenses.length === 0) {
-						return reply("set-lenses needs `lenses`.");
+				case "remove": {
+					if (!activeHeads.includes(name)) {
+						return reply(`"${name}" is not active. Observing with: ${activeLabel()}.`);
 					}
-					return setLensSet(ctx, params.lenses)
-						? reply(`observing with: ${lenses.join(", ")}`)
-						: reply(`no valid lenses in ${params.lenses.join(", ")}; still observing with ${lenses.join(", ")}`);
-				}
-				case "write-lens": {
-					const name = params.name?.trim() ?? "";
-					const instruction = params.instruction?.trim() ?? "";
-					if (!isValidLensName(name)) {
-						return reply("write-lens needs a kebab-case `name`.");
-					}
-					if (name in DIAGNOSTIC_PROMPTS) {
-						return reply(`"${name}" is a reserved diagnostic lens.`);
-					}
-					if (instruction.length === 0) {
-						return reply("write-lens needs an `instruction`.");
-					}
-					const fileBody = buildLensFile({
-						name,
-						description: params.description,
-						tools: params.tools === true || undefined,
-						prompt: instruction,
-					});
-					mkdirSync(lensDir, { recursive: true });
-					writeFileSync(join(lensDir, `${name}.md`), fileBody);
-					// Store the parse of what was written, so memory and disk agree
-					// by construction (parseLensFile is buildLensFile's inverse).
-					const definition = parseLensFile(name, fileBody);
-					if (definition) {
-						customLenses.set(name, definition);
-					}
-					if (params.activate !== false) {
-						setLensSet(ctx, [...lenses.filter((active) => !(active in DIAGNOSTIC_PROMPTS)), name]);
-					}
-					ctx.ui.notify(`hydra: agent wrote lens "${name}"${params.activate !== false ? " and activated it" : ""}`, "info");
-					return reply(`lens "${name}" written to ${join(lensDir, `${name}.md`)}; active set: ${lenses.join(", ")}`);
-				}
-				case "remove-lens": {
-					const name = params.name?.trim() ?? "";
-					if (!customLenses.has(name)) {
-						return reply(
-							name in LENS_PROMPTS
-								? `"${name}" is built-in; you can override it with write-lens, but not remove it.`
-								: `no custom lens named "${name}".`,
-						);
-					}
-					rmSync(join(lensDir, `${name}.md`));
-					customLenses.delete(name);
-					const remaining = lenses.filter((active) => active !== name);
+					const remaining = activeHeads.filter((active) => active !== name);
 					if (remaining.length > 0) {
-						setLensSet(ctx, remaining);
+						setHeadSet(ctx, remaining);
 					} else {
-						// Removing the last head is the deliberate, head-by-head path
-						// to silence; there is no bulk off switch on this tool.
-						lenses = [];
-						productLenses = [];
-						persistConfig();
-						updateFooter(ctx);
+						clearHeadSet(ctx);
 					}
-					ctx.ui.notify(`hydra: agent removed lens "${name}"`, "info");
-					return reply(
-						`lens "${name}" removed${name in LENS_PROMPTS ? " (built-in restored)" : ""}; active set: ${
-							lenses.length > 0 ? lenses.join(", ") : "empty (hydra observes nothing until a lens is set)"
-						}`,
-					);
+					return reply(`Observing with: ${activeLabel()}.`);
 				}
 			}
 		},
 	};
 	pi.registerTool(hydraToolDefinition);
 
-	pi.registerCommand("hydra", {
-		description: "Toggle hydra observer on/off",
-		handler: async (_args, ctx) => {
-			enabled = !enabled;
-			persistConfig();
-			updateFooter(ctx);
-			ctx.ui.notify(`hydra: ${enabled ? "enabled" : "disabled"}`, "info");
-		},
-	});
+	// The /hydra-heads picker: a checkbox list over every discovered head.
+	// ui.select is single-choice, so this is a small custom component in the
+	// questionnaire example's mold; enter applies the checked set (the same
+	// declarative semantics as the typed form), escape cancels.
+	async function openHeadPicker(ctx: ExtensionContext): Promise<void> {
+		const items = [...heads.values()].sort((a, b) => a.name.localeCompare(b.name));
+		if (items.length === 0) {
+			ctx.ui.notify(`hydra: no heads found. Drop a markdown file into ${userHeadDir} (see docs/heads.md).`, "warning");
+			return;
+		}
+		const selection = await ctx.ui.custom<string[] | null>((tui, theme, _keybindings, done) => {
+			let cursor = 0;
+			const checked = new Set(activeHeads.filter((name) => heads.has(name)));
 
-	pi.registerCommand("hydra-lens", {
-		description: `Set the hydra lens set (comma-separated): ${BUILT_IN_LENS_NAMES.join(" | ")} or custom lenses from ~/.pi/agent/hydra/lenses`,
+			function handleInput(data: string) {
+				if (matchesKey(data, Key.escape)) {
+					done(null);
+					return;
+				}
+				if (matchesKey(data, Key.enter)) {
+					done([...checked]);
+					return;
+				}
+				if (matchesKey(data, Key.up)) {
+					cursor = (cursor + items.length - 1) % items.length;
+				} else if (matchesKey(data, Key.down)) {
+					cursor = (cursor + 1) % items.length;
+				} else if (matchesKey(data, Key.space)) {
+					const name = items[cursor].name;
+					if (checked.has(name)) {
+						checked.delete(name);
+					} else {
+						checked.add(name);
+					}
+				} else {
+					return;
+				}
+				tui.requestRender();
+			}
+
+			function render(width: number): string[] {
+				const lines: string[] = [];
+				lines.push(theme.fg("accent", "hydra heads"));
+				for (let i = 0; i < items.length; i++) {
+					const item = items[i];
+					const tags = [
+						item.source === "project" ? "project" : null,
+						item.autostart ? "autostart" : null,
+						item.tools !== undefined && item.tools.length === 0 ? null : "acting",
+					].filter((tag): tag is string => tag !== null);
+					const row =
+						(i === cursor ? theme.fg("accent", "❯ ") : "  ") +
+						theme.fg(checked.has(item.name) ? "success" : "muted", checked.has(item.name) ? "[x] " : "[ ] ") +
+						theme.fg(i === cursor ? "accent" : "toolTitle", item.name) +
+						theme.fg("muted", ` — ${item.description}`) +
+						(tags.length > 0 ? theme.fg("dim", ` (${tags.join(", ")})`) : "");
+					lines.push(truncateToWidth(row, width));
+				}
+				lines.push(theme.fg("dim", " ↑↓ move • space toggle • enter apply • esc cancel"));
+				return lines;
+			}
+
+			// No render cache to drop, so invalidate has nothing to do.
+			return { render, handleInput, invalidate: () => {} };
+		});
+		if (selection === null) {
+			return;
+		}
+		if (selection.length === 0) {
+			clearHeadSet(ctx);
+			ctx.ui.notify("hydra: no heads active", "info");
+			return;
+		}
+		if (setHeadSet(ctx, selection)) {
+			ctx.ui.notify(`hydra: heads=${activeHeads.join("+")}`, "info");
+		}
+	}
+
+	pi.registerCommand("hydra-heads", {
+		description: `Pick the active hydra heads: no argument opens the picker, "quality,security" sets them, "none" clears them`,
 		getArgumentCompletions: (prefix: string) => {
-			// Complete the segment after the last separator, so lens sets can be
+			// Complete the segment after the last separator, so head sets can be
 			// typed as "quality,sec<tab>".
 			const split = prefix.match(/^(.*[,\s])?([^,\s]*)$/);
 			const base = split?.[1] ?? "";
 			const partial = split?.[2] ?? "";
-			return lensNames()
+			return [...headNames(), "none"]
 				.filter((name) => name.startsWith(partial))
-				.map((name) => ({ value: base + name, label: customLenses.has(name) ? `${name} (custom)` : name }));
+				.map((name) => {
+					const source = heads.get(name)?.source;
+					return { value: base + name, label: source === "project" ? `${name} (project)` : name };
+				});
 		},
 		handler: async (args, ctx) => {
-			const requested = parseLensList(args);
-			if (requested.length === 0) {
-				ctx.ui.notify(`hydra: usage: /hydra-lens <name>[,<name>...]. valid: ${lensNames().join(", ")}`, "warning");
+			discoverHeads(ctx);
+			const trimmed = args.trim();
+			if (trimmed === "none") {
+				clearHeadSet(ctx);
+				ctx.ui.notify("hydra: no heads active", "info");
 				return;
 			}
-			if (setLensSet(ctx, requested)) {
-				ctx.ui.notify(`hydra: lenses=${lenses.join("+")}`, "info");
-			}
-		},
-	});
-
-	pi.registerCommand("hydra-delivery", {
-		description: "Set hydra delivery mode: print | queue | steer | interrupt",
-		getArgumentCompletions: (prefix: string) =>
-			DELIVERY_MODES.filter((mode) => mode.startsWith(prefix)).map((mode) => ({ value: mode, label: mode })),
-		handler: async (args, ctx) => {
-			const requested = args.trim() as DeliveryMode;
-			if (!DELIVERY_MODES.includes(requested)) {
-				ctx.ui.notify("hydra: unknown mode. valid: print | queue | steer | interrupt", "warning");
+			if (trimmed.length === 0) {
+				if (ctx.hasUI) {
+					await openHeadPicker(ctx);
+				} else {
+					const roster = [...heads.values()].map((head) => `  ${head.name} (${head.source}): ${head.description}`);
+					ctx.ui.notify(
+						[`hydra: active: ${activeHeads.join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
+						"info",
+					);
+				}
 				return;
 			}
-			deliveryMode = requested;
-			persistConfig();
-			updateFooter(ctx);
-			ctx.ui.notify(`hydra: delivery=${deliveryMode}`, "info");
+			if (setHeadSet(ctx, parseHeadList(trimmed))) {
+				ctx.ui.notify(`hydra: heads=${activeHeads.join("+")}`, "info");
+			}
 		},
 	});
 
@@ -1168,7 +1213,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				return;
 			}
 			const { cost, read, write, input, meanHit } = cumulative();
-			const counts = { noop: 0, queue: 0, steer: 0, interrupt: 0 };
+			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
 				counts[call.action]++;
@@ -1178,7 +1223,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				.slice(-10)
 				.map(
 					(call) =>
-						`  turn ${call.turnIndex} ${call.lens}${call.kind ? ` [${call.kind}]` : ""} ${call.action}${
+						`  turn ${call.turnIndex} ${call.head}${call.kind ? ` [${call.kind}]` : ""} ${call.action}${
 							call.iterations ? ` (${call.iterations} turns: ${[...new Set(call.toolsUsed ?? [])].join(",") || "no tools"})` : ""
 						}  hit=${call.hitRatio.toFixed(1)}%  $${call.cost.toFixed(4)}  ${call.durationMs}ms`,
 				)
@@ -1192,7 +1237,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total cache write: ${write.toLocaleString()} tokens`,
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
-					`  decisions: ${counts.noop} noop / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
+					`  decisions: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,
