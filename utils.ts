@@ -6,7 +6,8 @@
 // A decision names its finding's delivery: noop (nothing anywhere), print
 // (TUI only), queue (run end), steer (between turns), interrupt (now,
 // aborting the run).
-export type Action = "noop" | "print" | "queue" | "steer" | "interrupt";
+export const ACTIONS = ["noop", "print", "queue", "steer", "interrupt"] as const;
+export type Action = (typeof ACTIONS)[number];
 
 /**
  * A decision formed on a snapshot the driver has since moved past may not
@@ -24,21 +25,23 @@ export interface Decision {
 	message: string;
 }
 
-const ACTIONS: readonly string[] = ["noop", "print", "queue", "steer", "interrupt"];
-
 function asDecision(value: unknown): Decision | null {
 	if (typeof value !== "object" || value === null) {
 		return null;
 	}
 	const obj = value as { action?: unknown; reason?: unknown; message?: unknown };
-	if (typeof obj.action !== "string" || !ACTIONS.includes(obj.action)) {
+	if (typeof obj.action !== "string" || !(ACTIONS as readonly string[]).includes(obj.action)) {
 		return null;
 	}
-	return {
-		action: obj.action as Action,
-		reason: typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "",
-		message: typeof obj.message === "string" ? obj.message.slice(0, 500) : "",
-	};
+	const action = obj.action as Action;
+	const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
+	const message = typeof obj.message === "string" ? obj.message.trim().slice(0, 500) : "";
+	// A delivery with nothing to deliver is recorded as the noop it is, so
+	// stats never count an interrupt that interrupted nothing.
+	if (action !== "noop" && message === "") {
+		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "" };
+	}
+	return { action, reason, message };
 }
 
 function tryParseDecision(text: string): Decision | null {
@@ -49,8 +52,12 @@ function tryParseDecision(text: string): Decision | null {
 	}
 }
 
-/** Parse the observer's JSON decision, tolerating code fences and surrounding prose. */
-export function parseDecision(text: string): Decision {
+/**
+ * Parse the observer's JSON decision, tolerating code fences and surrounding
+ * prose. Null means nothing parseable: the caller decides how loudly a head
+ * that stopped speaking JSON should fail.
+ */
+export function parseDecision(text: string): Decision | null {
 	const cleaned = text
 		.replace(/^```(?:json)?\s*\n?/i, "")
 		.replace(/\n?```\s*$/, "")
@@ -79,7 +86,22 @@ export function parseDecision(text: string): Decision {
 		}
 	}
 
-	return { action: "noop", reason: "unparseable response", message: "" };
+	return null;
+}
+
+/**
+ * Record a delivery key, evicting the oldest once the set exceeds max.
+ * Returns false when the key was already delivered.
+ */
+export function rememberDelivery(delivered: Set<string>, key: string, max: number): boolean {
+	if (delivered.has(key)) {
+		return false;
+	}
+	delivered.add(key);
+	if (delivered.size > max) {
+		delivered.delete(delivered.values().next().value as string);
+	}
+	return true;
 }
 
 export interface ObserverUsage {
@@ -183,6 +205,39 @@ export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { 
 		return { error: "missing instruction body" };
 	}
 	return { head: { name, description, tools, autostart, prompt } };
+}
+
+/** Whether a head's tools allowance lets it act: undefined means all tools. */
+export function headActs(tools: string[] | undefined): boolean {
+	return tools === undefined || tools.length > 0;
+}
+
+const DECISION_SHAPE = '{"action":"noop|print|queue|steer|interrupt","reason":"\u2264120 chars","message":"\u2264240 chars, empty if noop"}';
+
+/**
+ * The wrapper around a head's instruction. Kept SHORT: the driver's context
+ * is already cached, so this is the only fresh input the observer pays for
+ * per call. Judge-only heads (tools: []) get a hard tool ban: the observer
+ * sits atop a context saturated with driver tool calls, and anything softer
+ * leaks into "let me check" excursions. Acting heads get the tool-permitting
+ * variant, with the allowance spelled out when the file narrows it.
+ */
+export function buildObserverPrompt(head: string, instruction: string, tools: string[] | undefined): string {
+	if (headActs(tools)) {
+		const allowance = tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
+		return `<system-reminder>Side observer with tool access. You may use ${allowance} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and the decision you send. When done, reply with one JSON object, nothing else:
+${DECISION_SHAPE}
+
+LENS: ${instruction}
+
+Noop when your work product is the files you wrote. Print a note the user sees but the agent does not. Queue findings that can wait. Steer to put a finding in front of the agent between turns. Interrupt only for emergencies that must stop the line. Don't prefix message with [${head}].</system-reminder>`;
+	}
+	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
+${DECISION_SHAPE}
+
+LENS: ${instruction}
+
+Noop unless something warrants feedback. Print a note the user sees but the agent does not. Queue if useful but waitable. Steer to correct the agent between turns. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${head}].</system-reminder>`;
 }
 
 export interface HeadCatalog {
@@ -307,22 +362,6 @@ export function isAnthropicPayload(value: unknown): value is AnthropicPayload {
 	);
 }
 
-function withoutBlockMarkers(message: PayloadMessage): PayloadMessage {
-	if (!Array.isArray(message.content)) {
-		return message;
-	}
-	return {
-		...message,
-		content: message.content.map((block) => {
-			if (block.cache_control === undefined) {
-				return block;
-			}
-			const { cache_control: _, ...rest } = block;
-			return rest;
-		}),
-	};
-}
-
 /** Remove every message-level marker in place, returning the deepest one removed. */
 function stripMessageMarkers(messages: PayloadMessage[]): CacheControl | undefined {
 	let stripped: CacheControl | undefined;
@@ -394,8 +433,10 @@ function lastMarkableBlockOfTail(tail: PayloadMessage[]): PayloadBlock | undefin
 export function mergeObserverPayload(captured: AnthropicPayload, tail: PayloadMessage[]): AnthropicPayload {
 	const merged = structuredClone(captured) as AnthropicPayload;
 	// Clone the tail before touching it: it is pi-ai's own params object, and
-	// the marker assignment below must not reach back into it.
-	const tailMessages = (structuredClone(tail) as PayloadMessage[]).map(withoutBlockMarkers);
+	// the marker handling below must not reach back into it. Markers pi-ai
+	// placed on the tail are dropped; hydra owns the marker placement.
+	const tailMessages = structuredClone(tail) as PayloadMessage[];
+	stripMessageMarkers(tailMessages);
 	const anchored = tailMessages[0]?.role === "assistant";
 	const loopTurns = tailMessages.length > (anchored ? 2 : 1);
 	const target = loopTurns

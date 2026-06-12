@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
+	buildObserverPrompt,
 	demoteStaleInterrupt,
+	headActs,
+	isAnthropicPayload,
 	isValidHeadName,
 	mergeObserverPayload,
 	parseDecision,
 	parseHeadFile,
 	parseHeadList,
 	parseShutdownGrace,
+	rememberDelivery,
 	sanitizeHeadSet,
 	savedHeadList,
 	selectFinalAssistant,
@@ -31,7 +35,7 @@ describe("parseDecision", () => {
 	});
 
 	it("strips markdown fences", () => {
-		expect(parseDecision('```json\n{"action":"noop","reason":"","message":""}\n```').action).toBe("noop");
+		expect(parseDecision('```json\n{"action":"noop","reason":"","message":""}\n```')?.action).toBe("noop");
 	});
 
 	it("extracts a decision embedded in prose", () => {
@@ -41,31 +45,82 @@ describe("parseDecision", () => {
 
 	it("extracts a decision whose message contains braces", () => {
 		const text = 'Decision: {"action":"steer","reason":"r","message":"use {x: 1} not {}"} as discussed.';
-		expect(parseDecision(text).message).toBe("use {x: 1} not {}");
+		expect(parseDecision(text)?.message).toBe("use {x: 1} not {}");
 	});
 
-	it("falls back to noop on garbage", () => {
-		expect(parseDecision("the model rambled instead")).toEqual({
-			action: "noop",
-			reason: "unparseable response",
-			message: "",
-		});
-	});
-
-	it("rejects unknown actions", () => {
-		expect(parseDecision('{"action":"explode","reason":"r","message":"m"}').action).toBe("noop");
+	it("returns null on garbage and on unknown actions", () => {
+		expect(parseDecision("the model rambled instead")).toBeNull();
+		expect(parseDecision('{"action":"explode","reason":"r","message":"m"}')).toBeNull();
 	});
 
 	it("accepts print", () => {
-		expect(parseDecision('{"action":"print","reason":"fyi","message":"note"}').action).toBe("print");
+		expect(parseDecision('{"action":"print","reason":"fyi","message":"note"}')?.action).toBe("print");
+	});
+
+	it("records a delivery with nothing to deliver as the noop it is", () => {
+		expect(parseDecision('{"action":"interrupt","reason":"bad","message":""}')).toEqual({
+			action: "noop",
+			reason: "bad (empty message)",
+			message: "",
+		});
+		expect(parseDecision('{"action":"steer","reason":"","message":"   "}')?.action).toBe("noop");
 	});
 
 	it("caps reason and message lengths", () => {
 		const parsed = parseDecision(
 			JSON.stringify({ action: "queue", reason: "r".repeat(300), message: "m".repeat(600) }),
 		);
-		expect(parsed.reason).toHaveLength(200);
-		expect(parsed.message).toHaveLength(500);
+		expect(parsed?.reason).toHaveLength(200);
+		expect(parsed?.message).toHaveLength(500);
+	});
+});
+
+describe("isAnthropicPayload", () => {
+	it("accepts an object with a messages array and rejects everything else", () => {
+		expect(isAnthropicPayload({ messages: [] })).toBe(true);
+		expect(isAnthropicPayload({ messages: [{ role: "user", content: "hi" }], model: "m" })).toBe(true);
+		expect(isAnthropicPayload(null)).toBe(false);
+		expect(isAnthropicPayload("payload")).toBe(false);
+		expect(isAnthropicPayload({ messages: "nope" })).toBe(false);
+		expect(isAnthropicPayload({})).toBe(false);
+	});
+});
+
+describe("rememberDelivery", () => {
+	it("dedupes and evicts the oldest key past the cap", () => {
+		const seen = new Set<string>();
+		expect(rememberDelivery(seen, "a", 2)).toBe(true);
+		expect(rememberDelivery(seen, "a", 2)).toBe(false);
+		expect(rememberDelivery(seen, "b", 2)).toBe(true);
+		expect(rememberDelivery(seen, "c", 2)).toBe(true);
+		// "a" was evicted, so it delivers again; "c" is still remembered.
+		expect(rememberDelivery(seen, "a", 2)).toBe(true);
+		expect(rememberDelivery(seen, "c", 2)).toBe(false);
+	});
+});
+
+describe("headActs", () => {
+	it("acts on undefined (all tools) and on a subset, never on an empty list", () => {
+		expect(headActs(undefined)).toBe(true);
+		expect(headActs(["read"])).toBe(true);
+		expect(headActs([])).toBe(false);
+	});
+});
+
+describe("buildObserverPrompt", () => {
+	it("bans tools for a judge-only head", () => {
+		const prompt = buildObserverPrompt("quality", "Judge.", []);
+		expect(prompt).toContain("No tools");
+		expect(prompt).not.toContain("tool access");
+	});
+
+	it("spells out a narrowed allowance", () => {
+		const prompt = buildObserverPrompt("docs", "Keep notes.", ["read", "write"]);
+		expect(prompt).toContain("only these tools: read, write");
+	});
+
+	it("permits everything when tools are omitted", () => {
+		expect(buildObserverPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
 	});
 });
 
@@ -188,6 +243,18 @@ describe("mergeObserverPayload", () => {
 		const merged = mergeObserverPayload(capturedFixture(), tail);
 		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral" });
 		expect(blocks(merged.messages[3]).every((block) => block.cache_control === undefined)).toBe(true);
+	});
+
+	it("falls back to a plain ephemeral marker when the captured payload carries none", () => {
+		const captured: AnthropicPayload = {
+			messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+		};
+		const tail: PayloadMessage[] = [
+			{ role: "assistant", content: [{ type: "text", text: "final" }] },
+			promptTail(),
+		];
+		const merged = mergeObserverPayload(captured, tail);
+		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral" });
 	});
 
 	it("never increases the breakpoint count (the budget is four and the driver spends it)", () => {
@@ -336,6 +403,10 @@ describe("summarizeLoopUsage", () => {
 	it("returns zeros for an empty loop", () => {
 		expect(summarizeLoopUsage([])).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, hitRatio: 0 });
 	});
+
+	it("guards the ratio against an all-zero first usage", () => {
+		expect(summarizeLoopUsage([usage(0, 0, 0, 0, 0)]).hitRatio).toBe(0);
+	});
 });
 
 describe("sanitizeHeadSet", () => {
@@ -355,6 +426,14 @@ describe("sanitizeHeadSet", () => {
 		expect(sanitizeHeadSet(["quality", "test", "security"], catalog).heads).toEqual(["test"]);
 	});
 
+	it("keeps the first diagnostic when several are requested", () => {
+		const twoDiagnostics = {
+			exists: () => true,
+			isDiagnostic: (name: string) => name.startsWith("test"),
+		};
+		expect(sanitizeHeadSet(["test-b", "test-a"], twoDiagnostics).heads).toEqual(["test-b"]);
+	});
+
 	it("returns empty heads when nothing is known", () => {
 		expect(sanitizeHeadSet(["nope"], catalog).heads).toEqual([]);
 	});
@@ -363,6 +442,7 @@ describe("sanitizeHeadSet", () => {
 describe("savedHeadList", () => {
 	it("prefers the heads array and filters non-strings", () => {
 		expect(savedHeadList({ heads: ["a", 1, "b"] })).toEqual(["a", "b"]);
+		expect(savedHeadList({ heads: ["a"], lenses: ["old"], lens: "older" })).toEqual(["a"]);
 	});
 
 	it("respects an explicit empty array", () => {
@@ -425,6 +505,22 @@ describe("selectFinalAssistant", () => {
 
 	it("returns null for an empty run", () => {
 		expect(selectFinalAssistant([], RESPONSE_TS)).toBeNull();
+	});
+});
+
+describe("selectFinalAssistant edge cases", () => {
+	it("skips an aborted final response and matches the usable assistant before it", () => {
+		const usable = { role: "assistant", content: [{ type: "text" }], timestamp: 100 };
+		const aborted = { role: "assistant", stopReason: "aborted", content: [{ type: "text" }], timestamp: 200 };
+		// The usable assistant is the captured request's own response.
+		expect(selectFinalAssistant([usable, aborted], 100)).toBe(usable);
+		// A non-matching survivor means M is already inside the payload.
+		expect(selectFinalAssistant([usable, aborted], 999)).toBeNull();
+	});
+
+	it("skips string-content assistants", () => {
+		const stringContent = { role: "assistant", content: "plain", timestamp: 100 };
+		expect(selectFinalAssistant([stringContent], 100)).toBeNull();
 	});
 });
 
