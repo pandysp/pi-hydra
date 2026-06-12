@@ -14,9 +14,16 @@ export const DELIVERY_MODES: DeliveryMode[] = ["print", "queue", "steer", "inter
 const VERDICT_FORCE: Record<Action, number> = { noop: 0, queue: 1, steer: 2, interrupt: 3 };
 const MODE_CAP: Record<DeliveryMode, number> = { print: 0, queue: 1, steer: 2, interrupt: 3 };
 
-/** 0 render only · 1 followUp after the run · 2 steer between turns · 3 abort, then deliver. */
-export function effectiveForce(action: Action, mode: DeliveryMode): number {
-	return Math.min(VERDICT_FORCE[action], MODE_CAP[mode]);
+/**
+ * 0 render only · 1 followUp after the run · 2 steer between turns · 3 abort,
+ * then deliver. A verdict formed on a snapshot the driver has since moved past
+ * may not abort the current run: interrupt demotes to steer. The asymmetry
+ * favors it; a wrong demotion costs one turn of latency, a wrong abort
+ * destroys in-flight work.
+ */
+export function effectiveForce(action: Action, mode: DeliveryMode, staleSnapshot = false): number {
+	const force = Math.min(VERDICT_FORCE[action], MODE_CAP[mode]);
+	return force === 3 && staleSnapshot ? 2 : force;
 }
 
 export interface Decision {
@@ -73,6 +80,35 @@ export function parseDecision(text: string): Decision {
 	return { action: "noop", reason: "unparseable response", message: "" };
 }
 
+export interface ObserverUsage {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+}
+
+/**
+ * Fold the per-iteration usage of one observation (a verdict head makes one
+ * call, an acting head one per loop iteration) into stats for a single
+ * HydraCall. Totals sum across iterations; the hit ratio comes from the first
+ * iteration alone, since that is the replay-parity regression signal and
+ * later iterations legitimately pay the loop tail as fresh input.
+ */
+export function summarizeLoopUsage(usages: ObserverUsage[]): ObserverUsage & { hitRatio: number } {
+	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+	for (const usage of usages) {
+		total.input += usage.input;
+		total.output += usage.output;
+		total.cacheRead += usage.cacheRead;
+		total.cacheWrite += usage.cacheWrite;
+		total.cost += usage.cost;
+	}
+	const first = usages[0];
+	const readable = first ? first.input + first.cacheRead + first.cacheWrite : 0;
+	return { ...total, hitRatio: readable > 0 ? (first.cacheRead / readable) * 100 : 0 };
+}
+
 /** Parse a user-supplied lens list ("quality,security" or "quality security"). */
 export function parseLensList(value: string): string[] {
 	return [...new Set(value.split(/[\s,]+/).map((name) => name.trim()).filter((name) => name.length > 0))];
@@ -81,30 +117,36 @@ export function parseLensList(value: string): string[] {
 export interface LensDefinition {
 	name: string;
 	description?: string;
+	/** Acting head: may run tool calls before its verdict. Default: verdict-only. */
+	tools?: boolean;
 	prompt: string;
 }
 
 /**
- * Parse a custom lens file: optional `---` frontmatter carrying a description,
- * followed by the lens instruction text. Returns null when there is no
- * instruction to observe with.
+ * Parse a custom lens file: optional `---` frontmatter carrying a description
+ * and the `tools: true` acting-head marker, followed by the lens instruction
+ * text. Returns null when there is no instruction to observe with.
  */
 export function parseLensFile(name: string, content: string): LensDefinition | null {
 	let body = content;
 	let description: string | undefined;
+	let tools: boolean | undefined;
 	const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n?/);
 	if (frontmatter) {
 		body = content.slice(frontmatter[0].length);
-		const descriptionLine = frontmatter[1].split("\n").find((line) => line.startsWith("description:"));
-		if (descriptionLine) {
-			description = descriptionLine.slice("description:".length).trim();
+		for (const line of frontmatter[1].split("\n")) {
+			if (line.startsWith("description:")) {
+				description = line.slice("description:".length).trim();
+			} else if (line.startsWith("tools:")) {
+				tools = line.slice("tools:".length).trim() === "true" || undefined;
+			}
 		}
 	}
 	const prompt = body.trim();
 	if (prompt.length === 0) {
 		return null;
 	}
-	return { name, description, prompt };
+	return { name, description, tools, prompt };
 }
 
 export function isValidLensName(name: string): boolean {
@@ -118,7 +160,11 @@ export function isValidLensName(name: string): boolean {
  */
 export function buildLensFile(definition: LensDefinition): string {
 	const description = definition.description?.replace(/\s+/g, " ").trim();
-	return description ? `---\ndescription: ${description}\n---\n${definition.prompt}\n` : `${definition.prompt}\n`;
+	const lines = [
+		...(description ? [`description: ${description}`] : []),
+		...(definition.tools ? ["tools: true"] : []),
+	];
+	return lines.length > 0 ? `---\n${lines.join("\n")}\n---\n${definition.prompt}\n` : `${definition.prompt}\n`;
 }
 
 export interface LensCatalog {
@@ -272,42 +318,72 @@ function stripMessageMarkers(messages: PayloadMessage[]): CacheControl | undefin
 	return stripped;
 }
 
-// text and tool_use are the marker-eligible block types in an assistant
-// message; cache_control on a thinking block is an API error.
+// text, tool_use, and tool_result are the marker-eligible block types here;
+// cache_control on a thinking block is an API error.
+const MARKABLE_TYPES = ["text", "tool_use", "tool_result"];
+
 function lastMarkableBlock(message: PayloadMessage): PayloadBlock | undefined {
 	if (!Array.isArray(message.content)) {
 		return undefined;
 	}
 	for (let i = message.content.length - 1; i >= 0; i--) {
-		if (message.content[i].type === "text" || message.content[i].type === "tool_use") {
+		if (MARKABLE_TYPES.includes(message.content[i].type)) {
 			return message.content[i];
 		}
 	}
 	return undefined;
 }
 
+/** The deepest markable block across the tail, for the loop-frontier marker. */
+function lastMarkableBlockOfTail(tail: PayloadMessage[]): PayloadBlock | undefined {
+	for (let i = tail.length - 1; i >= 0; i--) {
+		const block = lastMarkableBlock(tail[i]);
+		if (block) {
+			return block;
+		}
+	}
+	return undefined;
+}
+
 /**
- * Merge the observer tail (pi-ai's own serialization of `[M?, prompt]`) onto
- * the captured driver payload.
+ * Merge the observer tail (pi-ai's own serialization of `[M?, prompt,
+ * ...tool-loop turns]`) onto the captured driver payload.
  *
  * The captured prefix is replayed byte-true so the fork reads the driver's
- * cache entry exactly. When the tail carries the run's final assistant
- * message M, the driver's message-level cache marker (TTL included) moves
- * onto M's last markable block: the fork's write then pre-warms the driver's
- * next request, which finds the prefix+M entry via breakpoint walk-back.
- * Markers pi-ai placed on the tail are dropped: the budget is four
- * breakpoints and the observer prompt must stay uncached. Without an
- * eligible target in the tail, the captured markers are left untouched.
+ * cache entry exactly. Cache writes happen only at explicit breakpoints, and
+ * the budget is four per request (the driver's payload already spends all
+ * four), so hydra only ever MOVES the deepest message-level marker, by tail
+ * shape:
+ *
+ * - `[prompt]`: a plain observation. Nothing moves; the captured markers
+ *   are replayed byte-true and the prompt stays uncached.
+ * - `[M, prompt]`: a run-end fork. The driver's marker (TTL included) rides
+ *   M's last markable block: the fork's write pre-warms the driver's next
+ *   request, which finds the prefix+M entry via breakpoint walk-back.
+ * - longer: a tool loop appended observer turns. The marker advances to the
+ *   tail's last markable block, so each loop turn is written once and read
+ *   thereafter instead of re-paid as input every iteration. A plain
+ *   ephemeral marker, deliberately without the driver's TTL: loop entries
+ *   only need to survive until the next iteration, and the prefix+M entry
+ *   the first call wrote keeps serving the driver bet.
+ *
+ * Markers pi-ai placed on the tail are dropped before any of this.
  */
 export function mergeObserverPayload(captured: AnthropicPayload, tail: PayloadMessage[]): AnthropicPayload {
 	const merged = structuredClone(captured) as AnthropicPayload;
 	// Clone the tail before touching it: it is pi-ai's own params object, and
 	// the marker assignment below must not reach back into it.
 	const tailMessages = (structuredClone(tail) as PayloadMessage[]).map(withoutBlockMarkers);
-	const assistant = tailMessages.find((message) => message.role === "assistant");
-	const target = assistant ? lastMarkableBlock(assistant) : undefined;
+	const anchored = tailMessages[0]?.role === "assistant";
+	const loopTurns = tailMessages.length > (anchored ? 2 : 1);
+	const target = loopTurns
+		? lastMarkableBlockOfTail(tailMessages)
+		: anchored
+			? lastMarkableBlock(tailMessages[0])
+			: undefined;
 	if (target) {
-		target.cache_control = stripMessageMarkers(merged.messages) ?? { type: "ephemeral" };
+		const stripped = stripMessageMarkers(merged.messages);
+		target.cache_control = loopTurns ? { type: "ephemeral" } : (stripped ?? { type: "ephemeral" });
 	}
 	merged.messages = [...merged.messages, ...tailMessages];
 	return merged;

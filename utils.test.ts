@@ -13,6 +13,7 @@ import {
 	sanitizeLensSet,
 	savedLensList,
 	selectFinalAssistant,
+	summarizeLoopUsage,
 } from "./utils";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
@@ -151,6 +152,52 @@ describe("mergeObserverPayload", () => {
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 	});
 
+	it("advances the marker to the loop frontier once tool turns are appended, dropping the TTL", () => {
+		const tail: PayloadMessage[] = [
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "t1", name: "read", input: {}, cache_control: { type: "ephemeral" } }],
+			},
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+		];
+		const merged = mergeObserverPayload(capturedFixture(), tail);
+		// Loop entries only need to survive until the next iteration: plain
+		// ephemeral, not the driver's 1h TTL. The prefix+M entry from the
+		// first call keeps serving the driver bet.
+		expect(blocks(merged.messages[5])[0].cache_control).toEqual({ type: "ephemeral" });
+		expect(blocks(merged.messages[2])[0].cache_control).toBeUndefined();
+		const capturedBlocks = merged.messages.slice(0, 2).flatMap((m) => blocks(m));
+		expect(capturedBlocks.every((block) => block.cache_control === undefined)).toBe(true);
+	});
+
+	it("advances the marker in a piggyback loop too (no leading M)", () => {
+		const tail: PayloadMessage[] = [
+			promptTail(),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "bash", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+		];
+		const merged = mergeObserverPayload(capturedFixture(), tail);
+		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral" });
+		expect(blocks(merged.messages[3]).every((block) => block.cache_control === undefined)).toBe(true);
+	});
+
+	it("never increases the breakpoint count (the budget is four and the driver spends it)", () => {
+		const countMarkers = (payload: AnthropicPayload) =>
+			payload.messages.flatMap((m) => blocks(m)).filter((block) => block.cache_control !== undefined).length;
+		const captured = capturedFixture();
+		const loopTail: PayloadMessage[] = [
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+		];
+		for (const tail of [[promptTail()], [loopTail[0], promptTail()], loopTail]) {
+			expect(countMarkers(mergeObserverPayload(captured, tail))).toBeLessThanOrEqual(countMarkers(captured));
+		}
+	});
+
 	it("mutates neither the captured payload nor the tail", () => {
 		const captured = capturedFixture();
 		const tail: PayloadMessage[] = [
@@ -195,6 +242,19 @@ describe("parseLensFile", () => {
 		expect(parseLensFile("empty", "   \n")).toBeNull();
 		expect(parseLensFile("only-frontmatter", "---\ndescription: d\n---\n\n")).toBeNull();
 	});
+
+	it("parses the acting-head marker", () => {
+		expect(parseLensFile("docs", "---\ntools: true\n---\nKeep docs current.")?.tools).toBe(true);
+		expect(parseLensFile("docs", "---\ntools: false\n---\nBody.")?.tools).toBeUndefined();
+		expect(parseLensFile("docs", "Body.")?.tools).toBeUndefined();
+	});
+
+	it("round-trips through buildLensFile", () => {
+		const definition = { name: "docs", description: "Writes docs", tools: true, prompt: "Keep docs current." };
+		expect(parseLensFile("docs", buildLensFile(definition))).toEqual(definition);
+		const verdictOnly = { name: "brevity", description: undefined, tools: undefined, prompt: "Review for verbosity." };
+		expect(parseLensFile("brevity", buildLensFile(verdictOnly))).toEqual(verdictOnly);
+	});
 });
 
 describe("parseLensList", () => {
@@ -224,6 +284,42 @@ describe("effectiveForce", () => {
 				expect(effectiveForce(action, mode), `${action} in ${mode}`).toBe(expected[mode][action]);
 			}
 		}
+	});
+
+	it("demotes a stale-snapshot interrupt to steer, leaving everything else alone", () => {
+		expect(effectiveForce("interrupt", "interrupt", true)).toBe(2);
+		expect(effectiveForce("interrupt", "queue", true)).toBe(1);
+		expect(effectiveForce("steer", "interrupt", true)).toBe(2);
+		expect(effectiveForce("noop", "interrupt", true)).toBe(0);
+	});
+});
+
+describe("summarizeLoopUsage", () => {
+	const usage = (input: number, cacheRead: number, cacheWrite: number, output = 10, cost = 0.01) => ({
+		input,
+		output,
+		cacheRead,
+		cacheWrite,
+		cost,
+	});
+
+	it("sums totals across iterations but takes the hit ratio from the first", () => {
+		const summary = summarizeLoopUsage([usage(100, 9900, 0), usage(500, 9900, 0)]);
+		expect(summary.input).toBe(600);
+		expect(summary.cacheRead).toBe(19800);
+		expect(summary.output).toBe(20);
+		expect(summary.cost).toBeCloseTo(0.02);
+		// First iteration: 9900 / (100 + 9900 + 0), the replay-parity signal.
+		expect(summary.hitRatio).toBeCloseTo(99);
+	});
+
+	it("matches the single-call case of a verdict head", () => {
+		const summary = summarizeLoopUsage([usage(149, 7720, 0)]);
+		expect(summary.hitRatio).toBeCloseTo((7720 / 7869) * 100);
+	});
+
+	it("returns zeros for an empty loop", () => {
+		expect(summarizeLoopUsage([])).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, hitRatio: 0 });
 	});
 });
 

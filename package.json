@@ -6,18 +6,22 @@
 	"type": "module",
 	"private": true,
 	"pi": {
-		"extensions": ["./index.ts"]
+		"extensions": [
+			"./index.ts"
+		]
 	},
 	"scripts": {
 		"check": "tsc",
 		"test": "vitest run"
 	},
 	"devDependencies": {
+		"@earendil-works/pi-agent-core": "^0.78.1",
 		"@types/node": "^22",
 		"typescript": "^5.7",
 		"vitest": "^3"
 	},
 	"peerDependencies": {
+		"@earendil-works/pi-agent-core": "*",
 		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-coding-agent": "*",
 		"@earendil-works/pi-tui": "*"

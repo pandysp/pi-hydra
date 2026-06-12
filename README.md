@@ -4,7 +4,7 @@
 
 > Extra heads for your coding agent.
 
-hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own lens (quality, security, simplifier, API design) that sees exactly what the agent sees, judges every step, and answers with one of four decisions: stay quiet, queue feedback, steer the agent between turns, or interrupt and stop the run. One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
+hydra is a [pi](https://pi.dev/) extension that reviews your agent's work while the agent works. Each head is an observer with its own lens (quality, security, simplifier, API design) that sees exactly what the agent sees, judges every step, and answers with one of four decisions: stay quiet, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: a lens marked `tools: true` reads, searches, runs, and writes through the agent's own tools before its verdict (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache for about 1% of what the agent paid to build it.
 
 ## Why
 
@@ -62,6 +62,8 @@ A head's verdict asks for a force level (`noop`, `queue`, `steer`, `interrupt`);
 
 Lens descriptions and boundaries live in [`docs/lenses.md`](docs/lenses.md). You can add your own heads: a markdown file in `~/.pi/agent/hydra/lenses/` becomes a lens, is re-read at the start of every run, and may override a built-in. Editing a lens file mid-session tunes the head for the very next observation.
 
+A lens whose frontmatter says `tools: true` is an **acting head**: instead of judging from the replayed context alone, it runs the agent's own tools (read, bash, write, grep...) through pi's agent loop before deciding. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in. Every file write is announced in the session, every loop call replays the same cached prefix, and a loop that has not produced a verdict after 25 model turns is wound down. See [`docs/lenses.md`](docs/lenses.md) for authoring guidance.
+
 Settings persist per session and survive resume. For headless runs (`pi -p`), where slash commands are unavailable, the same settings are CLI flags: `--hydra-lens quality,security`, `--hydra-delivery`, `--hydra-off`. Flags seed sessions that have no saved settings; saved settings win on resume.
 
 ### The agent configures its own heads
@@ -76,10 +78,8 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 ## Where this is going
 
-Today a head renders one of three verdicts. The architecture supports more than verdicts, and that is the direction:
-
-- **Self-tuning heads** ([#5](https://github.com/pandysp/pi-hydra/issues/5)). The agent can already write and swap its lenses mid-session; the remaining piece is closing the loop, where "this head flags too much" becomes the agent tuning the lens file and the next observation using it.
-- **Async heads.** A head that writes documentation as the agent codes. A head that updates project memory with decisions as they are made. A head that evaluates the trajectory in flight, instead of a post-hoc eval agent re-reading the whole transcript at full price. The head was there when it happened, and the cache already holds everything it saw.
+- **Self-tuning heads** ([#5](https://github.com/pandysp/pi-hydra/issues/5)). The agent can already write and swap its lenses mid-session, and an acting head can retune its peers through the same `hydra` tool; the remaining piece is the habit loop, where "this head flags too much" becomes a lens edit without anyone asking.
+- **Mid-generation verdicts.** Every verdict today is formed from a committed request snapshot, so a single long-running LLM call is never evaluated while it streams. That would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
 If any of these interest you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.
 

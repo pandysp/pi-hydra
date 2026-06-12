@@ -19,6 +19,28 @@ Custom lenses appear in `/hydra-lens` completions and work with `--hydra-lens`. 
 
 Several lenses observe at once: `/hydra-lens quality,security` fans out one head per lens in parallel. A set is any number of product lenses, or exactly one diagnostic lens; the two never mix.
 
+## Acting lenses
+
+A custom lens with `tools: true` in its frontmatter is an acting head: before its verdict, it may run the agent's own tools (read, bash, edit, write, grep, find, ls, and the `hydra` tool itself) through pi's agent loop. The built-ins stay verdict-only; acting is always a deliberate choice per lens.
+
+```markdown
+---
+description: Keeps docs/notes.md current with decisions as they happen
+tools: true
+---
+You maintain docs/notes.md. When the conversation contains a decision,
+constraint, or surprise not yet in the file, read it, add the missing
+entry, and keep entries one line each. Your verdict is usually noop:
+the file is your work product. Do not edit anything else.
+```
+
+Authoring guidance, on top of the design principles below:
+
+1. **Direct the tool use explicitly.** The wrapper permits tools; the lens says when and on what. A lens that only judges should stay `tools: false` and keep the snappy verdict path.
+2. **Say what the verdict should usually be.** Acting heads typically end `noop` (the work product is their side effect) or `steer` (a research head delivering a finding).
+3. **Avoid state-mutating bash mid-run.** The observer works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
+4. **Loops are bounded, not budgeted.** A head that has not produced a verdict after 25 model turns is wound down with a warning. There is no cost ceiling; the lens text is the throttle.
+
 ## Built-in Lenses (minimal overlap)
 
 ### 1. Quality
