@@ -61,11 +61,21 @@ export function parseDecision(text: string): Decision {
 		return direct;
 	}
 
-	const embedded = cleaned.match(/\{[^{}]*"action"[^{}]*\}/);
-	if (embedded) {
-		const parsed = tryParseDecision(embedded[0]);
-		if (parsed) {
-			return parsed;
+	// Embedded in prose: try every balanced {...} span. Brace counting
+	// instead of a regex, so a decision whose message itself contains braces
+	// still parses.
+	for (let start = cleaned.indexOf("{"); start !== -1; start = cleaned.indexOf("{", start + 1)) {
+		let depth = 0;
+		for (let i = start; i < cleaned.length; i++) {
+			if (cleaned[i] === "{") {
+				depth++;
+			} else if (cleaned[i] === "}" && --depth === 0) {
+				const parsed = tryParseDecision(cleaned.slice(start, i + 1));
+				if (parsed) {
+					return parsed;
+				}
+				break;
+			}
 		}
 	}
 
@@ -129,7 +139,8 @@ export function isValidHeadName(name: string): boolean {
  * required; a file missing either is skipped (with the returned error as the
  * warning). The filename is storage, not identity.
  */
-export function parseHeadFile(content: string): { head: HeadDefinition } | { error: string } {
+export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { error: string } {
+	const content = rawContent.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
 	const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n?/);
 	if (!frontmatter) {
 		return { error: "no frontmatter (name: and description: are required)" };
@@ -139,15 +150,21 @@ export function parseHeadFile(content: string): { head: HeadDefinition } | { err
 	let tools: string[] | undefined;
 	let autostart: boolean | undefined;
 	for (const line of frontmatter[1].split("\n")) {
+		if (/^\s*- /.test(line)) {
+			// A YAML block list would silently parse as an empty value above
+			// it; reject loudly instead.
+			return { error: `block-style lists are not supported; write "tools: read, write" on one line` };
+		}
 		if (line.startsWith("name:")) {
 			name = line.slice("name:".length).trim();
 		} else if (line.startsWith("description:")) {
 			description = line.slice("description:".length).trim();
 		} else if (line.startsWith("tools:")) {
 			// A present-but-empty value ("tools:" or "tools: []") means none;
-			// an absent key means all. The two must not collapse into each other.
-			const value = line.slice("tools:".length).trim();
-			tools = value === "" || value === "[]" ? [] : parseHeadList(value);
+			// an absent key means all. The two must not collapse into each
+			// other. Brackets are optional around a non-empty list.
+			const value = line.slice("tools:".length).trim().replace(/^\[/, "").replace(/\]$/, "");
+			tools = value === "" ? [] : parseHeadList(value);
 		} else if (line.startsWith("autostart:")) {
 			autostart = line.slice("autostart:".length).trim() === "true" || undefined;
 		}

@@ -39,6 +39,11 @@ describe("parseDecision", () => {
 		expect(parseDecision(text)).toEqual({ action: "interrupt", reason: "bad", message: "stop" });
 	});
 
+	it("extracts a decision whose message contains braces", () => {
+		const text = 'Decision: {"action":"steer","reason":"r","message":"use {x: 1} not {}"} as discussed.';
+		expect(parseDecision(text).message).toBe("use {x: 1} not {}");
+	});
+
 	it("falls back to noop on garbage", () => {
 		expect(parseDecision("the model rambled instead")).toEqual({
 			action: "noop",
@@ -256,6 +261,26 @@ describe("parseHeadFile", () => {
 	it("rejects invalid and reserved names", () => {
 		expect(parseHeadFile("---\nname: Docs\ndescription: d\n---\nBody.")).toHaveProperty("error");
 		expect(parseHeadFile("---\nname: none\ndescription: d\n---\nBody.")).toHaveProperty("error");
+	});
+
+	it("tolerates CRLF line endings and a BOM", () => {
+		const crlf = "---\r\nname: x\r\ndescription: d\r\ntools: read\r\n---\r\nBody.\r\n";
+		expect(parseHeadFile(`\uFEFF${crlf}`)).toEqual({
+			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, prompt: "Body." },
+		});
+	});
+
+	it("accepts brackets around a tools list", () => {
+		const parsed = parseHeadFile("---\nname: x\ndescription: d\ntools: [read, write]\n---\nBody.");
+		expect(parsed).toEqual({
+			head: { name: "x", description: "d", tools: ["read", "write"], autostart: undefined, prompt: "Body." },
+		});
+	});
+
+	it("rejects YAML block lists instead of silently parsing an empty value", () => {
+		const parsed = parseHeadFile("---\nname: x\ndescription: d\ntools:\n  - read\n  - write\n---\nBody.");
+		expect(parsed).toHaveProperty("error");
+		expect((parsed as { error: string }).error).toContain("block-style");
 	});
 });
 

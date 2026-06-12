@@ -219,6 +219,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let heads = new Map<string, DiscoveredHead>();
 	let announcedDiscovery = "";
 
+	// Discovery runs at every agent_start and tool call; a broken file must
+	// warn once, not once per run until it is fixed.
+	const warnedDiscovery = new Set<string>();
+	function warnDiscovery(ctx: ExtensionContext, message: string) {
+		if (warnedDiscovery.has(message)) {
+			return;
+		}
+		warnedDiscovery.add(message);
+		ctx.ui.notify(message, "warning");
+	}
+
 	function isDirectory(path: string): boolean {
 		try {
 			return statSync(path).isDirectory();
@@ -258,27 +269,27 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			try {
 				parsed = parseHeadFile(readFileSync(join(dir, file), "utf8"));
 			} catch (error) {
-				ctx.ui.notify(`hydra: failed to read ${join(dir, file)}: ${error instanceof Error ? error.message : String(error)}`, "warning");
+				warnDiscovery(ctx, `hydra: failed to read ${join(dir, file)}: ${error instanceof Error ? error.message : String(error)}`);
 				continue;
 			}
 			if ("error" in parsed) {
-				ctx.ui.notify(`hydra: skipping ${join(dir, file)}: ${parsed.error}`, "warning");
+				warnDiscovery(ctx, `hydra: skipping ${join(dir, file)}: ${parsed.error}`);
 				continue;
 			}
 			const { head } = parsed;
 			if (head.name in DIAGNOSTIC_PROMPTS) {
-				ctx.ui.notify(`hydra: skipping ${join(dir, file)}: "${head.name}" is a reserved diagnostic name`, "warning");
+				warnDiscovery(ctx, `hydra: skipping ${join(dir, file)}: "${head.name}" is a reserved diagnostic name`);
 				continue;
 			}
 			if (loaded.has(head.name)) {
-				ctx.ui.notify(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`, "warning");
+				warnDiscovery(ctx, `hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`);
 				continue;
 			}
 			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
 			if (unexecutable.length > 0) {
-				ctx.ui.notify(
+				warnDiscovery(
+					ctx,
 					`hydra: head "${head.name}" lists tools hydra cannot execute: ${unexecutable.join(", ")} (valid: ${EXECUTABLE_TOOL_NAMES.join(", ")})`,
-					"warning",
 				);
 			}
 			loaded.set(head.name, { ...head, source });
@@ -474,6 +485,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		calls = [];
+		// The dedupe memory belongs to the branch being left behind; carrying
+		// it across navigation would silently suppress findings on the new one.
+		delivered.clear();
 		let config: HydraConfig | undefined;
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type !== "custom") {
@@ -635,7 +649,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		// A decision formed on an outdated snapshot may steer but no longer
 		// abort: the driver has already moved on.
-		routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
+		await routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
 	}
 
 	// Every observation runs through pi's own agent loop rather than a
@@ -779,7 +793,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionHead: string, staleSnapshot: boolean) {
+	async function routeDecision(ctx: ExtensionContext, decision: Decision, decisionHead: string, staleSnapshot: boolean) {
 		if (decision.action === "noop" || !decision.message) {
 			return;
 		}
@@ -803,32 +817,40 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const action = demoteStaleInterrupt(decision.action, staleSnapshot);
 		const details: FeedbackDetails = { head: decisionHead, action, reason: decision.reason };
 
-		if (action === "steer" || action === "interrupt") {
-			// steer: a real user message between turns of the current run.
-			// interrupt: pull the cord; abort the in-flight run and deliver the
-			// finding as a follow-up, which opens the next run. When the agent
-			// is idle there is nothing to steer or abort, so just send.
-			try {
-				if (ctx.isIdle()) {
-					pi.sendUserMessage(formatted);
-				} else if (action === "interrupt") {
-					ctx.abort();
-					pi.sendUserMessage(formatted, { deliverAs: "followUp" });
-				} else {
-					pi.sendUserMessage(formatted, { deliverAs: "steer" });
-				}
-			} catch (error) {
-				ctx.ui.notify(`hydra: ${action} failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
-			}
+		// print must never reach the agent, and pi has no chat message that is
+		// rendered but excluded from the LLM context (a deliverAs-less custom
+		// message steers a streaming agent and joins the next turn of an idle
+		// one), so print is a notification.
+		if (action === "print") {
+			ctx.ui.notify(`hydra ${formatted}`, "info");
 			return;
 		}
 
-		// queue joins the agent's next turn; print renders in the TUI and
-		// never enters the agent's context.
-		pi.sendMessage(
-			{ customType: "hydra-feedback", content: formatted, display: true, details },
-			action === "queue" ? { deliverAs: "followUp", triggerTurn: false } : { triggerTurn: false },
-		);
+		try {
+			if (action === "steer" || action === "interrupt") {
+				// steer: a real user message between turns of the current run.
+				// interrupt: pull the cord; abort the in-flight run and deliver
+				// the finding as a follow-up, which opens the next run. When the
+				// agent is idle there is nothing to steer or abort, so just send.
+				if (ctx.isIdle()) {
+					await pi.sendUserMessage(formatted);
+				} else if (action === "interrupt") {
+					ctx.abort();
+					await pi.sendUserMessage(formatted, { deliverAs: "followUp" });
+				} else {
+					await pi.sendUserMessage(formatted, { deliverAs: "steer" });
+				}
+				return;
+			}
+			// queue joins the agent's next turn: followUp while the agent
+			// streams, the message state directly when it is idle.
+			await pi.sendMessage(
+				{ customType: "hydra-feedback", content: formatted, display: true, details },
+				{ deliverAs: "followUp", triggerTurn: false },
+			);
+		} catch (error) {
+			ctx.ui.notify(`hydra: ${action} delivery failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
+		}
 	}
 
 	// Run one head's observations to completion, newest snapshot first
