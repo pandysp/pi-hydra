@@ -14,7 +14,7 @@ Review usually happens after the work. The PR is finished, a reviewer (human or 
 
 hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observer prompt plus a cache read instead of a full context rebuild (numbers in [What it costs](#what-it-costs)). The decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
 
-A bad assumption caught mid-implementation costs one correction message. Caught in review, it costs a refactor. Caught in production, an incident. The heads do not need to catch much to pay for themselves.
+A bad assumption caught mid-implementation costs one correction message. Caught in review it costs a refactor.
 
 ## What it costs
 
@@ -26,18 +26,18 @@ These are measurements, not estimates: the harness in [`experiments/`](experimen
 
 ## Compared to subagents
 
-pi ships four tools and no subagents; both arrive as extensions. They sit at opposite ends of two coupled choices. A head rides the driver's exact prompt cache, so it is locked to the driver's model and costs a cache read; a subagent ([pi-subagents](https://github.com/tintinweb/pi-subagents), the most capable pi subagent extension) rebuilds context from scratch, so it picks any model and pays full input price. And a head *watches in place* — replaying at the driver's commit points, able to act on what it sees live — where a subagent is *spawned and returns*, on its own clock, handing back a result the parent reads when it is done.
+pi ships four tools and no subagents; both arrive as extensions. They sit at opposite ends of two coupled choices. A head rides the driver's exact prompt cache, so it is locked to the driver's model and costs a cache read; a subagent ([pi-subagents](https://github.com/tintinweb/pi-subagents), the most capable pi subagent extension) rebuilds context from scratch, so it picks any model and pays full input price. And a head *watches in place*, replaying at the driver's commit points and able to act on what it sees live. A subagent is *spawned and returns*: it runs on its own clock and hands back a result the parent reads when it is done.
 
 | | subagents | hydra heads |
 |---|---|---|
 | Context | fresh, isolated by default; zero anchoring | the driver's payload byte-for-byte; maximal anchoring |
-| Model | free — a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
+| Model | free: a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
 | Cost | a full-price context rebuild per task | ~1% of build cost per observation; ~30% per session always-on |
-| Timing | on its own clock — Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points — in time to steer the next step |
+| Timing | on its own clock: Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points, in time to steer the next step |
 | Direction | spawned downward; can be `steer`ed downward (parent → child) and returns a final message | watches the same run; can `steer` or pull the cord upward (head → agent) |
-| What crosses | passive data — inert until the parent reads and acts on it | an act — a `steer` or `interrupt` that fires whether the agent agrees or not |
+| What crosses | passive data, inert until the parent reads and acts on it | an act: a `steer` or `interrupt` that fires whether the agent agrees or not |
 
-Reach for a subagent when fresh eyes, a stronger model, or heavy isolated work is the point; reach for a head to catch the bad turn while it is still molten. The two stack around the driver: heads steer it from above, and it spawns subagents for the isolated work below.
+Reach for a subagent when fresh eyes, a stronger model, or heavy isolated work is the point; reach for a head to catch a bad turn during the run. The two stack around the driver: heads steer it from above, and it spawns subagents for the isolated work below.
 
 ## Quick start
 
@@ -106,7 +106,7 @@ Queue against steer is a timeliness choice; interrupt is for findings that canno
 
 ### The agent manages its own heads
 
-hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase the way an assembly line swaps tooling: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
+hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
 
 The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which stays yours.
 
