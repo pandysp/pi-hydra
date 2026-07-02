@@ -1,7 +1,7 @@
 {
 	"name": "pi-hydra",
 	"version": "0.1.0",
-	"description": "Extra heads for your pi coding agent: live oversight at prompt-cache prices",
+	"description": "Extra heads for your pi coding agent: live oversight through prompt-cache replay",
 	"keywords": [
 		"pi-package",
 		"pi",
