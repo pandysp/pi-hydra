@@ -55,7 +55,7 @@ The active set is session state: which heads observe right now.
 - `--hydra-heads quality,security` seeds headless runs (`pi -p`).
 - The agent uses the `hydra` tool to `add` or `remove` one head at a time.
 
-Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so additional heads cost cache-read prices instead of context rebuilds.
+Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so each additional head costs a cache read instead of a context rebuild.
 
 Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Saved state never leaks across sessions; autostart is only the cold-start default.
 
@@ -128,22 +128,22 @@ The four review examples are designed to catch different things rather than repe
 
 ### Quality
 **Focus:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
-**Why:** The broadest net, and the recommended default. The agent believes its own code works; this head asks what would prove it.
+**Why:** The broadest net and the recommended default. The agent believes its own code works; this head asks what would prove it.
 **Boundary:** Do not nitpick style.
 
 ### Security
 **Focus:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
-**Why:** Catches things nobody else sees. Auth logic flaws, leaked secrets, unsafe shell calls. The agent is thinking about functionality, not attack surface.
+**Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are invisible to every other lens. The agent is thinking about functionality rather than attack surface.
 **Boundary:** Do not comment on style or product scope.
 
 ### Simplifier
 **Focus:** unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, over-built solutions.
-**Why:** Every other head adds requirements. This one removes them. Argues for LESS code, which is rare and valuable.
+**Why:** Every other head adds requirements. This one argues for removing code instead.
 **Boundary:** Do not comment on unrelated bugs or security. You argue for less, not more.
 
 ### API Design
 **Focus:** contract clarity, compatibility, consistency, error shapes, naming, ergonomics.
-**Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about implementation, not the contract.
+**Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about the implementation rather than the contract.
 **Boundary:** Do not comment on internal code structure.
 
 ## More head ideas
@@ -152,7 +152,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 
 **Watchdog heads** judge against a standard the head file carries. Most run judge-only (`tools: []`) and stay quiet until the standard is violated:
 
-- **Observability**: logging, monitoring, traceability, "can you diagnose this at 3am?" Nobody thinks about production operations during development.
+- **Observability**: logging, monitoring, traceability, whether an incident at 3am could be diagnosed from what the code emits. Production operations rarely get attention during development.
 - **Testing**: coverage gaps, untested edge cases, error handling paths. Pre-merge and complex business logic.
 - **Performance**: algorithmic complexity, N+1 queries, blocking operations. Data-heavy apps; overlaps with Simplifier on redundant operations.
 - **Compliance**: data retention, consent, audit trails, data minimization. Regulated industries and PII.

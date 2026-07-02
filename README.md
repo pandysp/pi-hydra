@@ -6,7 +6,7 @@
 
 ![A pi session: the head picker adds a security head, then as the agent builds a Flask app the security head catches debug=True (a Werkzeug RCE) and an open-redirect risk and steers the fix into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review its work while it works. Each head watches with its own focus (quality, security, simplifier, API design, or anything you write): it sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs about 1% of what the agent paid to build the context it reads; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
+hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head watches with its own focus (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs about 1% of what the agent paid to build the context it reads; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
 
 ## Why
 
@@ -116,8 +116,8 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 ## Limitations
 
-- Anthropic only, for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
-- A head runs the driver's model, always. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
+- Anthropic only for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
+- A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
 - An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)).
 
@@ -125,7 +125,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 - **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that re-verifies every cache claim against the live API. A full run costs under a dollar.
 
 ## History
 

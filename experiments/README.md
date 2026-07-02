@@ -244,8 +244,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    while sharing perfectly saves ~$0.005, about 3% of one observation's own
    cache-read cost at a 100K context. (b) No fixed stagger is reliable at
    realistic context sizes (see prefix scaling). (c) Feedback latency is the
-   product metric; deliberate delay recreates the staleness problem hydra
-   exists to fix. Marker-on-M beats no-marker whenever hit probability
+   product metric; deliberate delay recreates the staleness problem. Marker-on-M beats no-marker whenever hit probability
    exceeds ~22% (expected 1.25(1−p)+0.1p vs 1.0), and the first-committed
    write pre-warms the driver's next turn regardless. Zero delay is also safe
    for reading the driver's prefix: commit-at-ingestion means the driver's

@@ -1,6 +1,6 @@
 # Architecture
 
-How hydra observes a pi session at prompt-cache prices. For the what and why, start with the [root README](../README.md); the empirical basis for everything here is [`../experiments/`](../experiments/README.md).
+How hydra observes a pi session through near-pure cache reads. For the what and why, start with the [root README](../README.md); the empirical basis for everything here is [`../experiments/`](../experiments/README.md).
 
 ## Commit-point observation
 
@@ -82,9 +82,9 @@ jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage 
 
 ## Acting heads
 
-By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable set, down to `[]` for a judge-only head (a hard no-tools wrapper and the single-call fast path). The mechanism extends the replay, it does not replace it:
+By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable set, down to `[]` for a judge-only head (a hard no-tools wrapper and the single-call fast path). The mechanism extends the replay; it does not replace it:
 
-**The loop is pi's own, and it is the only path.** Every observation runs `runAgentLoop` from pi-agent-core (a first-class extension import; the loader aliases it in both bundle modes) rather than a hand-rolled imitation: argument validation, "tool not found" error results, parallel-vs-sequential execution policy, and abort discipline stay pi's code and evolve with it. A judge-only head is not a separate code path, just the zero-tool case: it answers in one turn and the loop exits, one provider call exactly like a bare `complete()`. The same reuse approach as M's serialization.
+**The loop is pi's own, and it is the only path.** Every observation runs `runAgentLoop` from pi-agent-core (a first-class extension import; the loader aliases it in both bundle modes) rather than a hand-rolled imitation: argument validation, "tool not found" error results, parallel-vs-sequential execution policy, and abort discipline stay pi's code and evolve with it. A judge-only head is the zero-tool case of the same path: it answers in one turn and the loop exits, one provider call exactly like a bare `complete()`. The same reuse approach as M's serialization.
 
 **Every loop call replays the captured prefix.** The loop's own built context is discarded by the `onPayload` merge, so iteration N's request is the byte-true driver prefix plus the observation tail (`[M?, prompt, turn 1, results 1, ..., turn N-1]`). The driver prefix stays a pure cache read on every iteration; measured live, read stayed at the full committed prefix while only tail content was written.
 
