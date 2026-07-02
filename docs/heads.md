@@ -25,7 +25,7 @@ Frontmatter keys:
 | `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means all of the agent's tools; `tools: []` means none (the head judges, never acts). |
 | `autostart` | no | `true` joins the active set at session start. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
 
-The filename is storage, nothing more: identity comes from `name`. By convention, name the file after the head.
+The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
 There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model; that is what makes observation cost ~1% of what the agent paid.
 
@@ -55,7 +55,7 @@ The active set is session state: which heads observe right now.
 - `--hydra-heads quality,security` seeds headless runs (`pi -p`).
 - The agent uses the `hydra` tool to `add` or `remove` one head at a time.
 
-Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so additional heads cost cache-read prices, not context rebuilds.
+Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so additional heads cost cache-read prices instead of context rebuilds.
 
 Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Saved state never leaks across sessions; autostart is only the cold-start default.
 
@@ -63,14 +63,14 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it decides. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` narrows this. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head: a hard no-tools wrapper and the snappy single-call path. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
+`tools:` narrows this. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head: a hard no-tools wrapper and the single-call fast path. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
 
 Authoring guidance for heads that act:
 
-1. **Direct the tool use explicitly.** The wrapper permits tools; the head's instruction says when and on what. A head that only judges should carry `tools: []` and keep the snappy single-call path.
+1. **Direct the tool use explicitly.** The wrapper permits tools; the head's instruction says when and on what. A head that only judges should carry `tools: []` and keep the single-call fast path.
 2. **Say what the decision should usually be.** Acting heads typically end `noop` (the work product is their side effect), `print` (a note for you), or `steer` (a research head delivering a finding).
 3. **Avoid state-mutating bash mid-run.** The head works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
-4. **Loops are bounded, not budgeted.** A head that has not produced a decision after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
+4. **Loops are bounded.** A head that has not produced a decision after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
 
 ## Decisions: when findings land
 
@@ -82,7 +82,7 @@ Every observation ends in a decision. The decision names the finding's delivery:
 - `steer`: the finding is injected as a real user message between turns of the current run, so the agent corrects course while still working.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Queue against steer is a timeliness choice, not an escalation: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. There is no setting that caps any of this. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+Queue against steer is a choice about timing: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. There is no setting that caps any of this. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
 
 ## Heads that manage heads
 
@@ -120,7 +120,7 @@ most, and never edit your own file. Print the edit you made; otherwise
 noop.
 ```
 
-Their decisions deliver to you: a print renders in the TUI and never enters the agent's context, so every re-crewing and every tuning edit is visible as it happens. The tuner's file edits also get the standard write notice the agent sees; that is provenance, not feedback. The two combine well: a foreman can activate the tuner when a session warrants it.
+Their decisions deliver to you: a print renders in the TUI and never enters the agent's context, so every re-crewing and every tuning edit is visible as it happens. The tuner's file edits also get the standard write notice the agent sees; the notice records the change and carries no finding. The two combine well: a foreman can activate the tuner when a session warrants it.
 
 ## Example heads (minimal overlap)
 

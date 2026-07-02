@@ -32,4 +32,4 @@ Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hyd
 
 ## The bar
 
-Claims about cache behavior must be measured, not assumed. The experiments harness re-verifies every claim against the live API for under a dollar; if your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in `utils.ts` with tests. Match the style of the file you are editing.
+Every claim about cache behavior must be backed by a measurement. The experiments harness re-verifies every claim against the live API for under a dollar; if your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in `utils.ts` with tests. Match the style of the file you are editing.
