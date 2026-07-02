@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
-	buildObserverPrompt,
+	buildObservationPrompt,
 	demoteStaleInterrupt,
 	headActs,
 	isAnthropicPayload,
 	isValidHeadName,
-	mergeObserverPayload,
+	mergeObservationPayload,
 	parseDecision,
 	parseHeadFile,
 	parseHeadList,
@@ -107,24 +107,24 @@ describe("headActs", () => {
 	});
 });
 
-describe("buildObserverPrompt", () => {
+describe("buildObservationPrompt", () => {
 	it("bans tools for a judge-only head", () => {
-		const prompt = buildObserverPrompt("quality", "Judge.", []);
+		const prompt = buildObservationPrompt("quality", "Judge.", []);
 		expect(prompt).toContain("No tools");
 		expect(prompt).not.toContain("tool access");
 	});
 
 	it("spells out a narrowed allowance", () => {
-		const prompt = buildObserverPrompt("docs", "Keep notes.", ["read", "write"]);
+		const prompt = buildObservationPrompt("docs", "Keep notes.", ["read", "write"]);
 		expect(prompt).toContain("only these tools: read, write");
 	});
 
 	it("permits everything when tools are omitted", () => {
-		expect(buildObserverPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
+		expect(buildObservationPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
 	});
 });
 
-describe("mergeObserverPayload", () => {
+describe("mergeObservationPayload", () => {
 	const capturedFixture = (): AnthropicPayload => ({
 		model: "claude-test",
 		system: [{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }],
@@ -153,7 +153,7 @@ describe("mergeObserverPayload", () => {
 			},
 			promptTail(),
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 
 		expect(blocks(merged.messages[2])[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 
@@ -175,7 +175,7 @@ describe("mergeObserverPayload", () => {
 			},
 			promptTail(),
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 		const assistantBlocks = blocks(merged.messages[2]);
 		expect(assistantBlocks[0].cache_control).toBeUndefined();
 		expect(assistantBlocks[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
@@ -192,14 +192,14 @@ describe("mergeObserverPayload", () => {
 			},
 			promptTail(),
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 		const assistantBlocks = blocks(merged.messages[2]);
 		expect(assistantBlocks[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect(assistantBlocks[1].cache_control).toBeUndefined();
 	});
 
 	it("leaves captured markers untouched when the tail has no markable assistant", () => {
-		const merged = mergeObserverPayload(capturedFixture(), [promptTail()]);
+		const merged = mergeObservationPayload(capturedFixture(), [promptTail()]);
 
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect(blocks(merged.messages[2])[0].cache_control).toBeUndefined();
@@ -210,7 +210,7 @@ describe("mergeObserverPayload", () => {
 			{ role: "assistant", content: [{ type: "thinking", thinking: "only", signature: "sig" }] },
 			promptTail(),
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 	});
 
@@ -224,7 +224,7 @@ describe("mergeObserverPayload", () => {
 			},
 			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 		// Loop entries only need to survive until the next iteration: plain
 		// ephemeral, not the driver's 1h TTL. The prefix+M entry from the
 		// first call keeps serving the driver bet.
@@ -240,7 +240,7 @@ describe("mergeObserverPayload", () => {
 			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "bash", input: {} }] },
 			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
 		];
-		const merged = mergeObserverPayload(capturedFixture(), tail);
+		const merged = mergeObservationPayload(capturedFixture(), tail);
 		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral" });
 		expect(blocks(merged.messages[3]).every((block) => block.cache_control === undefined)).toBe(true);
 	});
@@ -253,7 +253,7 @@ describe("mergeObserverPayload", () => {
 			{ role: "assistant", content: [{ type: "text", text: "final" }] },
 			promptTail(),
 		];
-		const merged = mergeObserverPayload(captured, tail);
+		const merged = mergeObservationPayload(captured, tail);
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral" });
 	});
 
@@ -268,7 +268,7 @@ describe("mergeObserverPayload", () => {
 			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
 		];
 		for (const tail of [[promptTail()], [loopTail[0], promptTail()], loopTail]) {
-			expect(countMarkers(mergeObserverPayload(captured, tail))).toBeLessThanOrEqual(countMarkers(captured));
+			expect(countMarkers(mergeObservationPayload(captured, tail))).toBeLessThanOrEqual(countMarkers(captured));
 		}
 	});
 
@@ -280,7 +280,7 @@ describe("mergeObserverPayload", () => {
 		];
 		const capturedBefore = structuredClone(captured);
 		const tailBefore = structuredClone(tail);
-		mergeObserverPayload(captured, tail);
+		mergeObservationPayload(captured, tail);
 		expect(captured).toEqual(capturedBefore);
 		expect(tail).toEqual(tailBefore);
 	});

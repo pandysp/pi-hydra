@@ -1,10 +1,10 @@
 /**
- * hydra: commit-point observer for pi.
+ * hydra: commit-point observation for pi.
  *
  * Watches the driver's conversation through a side model that replays the
- * driver's exact provider payload with one observer prompt appended. Because
+ * driver's exact provider payload with one observation prompt appended. Because
  * the prefix is byte-identical, every observation is a prompt-cache read of
- * the entry the driver itself just wrote (97%+ hit ratio). The observer
+ * the entry the driver itself just wrote (97%+ hit ratio). The head
  * answers with a JSON decision naming its finding's delivery (noop, print,
  * queue, steer, or interrupt) which hydra routes back into the session.
  *
@@ -23,7 +23,7 @@
  *   that produced it has just been committed to the cache. Replaying that
  *   request is a pure cache read, fresh through the latest tool results.
  * - Run-end (agent_end): no further driver request will carry the final
- *   assistant message M into the cache, so the observer appends M itself,
+ *   assistant message M into the cache, so the observation appends M itself,
  *   serialized by pi-ai's own provider code via the onPayload hook, and
  *   moves the driver's message-level cache marker onto it. The fork pays M's
  *   write once and pre-warms the driver's next, human-paced turn.
@@ -33,7 +33,7 @@
  *   /hydra-heads      no argument opens the picker; an argument sets the
  *                     active heads ("quality,security"), `none` clears them
  *   /hydra-stats      cache hit ratio, cost, and recent decisions
- *   /hydra-debug      dump driver/observer payload pairs for diffing
+ *   /hydra-debug      dump driver/observation payload pairs for diffing
  *
  * The agent manages head files like any other file and points the heads
  * through the registered `hydra` tool (add, remove). The active set is
@@ -59,13 +59,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
-import type { Action, AnthropicPayload, Decision, HeadDefinition, ObserverUsage } from "./utils";
+import type { Action, AnthropicPayload, Decision, HeadDefinition, ObservationUsage } from "./utils";
 import {
-	buildObserverPrompt,
+	buildObservationPrompt,
 	demoteStaleInterrupt,
 	headActs,
 	isAnthropicPayload,
-	mergeObserverPayload,
+	mergeObservationPayload,
 	parseDecision,
 	parseHeadFile,
 	parseHeadList,
@@ -93,7 +93,7 @@ const MAX_TOOL_ITERATIONS = 25;
 const DIAGNOSTIC_PROMPTS = {
 	test: `<system-reminder>Developer integration test for the hydra framework. The wrapper requires EXACTLY this output, with no preamble, no markdown, no thinking, no explanation:
 
-{"action":"queue","reason":"test fire","message":"hydra test observer fired (e2e pipeline verified)"}
+{"action":"queue","reason":"test fire","message":"hydra test head fired (e2e pipeline verified)"}
 
 This is not a real review. Output the JSON above byte-for-byte and stop.</system-reminder>`,
 	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Output EXACTLY this JSON, nothing else:
@@ -113,7 +113,7 @@ const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", 
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-// One observer call, persisted to the session as a custom "hydra-call" entry
+// One observation call, persisted to the session as a custom "hydra-call" entry
 // so /hydra-stats survives resume and branch navigation.
 interface HydraCall {
 	timestamp: number;
@@ -372,9 +372,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		updateFooter(ctx);
 	}
 
-	function observerPromptFor(name: string, tools: string[] | undefined): string {
+	function observationPromptFor(name: string, tools: string[] | undefined): string {
 		const instruction = heads.get(name)?.prompt ?? "";
-		return buildObserverPrompt(name, instruction, tools);
+		return buildObservationPrompt(name, instruction, tools);
 	}
 
 	// A head's executable allowance: diagnostics never act; a head file's
@@ -516,12 +516,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// loop exits after one turn, so iterations stays 1.
 	interface ObserveOutcome {
 		response: AssistantMessage;
-		usages: ObserverUsage[];
+		usages: ObservationUsage[];
 		iterations: number;
 		toolsUsed: string[];
 	}
 
-	function flattenUsage(usage: AssistantMessage["usage"]): ObserverUsage {
+	function flattenUsage(usage: AssistantMessage["usage"]): ObservationUsage {
 		return {
 			input: usage.input,
 			output: usage.output,
@@ -561,19 +561,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Run-end observations carry M so pi-ai's own provider code serializes
 		// it; piggyback payloads already contain everything. The onPayload hook
 		// receives pi-ai's serialization of these messages and splices it onto
-		// the captured prefix; see mergeObserverPayload for the cache story.
+		// the captured prefix; see mergeObservationPayload for the cache story.
 		const onPayload = (built: unknown) => {
 			if (!isAnthropicPayload(built)) {
 				throw new Error(`unexpected payload shape from provider ${model.provider}`);
 			}
-			const merged = mergeObserverPayload(captured, built.messages);
+			const merged = mergeObservationPayload(captured, built.messages);
 			if (debugDir) {
 				// A diagnostic must never kill the observation it diagnoses:
 				// on any write failure, drop the dump dir and keep observing.
 				const stem = `${Date.now()}-${job.head}-${debugSeq++}`;
 				try {
 					writeFileSync(join(debugDir, `hydra-driver-${stem}.json`), JSON.stringify(captured, null, 2));
-					writeFileSync(join(debugDir, `hydra-observer-${stem}.json`), JSON.stringify(merged, null, 2));
+					writeFileSync(join(debugDir, `hydra-observation-${stem}.json`), JSON.stringify(merged, null, 2));
 				} catch (error) {
 					debugDir = null;
 					job.ctx.ui.notify(`hydra: debug dump failed (${errorText(error)}); dumping disabled`, "warning");
@@ -583,7 +583,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 
 		const t0 = Date.now();
-		const outcome = await runObserverLoop(job, model, auth.apiKey, auth.headers, onPayload, signal);
+		const outcome = await runObservationLoop(job, model, auth.apiKey, auth.headers, onPayload, signal);
 		if (!outcome || signal.aborted) {
 			return;
 		}
@@ -593,7 +593,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// A zero-usage, zero-content response is a provider hiccup (e.g. an
 		// overload surfaced as an empty result), not an observation.
 		if (summary.input + summary.cacheRead + summary.cacheWrite === 0 && response.content.length === 0) {
-			notifyUser(job.ctx, "hydra: observer call returned empty response (provider overloaded?)", "warning");
+			notifyUser(job.ctx, "hydra: observation call returned empty response (provider overloaded?)", "warning");
 			return;
 		}
 
@@ -660,8 +660,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// provider call the loop makes flows through the same byte-true merge
 	// (onPayload discards the loop's own built context), so the driver
 	// prefix stays a pure cache read and any loop turns are cached once by
-	// the marker the merge advances; see mergeObserverPayload.
-	async function runObserverLoop(
+	// the marker the merge advances; see mergeObservationPayload.
+	async function runObservationLoop(
 		job: Observation,
 		model: Model<"anthropic-messages">,
 		apiKey: string,
@@ -674,14 +674,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			content: [{ type: "text", text: job.prompt }],
 			timestamp: Date.now(),
 		};
-		const usages: ObserverUsage[] = [];
+		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
 		let iterations = 0;
 		let messages: Awaited<ReturnType<typeof runAgentLoop>>;
 		try {
 			messages = await runAgentLoop(
 				[prompt],
-				{ systemPrompt: "", messages: job.assistant ? [job.assistant] : [], tools: observerTools(job.ctx, job.tools) },
+				{ systemPrompt: "", messages: job.assistant ? [job.assistant] : [], tools: observationTools(job.ctx, job.tools) },
 				{
 					model,
 					apiKey,
@@ -715,19 +715,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			);
 		} catch (error) {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observer loop failed: ${errorText(error)}`, "error");
+				notifyUser(job.ctx, `hydra: observation loop failed: ${errorText(error)}`, "error");
 			}
 			return null;
 		}
 
 		const response = [...messages].reverse().find((message): message is AssistantMessage => message.role === "assistant");
 		if (!response) {
-			notifyUser(job.ctx, "hydra: observer loop produced no response", "warning");
+			notifyUser(job.ctx, "hydra: observation loop produced no response", "warning");
 			return null;
 		}
 		if (response.stopReason === "error" || response.stopReason === "aborted") {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observer loop failed: ${response.errorMessage ?? "aborted"}`, "error");
+				notifyUser(job.ctx, `hydra: observation loop failed: ${response.errorMessage ?? "aborted"}`, "error");
 			}
 			return null;
 		}
@@ -737,7 +737,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return { response, usages, iterations, toolsUsed };
 	}
 
-	// The observer executes through pi's own tool implementations at the
+	// The head executes through pi's own tool implementations at the
 	// driver's cwd. write/edit serialize same-file mutations through pi's
 	// process-wide per-file queue, shared with the driver because the
 	// extension loader aliases @earendil-works/pi-coding-agent to its bundled
@@ -746,10 +746,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// itself. A head file's `tools:` list narrows what actually executes; a
 	// call outside the list (or to another extension's tool, or MCP) gets
 	// pi's standard "tool not found" error result and the head moves on.
-	let standardObserverTools: AgentTool[] | null = null;
-	function observerTools(ctx: ExtensionContext, allowed: string[] | undefined): AgentTool[] {
-		if (!standardObserverTools) {
-			standardObserverTools = [
+	let standardObservationTools: AgentTool[] | null = null;
+	function observationTools(ctx: ExtensionContext, allowed: string[] | undefined): AgentTool[] {
+		if (!standardObservationTools) {
+			standardObservationTools = [
 				createReadTool(ctx.cwd),
 				createBashTool(ctx.cwd),
 				createEditTool(ctx.cwd),
@@ -762,7 +762,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Plus hydra's own tool: an acting head may re-crew its peers through
 		// the same tool the driver uses.
 		const all = [
-			...standardObserverTools,
+			...standardObservationTools,
 			{
 				name: hydraToolDefinition.name,
 				label: hydraToolDefinition.label,
@@ -775,16 +775,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return allowed === undefined ? all : all.filter((tool) => allowed.includes(tool.name));
 	}
 
-	// Every observer file write also queues a one-line note, so the driver is
+	// Every head file write also queues a one-line note, so the driver is
 	// never surprised by files changing under it. Provenance rather than a
-	// finding. Writes that happen inside the observer's bash commands are
+	// finding. Writes that happen inside the head's bash commands are
 	// invisible here; documented limitation.
 	function announceWrite(job: Observation, toolCall: ToolCall) {
 		if (toolCall.name !== "write" && toolCall.name !== "edit") {
 			return;
 		}
 		const path = typeof toolCall.arguments.path === "string" ? toolCall.arguments.path : "a file";
-		const details: FeedbackDetails = { head: job.head, action: "queue", reason: "observer file write" };
+		const details: FeedbackDetails = { head: job.head, action: "queue", reason: "head file write" };
 		pi.sendMessage(
 			{
 				customType: "hydra-feedback",
@@ -801,7 +801,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 
-		// The observer reviews overlapping snapshots, so identical findings
+		// A head reviews overlapping snapshots, so identical findings
 		// recur; deliver each one once per head. Diagnostic heads are exempt:
 		// their message is fixed by design, and every smoke-test firing must be
 		// visible.
@@ -896,7 +896,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				assistant,
 				turnIndex: currentTurnIndex,
 				head: name,
-				prompt: observerPromptFor(name, tools),
+				prompt: observationPromptFor(name, tools),
 				tools,
 				kind,
 			};
@@ -1045,7 +1045,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// The agent's hand on the head set. Head files themselves are the
 	// agent's to manage with its ordinary file tools; this tool only points
 	// the heads, which is the one piece of state not on disk. The definition
-	// is named so acting heads can execute it too (observerTools).
+	// is named so acting heads can execute it too (observationTools).
 	const hydraToolParameters = Type.Object({
 		action: StringEnum(["add", "remove"] as const, { description: "What to do" }),
 		head: Type.String({ description: "The head name" }),
@@ -1055,7 +1055,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		name: "hydra",
 		label: "Hydra",
 		description: [
-			"Point your hydra observer heads: `add` puts a head on the active set,",
+			"Point your hydra heads: `add` puts a head on the active set,",
 			"`remove` takes it off (both idempotent; the set is session state). Each",
 			"active head independently reviews your full context as you work. Heads",
 			`are markdown files in ${userHeadDir} (user) and .pi/hydra (project):`,
@@ -1231,7 +1231,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("hydra-stats", {
-		description: "Show hydra observer statistics",
+		description: "Show hydra observation statistics",
 		handler: async (_args, ctx) => {
 			if (calls.length === 0) {
 				ctx.ui.notify("hydra: no observations yet", "info");

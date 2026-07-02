@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * P4a refinement: 4 observer forks from n (marker on M). One fires at t=0,
+ * P4a refinement: 4 observation forks from n (marker on M). One fires at t=0,
  * three fire in parallel at t=+STAGGER_MS. Do the delayed forks free-ride on
  * the writer's cache entry?
  *
@@ -67,13 +67,13 @@ const DRIVER_USER_MSG = {
   }],
 };
 
-function observerMsg(lens) {
+function observationMsg(lens) {
   return {
     role: "user",
     content: [{
       type: "text",
       text:
-        `<system-reminder>Side observer (${lens} lens). Reply with one JSON object, nothing else: ` +
+        `<system-reminder>Side watcher (${lens} lens). Reply with one JSON object, nothing else: ` +
         `{"action":"noop|queue|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"} ` +
         `Noop unless something warrants feedback. No tools, no follow-up turn.</system-reminder>`,
     }],
@@ -145,7 +145,7 @@ async function main() {
   const mBlocks = driver.content.map((block, i) =>
     i === lastEligible ? { ...block, cache_control: { type: "ephemeral" } } : block
   );
-  const forkMessages = (lens) => [DRIVER_USER_MSG, { role: "assistant", content: mBlocks }, observerMsg(lens)];
+  const forkMessages = (lens) => [DRIVER_USER_MSG, { role: "assistant", content: mBlocks }, observationMsg(lens)];
   const forkMax = THINKING ? 1500 : 150;
 
   const tFire = Date.now();

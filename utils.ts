@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the hydra observer.
+ * Pure helpers for hydra observations.
  * Extracted for testability; no pi or I/O dependencies.
  */
 
@@ -53,7 +53,7 @@ function tryParseDecision(text: string): Decision | null {
 }
 
 /**
- * Parse the observer's JSON decision, tolerating code fences and surrounding
+ * Parse the head's JSON decision, tolerating code fences and surrounding
  * prose. Null means nothing parseable: the caller decides how loudly a head
  * that stopped speaking JSON should fail.
  */
@@ -104,7 +104,7 @@ export function rememberDelivery(delivered: Set<string>, key: string, max: numbe
 	return true;
 }
 
-export interface ObserverUsage {
+export interface ObservationUsage {
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -119,7 +119,7 @@ export interface ObserverUsage {
  * iteration alone, since that is the replay-parity regression signal and
  * later iterations legitimately pay the loop tail as fresh input.
  */
-export function summarizeLoopUsage(usages: ObserverUsage[]): ObserverUsage & { hitRatio: number } {
+export function summarizeLoopUsage(usages: ObservationUsage[]): ObservationUsage & { hitRatio: number } {
 	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 	for (const usage of usages) {
 		total.input += usage.input;
@@ -216,23 +216,23 @@ const DECISION_SHAPE = '{"action":"noop|print|queue|steer|interrupt","reason":"\
 
 /**
  * The wrapper around a head's instruction. Kept SHORT: the driver's context
- * is already cached, so this is the only fresh input the observer pays for
- * per call. Judge-only heads (tools: []) get a hard tool ban: the observer
+ * is already cached, so this is the only fresh input the observation pays for
+ * per call. Judge-only heads (tools: []) get a hard tool ban: the head
  * sits atop a context saturated with driver tool calls, and anything softer
  * leaks into "let me check" excursions. Acting heads get the tool-permitting
  * variant, with the allowance spelled out when the file narrows it.
  */
-export function buildObserverPrompt(head: string, instruction: string, tools: string[] | undefined): string {
+export function buildObservationPrompt(head: string, instruction: string, tools: string[] | undefined): string {
 	if (headActs(tools)) {
 		const allowance = tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
-		return `<system-reminder>Side observer with tool access. You may use ${allowance} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and the decision you send. When done, reply with one JSON object, nothing else:
+		return `<system-reminder>Side watcher with tool access. You may use ${allowance} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and the decision you send. When done, reply with one JSON object, nothing else:
 ${DECISION_SHAPE}
 
 LENS: ${instruction}
 
 Noop when your work product is the files you wrote. Print a note the user sees but the agent does not. Queue findings that can wait. Steer to put a finding in front of the agent between turns. Interrupt only for emergencies that must stop the line. Don't prefix message with [${head}].</system-reminder>`;
 	}
-	return `<system-reminder>Side observer. Reply with one JSON object, nothing else:
+	return `<system-reminder>Side watcher. Reply with one JSON object, nothing else:
 ${DECISION_SHAPE}
 
 LENS: ${instruction}
@@ -288,7 +288,7 @@ export interface FinalAssistantCandidate {
  * Pick the run's final assistant message M for the run-end fork: the last
  * usable assistant message, required to BE the captured request's own
  * response. Anything else is already serialized inside the captured payload,
- * and appending it again would duplicate it in the observer's context. Runs
+ * and appending it again would duplicate it in the observation's context. Runs
  * whose final generation aborted or errored hit exactly that case and select
  * nothing.
  *
@@ -407,7 +407,7 @@ function lastMarkableBlockOfTail(tail: PayloadMessage[]): PayloadBlock | undefin
 }
 
 /**
- * Merge the observer tail (pi-ai's own serialization of `[M?, prompt,
+ * Merge the observation tail (pi-ai's own serialization of `[M?, prompt,
  * ...tool-loop turns]`) onto the captured driver payload.
  *
  * The captured prefix is replayed byte-true so the fork reads the driver's
@@ -421,7 +421,7 @@ function lastMarkableBlockOfTail(tail: PayloadMessage[]): PayloadBlock | undefin
  * - `[M, prompt]`: a run-end fork. The driver's marker (TTL included) rides
  *   M's last markable block: the fork's write pre-warms the driver's next
  *   request, which finds the prefix+M entry via breakpoint walk-back.
- * - longer: a tool loop appended observer turns. The marker advances to the
+ * - longer: a tool loop appended observation turns. The marker advances to the
  *   tail's last markable block, so each loop turn is written once and read
  *   thereafter instead of re-paid as input every iteration. A plain
  *   ephemeral marker, deliberately without the driver's TTL: loop entries
@@ -430,7 +430,7 @@ function lastMarkableBlockOfTail(tail: PayloadMessage[]): PayloadBlock | undefin
  *
  * Markers pi-ai placed on the tail are dropped before any of this.
  */
-export function mergeObserverPayload(captured: AnthropicPayload, tail: PayloadMessage[]): AnthropicPayload {
+export function mergeObservationPayload(captured: AnthropicPayload, tail: PayloadMessage[]): AnthropicPayload {
 	const merged = structuredClone(captured) as AnthropicPayload;
 	// Clone the tail before touching it: it is pi-ai's own params object, and
 	// the marker handling below must not reach back into it. Markers pi-ai
