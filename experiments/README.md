@@ -58,7 +58,7 @@ First fork pays cache_creation ≈ M (1.25×); a later serial fork reads it
 breakpoint walk-back. An observation fork-from-n with a marker on M therefore
 pre-warms the driver's next turn.
 
-### 4. Write commit is at TTFT ("once the response begins"), not completion
+### 4. Write commit is at TTFT ("once the response begins")
 
 Writer with a deliberately long response (completed +9175ms): probes hit from
 +1001ms, long before completion. Anthropic's docs confirm and refine this:
@@ -111,9 +111,9 @@ There is no exact stability point: p(free ride) ramps noisily through
 low-but-nonzero miss rate, not proof of a plateau. Treat any threshold as
 probabilistic.
 
-"Parallel writers all pay" (first experiment's P4a) is therefore not "no
-dedup ever"; it's "requests ingested within the propagation window can't see
-each other's writes". Same practical consequence.
+This refines "parallel writers all pay" (first experiment's P4a): requests
+ingested within the propagation window cannot see each other's writes, and
+sharing resumes beyond it. The practical consequence is the same.
 
 Prompt length scales the visibility delay. All runs above used a ~6.5K prefix
 and ~150-token M. Scaling either pushes the window out (runs affected by
@@ -130,7 +130,7 @@ misses at the given stagger):
 Prefix scaling is clear: at a 1s stagger, miss-affected runs grow
 1/9 → 2/6 → 3/6 as the prefix grows 6.5K → 25K → 50K, consistent with
 ingestion-time commit (prefill scales with prefix tokens even when
-cache-read). 2s claws back reliability at 50K but still missed 1 of 6 runs.
+cache-read). 2s recovers reliability at 50K but still missed 1 of 6 runs.
 The long-M effect is suggestive at best: 1/6 runs vs 1/9 baseline is within
 run-level jitter, not established. At realistic driver contexts (30–100K+),
 no small fixed stagger is reliable. Caveats: n=6 per cell; single model
@@ -151,7 +151,7 @@ Timing probe on fable: misses through +4s, hits from +6s; writer completed at
 +15.8s. Commit-at-ingestion holds on fable too, but the visibility floor is
 ~4–6s at a small prefix (vs 0.5–1s on haiku), consistent with slower
 opus-class prefill. Prefix-size scaling untested on fable (each 50K run ≈
-$0.90); expect worse, not better.
+$0.90); expect it to be worse.
 
 Thinking at xhigh (fable, adaptive + `output_config.effort`) changes nothing
 about the mechanism. Streaming the writer and timestamping its
@@ -225,7 +225,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
 
 ## Design consequences for hydra
 
-1. Fork from n, not n-1. The heuristic saves ~1.0–1.25× of a few hundred
+1. Fork from n instead of n-1. The heuristic saves ~1.0–1.25× of a few hundred
    tokens (sub-millicent) and is the direct cause of stale observations.
 2. Put a cache_control marker on M in the observation payload: the observation's
    write pre-warms the driver's next turn (the driver reads M at 0.1× instead
@@ -244,8 +244,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    while sharing perfectly saves ~$0.005, about 3% of one observation's own
    cache-read cost at a 100K context. (b) No fixed stagger is reliable at
    realistic context sizes (see prefix scaling). (c) Feedback latency is the
-   product metric; deliberate delay recreates the staleness problem hydra
-   exists to fix. Marker-on-M beats no-marker whenever hit probability
+   product metric; deliberate delay recreates the staleness problem. Marker-on-M beats no-marker whenever hit probability
    exceeds ~22% (expected 1.25(1−p)+0.1p vs 1.0), and the first-committed
    write pre-warms the driver's next turn regardless. Zero delay is also safe
    for reading the driver's prefix: commit-at-ingestion means the driver's
@@ -260,7 +259,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    lands when the next turn starts after the observation's TTFT, still typical
    for human-paced turns.
 
-   Multi-head accounting, two framings, both true. Per-fork, races are
+   Multi-head accounting has two framings, and both are true. Per-fork, races are
    cost-neutral: no fork (or driver) ever pays above its solo no-sharing
    baseline. In aggregate, N simultaneous markered forks place N marker bets
    of which at most one is read by the driver: overhead +0.25N×M vs unmarked
@@ -273,7 +272,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    writer's measured TTFT, exactly. Default to latency-first (all parallel at
    run end); offer message_start-coordination as a cost-first config.
 
-   Mid-run turns: don't pre-warm the driver, piggyback on it. Inside a tool
+   Mid-run turns: piggyback on the driver instead of pre-warming it. Inside a tool
    loop the driver fires request N+1 (containing M plus tool results) within
    ms–seconds, usually inside the observation's TTFT, so a fork-from-n marker
    bet is almost always wasted there. Invert it: observe at the driver's own
@@ -292,8 +291,8 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    500ms grace guard was added, measured unnecessary, and deleted.
    Run-ending turns differ for one structural reason: there is no next driver
    request to ride on. Nobody will carry the final M into the cache until the
-   user's next prompt, so the observation must carry M itself; and because that
-   gap is human-paced (≫ observation TTFT), the marker bet reliably pays there.
+   user's next prompt, so the observation must carry M itself. That gap is
+   human-paced (≫ observation TTFT), so the marker bet reliably pays there.
 
    Lookup mechanics per mode: the piggyback fork replays the driver's payload
    byte-identically (markers included) and appends its prompt unmarked. Its

@@ -6,7 +6,7 @@
 
 ![A pi session: the head picker adds a security head, then as the agent builds a Flask app the security head catches debug=True (a Werkzeug RCE) and an open-redirect risk and steers the fix into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review its work while it works. Each head watches with its own focus (quality, security, simplifier, API design, or anything you write): it sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs about 1% of what the agent paid to build the context it reads; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
+hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head watches with its own focus (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs about 1% of what the agent paid to build the context it reads; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
 
 ## Why
 
@@ -14,7 +14,7 @@ Review usually happens after the work. The PR is finished, a reviewer (human or 
 
 hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observation prompt plus a cache read instead of a full context rebuild (numbers in [What it costs](#what-it-costs)). The decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
 
-A bad assumption caught mid-implementation costs one correction message. Caught in review it costs a refactor.
+A bad assumption caught mid-implementation costs one correction message, and the same assumption caught in review costs a refactor.
 
 ## What it costs
 
@@ -22,7 +22,7 @@ An observation costs its prompt (~220 tokens) plus a cache read at 10% of input 
 
 A session costs more than the per-observation number suggests. An always-on head observes at every cache commit, and a session has many of those. Measured across real sessions, one head adds roughly 30% to total session cost: a driver session that would cost $1.00 costs about $1.30.
 
-These are measurements, not estimates: the harness in [`experiments/`](experiments/README.md) re-verifies the cache behavior against the live API, and `/hydra-stats` shows the same numbers live for your own sessions.
+Every number above is measured: the harness in [`experiments/`](experiments/README.md) re-verifies the cache behavior against the live API, and `/hydra-stats` shows the same numbers live for your own sessions.
 
 ## Compared to subagents
 
@@ -57,7 +57,7 @@ The example `quality` head is marked `autostart`, so after the first agent run y
 hydra:quality hit 98.5% (last 99.1%) $0.0234 (12 obs)
 ```
 
-Add heads to taste:
+Add or remove heads at any time:
 
 ```
 /hydra-heads                     # multi-select picker over every head you have
@@ -108,16 +108,16 @@ Queue against steer is a timeliness choice; interrupt is for findings that canno
 
 hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
 
-The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which stays yours.
+The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which the agent cannot touch.
 
 ## How it works
 
-hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and the cache stays warm for the agent. Every mechanism behind that sentence is measured rather than assumed; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
+hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and the cache stays warm for the agent. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
 
 ## Limitations
 
-- Anthropic only, for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
-- A head runs the driver's model, always. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
+- Anthropic only for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
+- A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
 - An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)).
 
@@ -125,7 +125,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 - **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that lets you re-verify every cache claim against the live API for under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that re-verifies every cache claim against the live API. A full run costs under a dollar.
 
 ## History
 
