@@ -14,7 +14,7 @@ Review usually happens after the work. The PR is finished, a reviewer (human or 
 
 hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observation prompt plus a cache read instead of a full context rebuild (numbers in [What it costs](#what-it-costs)). The decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
 
-A bad assumption caught mid-implementation costs one correction message. Caught in review it costs a refactor.
+A bad assumption caught mid-implementation costs one correction message, and the same assumption caught in review costs a refactor.
 
 ## What it costs
 
@@ -57,7 +57,7 @@ The example `quality` head is marked `autostart`, so after the first agent run y
 hydra:quality hit 98.5% (last 99.1%) $0.0234 (12 obs)
 ```
 
-Add heads to taste:
+Add or remove heads at any time:
 
 ```
 /hydra-heads                     # multi-select picker over every head you have

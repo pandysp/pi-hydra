@@ -58,7 +58,7 @@ First fork pays cache_creation ≈ M (1.25×); a later serial fork reads it
 breakpoint walk-back. An observation fork-from-n with a marker on M therefore
 pre-warms the driver's next turn.
 
-### 4. Write commit is at TTFT ("once the response begins"), not completion
+### 4. Write commit is at TTFT ("once the response begins")
 
 Writer with a deliberately long response (completed +9175ms): probes hit from
 +1001ms, long before completion. Anthropic's docs confirm and refine this:
@@ -111,9 +111,9 @@ There is no exact stability point: p(free ride) ramps noisily through
 low-but-nonzero miss rate, not proof of a plateau. Treat any threshold as
 probabilistic.
 
-"Parallel writers all pay" (first experiment's P4a) is therefore not "no
-dedup ever"; it's "requests ingested within the propagation window can't see
-each other's writes". Same practical consequence.
+This refines "parallel writers all pay" (first experiment's P4a): requests
+ingested within the propagation window cannot see each other's writes, and
+sharing resumes beyond it. The practical consequence is the same.
 
 Prompt length scales the visibility delay. All runs above used a ~6.5K prefix
 and ~150-token M. Scaling either pushes the window out (runs affected by
