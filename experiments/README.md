@@ -12,7 +12,7 @@ and the economics of replacing it with fork-from-n. Run June 2026 on
 | `cache-latest-message.mjs` | Is the driver's latest assistant message M cached after the driver's own turn? What do n-1 vs n forks cost, serial and parallel? |
 | `cache-timing.mjs` | When does a cache write become readable: at writer ingestion, mid-processing, or response completion? |
 | `cache-stagger.mjs` | 4 forks, one writer at t=0, three delayed by `--stagger-ms`: do the delayed ones free-ride? `--m-words` scales M, `--thinking` enables adaptive thinking, `--stagger-from commit` anchors the stagger on the writer's `message_start` |
-| `cache-thinking-walkback.mjs` | Does a driver-shaped next request (marker only on its own new user message, none on M) find the observer's prefix+M entry via breakpoint walk-back when M carries thinking blocks? |
+| `cache-thinking-walkback.mjs` | Does a driver-shaped next request (marker only on its own new user message, none on M) find the observation's prefix+M entry via breakpoint walk-back when M carries thinking blocks? |
 | `cache-automatic.mjs` | Does automatic caching (top-level `cache_control`) cache the generated response? (No.) |
 
 `lib.mjs` holds the shared harness: OAuth, padding, the Messages call, and
@@ -46,7 +46,7 @@ request that generated it.
 
 ### 2. n-1 forks are pure cache reads, even ×3 parallel (H2 ✅)
 
-write=0, read=full prefix, input ≈ observer prompt (~119 tok) for all three
+write=0, read=full prefix, input ≈ observation prompt (~119 tok) for all three
 simultaneous n-1 forks. This was the original hydra behavior: cheap, but it
 judges a stale snapshot (the cause of the stale-review bug).
 
@@ -55,7 +55,7 @@ judges a stale snapshot (the cause of the stale-review bug).
 First fork pays cache_creation ≈ M (1.25×); a later serial fork reads it
 (0.1×). Marker placement doesn't matter for lookup: a driver-shaped request
 (marker only on its own new user message) finds the prefix+M entry via
-breakpoint walk-back. An observer fork-from-n with a marker on M therefore
+breakpoint walk-back. An observation fork-from-n with a marker on M therefore
 pre-warms the driver's next turn.
 
 ### 4. Write commit is at TTFT ("once the response begins"), not completion
@@ -180,11 +180,11 @@ all visibility delay into TTFT + transport:
 
 Pricing (per MTok, pi registry): input $10, output $50, cacheRead $1,
 cacheWrite $12.50. Base is 3.33× Sonnet; the multipliers are identical
-(1.25× / 0.1×). For N=4 observers and M≈500: worst case all-pay ≈
+(1.25× / 0.1×). For N=4 heads and M≈500: worst case all-pay ≈
 $0.025/turn, perfect sharing ≈ $0.008/turn; capturing the contended delta
 (~$0.017/turn) would require ≥6s staggers. One fork's own cache-read at a
 100K context costs $0.10 on fable, so M-contention stays a single-digit %
-of observer spend.
+of observation spend.
 
 Real-session calibration (this repo's pi session: fable, xhigh thinking,
 96 requests, context grown to ~187K tokens, $19.04 driver cost):
@@ -202,20 +202,20 @@ Real-session calibration (this repo's pi session: fable, xhigh thinking,
 - Implementation note: fork-from-n must append M exactly as pi-ai serializes
   it in history, including thinking blocks and signatures, or the pre-warm
   entry won't match the driver's next prefix. Place the marker on M's last
-  text/tool_use block, never on a thinking block (API error). The observer
+  text/tool_use block, never on a thinking block (API error). The observation
   must also replay the driver's exact thinking config: per Anthropic's
   invalidation table, thinking-parameter changes invalidate the entire
   messages cache (hydra's byte-replay does this by construction). On
-  Opus 4.5+/Sonnet 4.6+-class models (incl. fable), appending the observer's
+  Opus 4.5+/Sonnet 4.6+-class models (incl. fable), appending the observation's
   user message after thinking-bearing M keeps the cache valid (thinking
   blocks preserved); on Haiku-class models prior thinking blocks are
-  stripped, but driver and observer strip symmetrically, so prefix parity
+  stripped, but driver and observation payloads strip symmetrically, so prefix parity
   survives.
 - Anthropic's sanctioned pre-warm (`max_tokens: 0`) cannot serve as a
   pointer-advancer for thinking-enabled drivers: it is rejected when thinking
   is enabled, and a no-thinking pre-warm would not share the messages cache
   (thinking-parameter mismatch invalidates it). Since any dedicated advancer
-  also pays 0.1× on the full prefix, the observer fork is the only viable and
+  also pays 0.1× on the full prefix, the observation fork is the only viable and
   only economical pointer-advancer.
 
 ### 7. Races are cost-neutral
@@ -227,7 +227,7 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
 
 1. Fork from n, not n-1. The heuristic saves ~1.0–1.25× of a few hundred
    tokens (sub-millicent) and is the direct cause of stale observations.
-2. Put a cache_control marker on M in the observer payload: the observer's
+2. Put a cache_control marker on M in the observation payload: the observation's
    write pre-warms the driver's next turn (the driver reads M at 0.1× instead
    of writing it at 1.25×). Net system cost ≈ +0.1× of M. Mind the
    4-breakpoint request limit when adding it.
@@ -238,9 +238,9 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    pre-warm still works for human-paced turns (many seconds later), but
    auto-triggered immediate turns on large contexts should expect to race,
    cost-neutrally (see 7).
-4. Recommended delay: none, single or multi-observer. Fire all forks in
+4. Recommended delay: none, single or multiple heads. Fire all forks in
    parallel at run end, each with a marker on M. Rationale: (a) the contended
-   amount is only M; worst case for 4 observers ≈ $0.009/turn at Sonnet,
+   amount is only M; worst case for 4 heads ≈ $0.009/turn at Sonnet,
    while sharing perfectly saves ~$0.005, about 3% of one observation's own
    cache-read cost at a 100K context. (b) No fixed stagger is reliable at
    realistic context sizes (see prefix scaling). (c) Feedback latency is the
@@ -256,11 +256,11 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    Fable strengthens the no-delay call: visibility is writer TTFT (~3–5s on
    fable at small prefixes, more at large) plus ~zero propagation, so a
    reliable fixed stagger costs more latency than ever, while the contended
-   amount stays a single-digit % of observer spend. Driver pre-warm on fable
-   lands when the next turn starts after the observer's TTFT, still typical
+   amount stays a single-digit % of observation spend. Driver pre-warm on fable
+   lands when the next turn starts after the observation's TTFT, still typical
    for human-paced turns.
 
-   Multi-observer accounting, two framings, both true. Per-fork, races are
+   Multi-head accounting, two framings, both true. Per-fork, races are
    cost-neutral: no fork (or driver) ever pays above its solo no-sharing
    baseline. In aggregate, N simultaneous markered forks place N marker bets
    of which at most one is read by the driver: overhead +0.25N×M vs unmarked
@@ -275,14 +275,14 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
 
    Mid-run turns: don't pre-warm the driver, piggyback on it. Inside a tool
    loop the driver fires request N+1 (containing M plus tool results) within
-   ms–seconds, usually inside the observer's TTFT, so a fork-from-n marker
+   ms–seconds, usually inside the observation's TTFT, so a fork-from-n marker
    bet is almost always wasted there. Invert it: observe at the driver's own
    commit point. pi sees `before_provider_request` (N+1 dispatched) and the
    response's `message_start` (the commit, no estimation needed); fire ALL
-   observers then, forked from N+1's captured payload plus observer prompt.
+   observations then, forked from N+1's captured payload plus observation prompt.
    Strictly dominant mid-run: a pure 0.1× read for M and the tool results
    (the driver paid the write anyway, so the "double pay" vanishes), a
-   fresher snapshot, zero coordination between observers, and the verdict
+   fresher snapshot, zero coordination between heads, and the verdict
    typically lands while response N+1 is still generating. Hybrid policy:
    mid-run, piggyback at the driver's commit; run-ending turn, fork-from-n
    with the marker on M, fired immediately. Implemented in `index.ts` and
@@ -292,15 +292,15 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    500ms grace guard was added, measured unnecessary, and deleted.
    Run-ending turns differ for one structural reason: there is no next driver
    request to ride on. Nobody will carry the final M into the cache until the
-   user's next prompt, so the observer must carry M itself; and because that
-   gap is human-paced (≫ observer TTFT), the marker bet reliably pays there.
+   user's next prompt, so the observation must carry M itself; and because that
+   gap is human-paced (≫ observation TTFT), the marker bet reliably pays there.
 
    Lookup mechanics per mode: the piggyback fork replays the driver's payload
    byte-identically (markers included) and appends its prompt unmarked. Its
    deepest breakpoint is the driver's own tail marker, an exact hit on the
    entry the driver just wrote: no walk-back, no new markers, no 4-breakpoint
    pressure. The run-end pre-warm is the one path that needs walk-back: the
-   driver's next request must find the observer's M-marker entry within the
+   driver's next request must find the observation's M-marker entry within the
    20-block lookback window; next user prompts add 1–2 blocks, comfortably
    inside. Verified live end-to-end (June 2026, cross-process `pi -p`
    sessions): the driver's next first request read prefix+M to the token

@@ -3,7 +3,7 @@
  * When does an Anthropic prompt-cache write become READABLE?
  *
  * Companion to cache-latest-message.mjs. That experiment established (H3/H4):
- * an observer fork including the driver's latest assistant message M with a
+ * an observation fork including the driver's latest assistant message M with a
  * cache_control marker on M creates a readable `prefix+M` entry, eventually.
  * This experiment pins down WHEN: at writer request ingestion, mid-processing,
  * or only after response completion (+ propagation lag).
@@ -11,7 +11,7 @@
  * Why it matters for hydra: if the driver's next request starts inside the
  * commit window W, the driver misses the entry and pays for M itself (the
  * race). W bounds how soon a driver turn can start and still benefit from the
- * observer's pre-warm.
+ * observation's pre-warm.
  *
  * Method (single cold conversation, no probe self-contamination):
  *   - WRITER: prefix + M(cache_control) + prompt forcing a LONG response
@@ -80,7 +80,7 @@ async function main() {
   const mTokens = p0.output;
   await sleep(3000); // let prefix entries settle so probe misses read ≈ prefix cleanly
 
-  // WRITER: observer-style fork, marker ON M, long output to separate
+  // WRITER: observation-style fork, marker ON M, long output to separate
   // ingestion time from completion time. Fired WITHOUT await.
   const writerMessages = [
     DRIVER_USER_MSG,
@@ -187,8 +187,8 @@ async function main() {
       log(`→ Entry readable only AFTER writer completion: commit at response time.`);
     }
     log(`→ Race window for hydra: a driver request starting < ~${firstHit.sentAt}ms after the`);
-    log(`   observer fires misses the pre-warm and pays cache_creation for M itself (no extra`);
-    log(`   cost vs no observer; the write is simply not shared).`);
+    log(`   observation fires misses the pre-warm and pays cache_creation for M itself (no extra`);
+    log(`   cost vs no observation; the write is simply not shared).`);
   }
 }
 

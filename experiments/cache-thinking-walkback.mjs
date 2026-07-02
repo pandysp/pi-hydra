@@ -2,13 +2,13 @@
 /**
  * Walk-back lookup across thinking-bearing M (fable, adaptive thinking).
  *
- * The driver-pre-warm claim requires: after an observer writes `prefix+M`
+ * The driver-pre-warm claim requires: after an observation writes `prefix+M`
  * (marker on M), the driver's NEXT request (M *without* a marker, a new user
  * message *with* one) finds the entry via breakpoint walk-back. Verified on haiku without thinking; this verifies it with
  * thinking blocks (real signatures, replayed verbatim) in M.
  *
  *   1. driver cold (adaptive thinking) → M = [thinking, text] blocks
- *   2. writer: prefix + M(marker) + observer prompt → creates prefix+M entry
+ *   2. writer: prefix + M(marker) + observation prompt → creates prefix+M entry
  *   3. probe (driver-next-turn shape): prefix + M(no marker) + user(marker)
  *      Expect: read ≈ prefix + M (walk-back hit), write ≈ followup only.
  *

@@ -1,6 +1,6 @@
 # Heads
 
-A head is an observer with its own perspective: it sees exactly what the agent sees, judges every step, and answers with one of five decisions (noop, print, queue, steer, interrupt). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
+A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and answers with one of five decisions (noop, print, queue, steer, interrupt). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
 
 ## Head files
 
@@ -69,7 +69,7 @@ Authoring guidance for heads that act:
 
 1. **Direct the tool use explicitly.** The wrapper permits tools; the head's instruction says when and on what. A head that only judges should carry `tools: []` and keep the snappy single-call path.
 2. **Say what the decision should usually be.** Acting heads typically end `noop` (the work product is their side effect), `print` (a note for you), or `steer` (a research head delivering a finding).
-3. **Avoid state-mutating bash mid-run.** The observer works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
+3. **Avoid state-mutating bash mid-run.** The head works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
 4. **Loops are bounded, not budgeted.** A head that has not produced a decision after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
 
 ## Decisions: when findings land

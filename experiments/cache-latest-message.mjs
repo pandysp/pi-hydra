@@ -6,9 +6,9 @@
  * Hypotheses:
  *   H1  The driver's latest assistant message M is NOT cached after the driver's
  *       own request completes (it was a response, never part of a sent prefix).
- *       An observer fork that includes M pays uncached input for it.
+ *       An observation fork that includes M pays uncached input for it.
  *   H2  A fork from n-1 (excluding M) is a pure cache read: creation ≈ 0,
- *       input ≈ observer prompt only. This holds for N parallel observers.
+ *       input ≈ observation prompt only. This holds for N parallel observations.
  *   H3  A fork including M with a cache_control marker ON M pays cache_creation
  *       for M once; a subsequent serial fork reads M from cache.
  *   H4  N PARALLEL forks including M (marker on M) each pay cache_creation,
@@ -49,11 +49,11 @@ const DRIVER_USER_MSG = {
   ],
 };
 
-// ~150-token observer prompts, hydra-style. Content varies per "lens" so the
+// ~150-token observation prompts, hydra-style. Content varies per "lens" so the
 // parallel requests are realistic (shared prefix, divergent suffix).
-function observerPrompt(lens) {
+function observationPrompt(lens) {
   return (
-    `<system-reminder>Side observer (${lens} lens). Reply with one JSON object, nothing else: ` +
+    `<system-reminder>Side watcher (${lens} lens). Reply with one JSON object, nothing else: ` +
     `{"action":"noop|queue|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"} ` +
     `Review the conversation through the ${lens} lens: focus on correctness risks, missing verification, ` +
     `dangerous assumptions, and obvious regressions. Noop unless something warrants feedback. ` +
@@ -61,12 +61,12 @@ function observerPrompt(lens) {
   );
 }
 
-function observerMsg(lens) {
-  return { role: "user", content: [{ type: "text", text: observerPrompt(lens) }] };
+function observationMsg(lens) {
+  return { role: "user", content: [{ type: "text", text: observationPrompt(lens) }] };
 }
 
 // Assistant message M (captured from the driver response), optionally with a
-// cache_control marker so observers can advance the cache breakpoint past M.
+// cache_control marker so observations can advance the cache breakpoint past M.
 function assistantMsg(text, withMarker = false) {
   const block = { type: "text", text };
   if (withMarker) block.cache_control = { type: "ephemeral" };
@@ -111,41 +111,41 @@ async function main() {
   logRow(p1);
   await sleep(PHASE_SLEEP_MS);
 
-  // ── P2: three PARALLEL n-1 observers (the original hydra behavior) ──
-  log("\n── P2: 3 parallel observers, fork from n-1 (exclude M) ──");
+  // ── P2: three PARALLEL n-1 observations (the original hydra behavior) ──
+  log("\n── P2: 3 parallel observations, fork from n-1 (exclude M) ──");
   const p2 = await Promise.all(
     ["quality", "security", "simplifier"].map((lens) =>
-      call(`P2 n-1 obs ${lens}`, [DRIVER_USER_MSG, observerMsg(lens)], 150)
+      call(`P2 n-1 obs ${lens}`, [DRIVER_USER_MSG, observationMsg(lens)], 150)
     )
   );
   p2.forEach(logRow);
   await sleep(PHASE_SLEEP_MS);
 
-  // ── P3: observer fork from n (includes M), NO new marker ──
-  log("\n── P3: observer fork from n (include M), no marker on M ──");
+  // ── P3: observation fork from n (includes M), NO new marker ──
+  log("\n── P3: observation fork from n (include M), no marker on M ──");
   const p3 = await call(
     "P3 n obs no-marker",
-    [DRIVER_USER_MSG, assistantMsg(M), observerMsg("quality")],
+    [DRIVER_USER_MSG, assistantMsg(M), observationMsg("quality")],
     150
   );
   logRow(p3);
   await sleep(PHASE_SLEEP_MS);
 
-  // ── P4a: three PARALLEL observers fork from n, marker ON M ──
-  log("\n── P4a: 3 parallel observers, fork from n, cache_control marker on M ──");
+  // ── P4a: three PARALLEL observations fork from n, marker ON M ──
+  log("\n── P4a: 3 parallel observations, fork from n, cache_control marker on M ──");
   const p4a = await Promise.all(
     ["quality", "security", "simplifier"].map((lens) =>
-      call(`P4a n obs+mark ${lens}`, [DRIVER_USER_MSG, assistantMsg(M, true), observerMsg(lens)], 150)
+      call(`P4a n obs+mark ${lens}`, [DRIVER_USER_MSG, assistantMsg(M, true), observationMsg(lens)], 150)
     )
   );
   p4a.forEach(logRow);
   await sleep(PHASE_SLEEP_MS);
 
-  // ── P4b: serial observer after the parallel writers ──
-  log("\n── P4b: serial observer fork from n, marker on M (after P4a settled) ──");
+  // ── P4b: serial observation after the parallel writers ──
+  log("\n── P4b: serial observation fork from n, marker on M (after P4a settled) ──");
   const p4b = await call(
     "P4b n obs+mark serial",
-    [DRIVER_USER_MSG, assistantMsg(M, true), observerMsg("api-design")],
+    [DRIVER_USER_MSG, assistantMsg(M, true), observationMsg("api-design")],
     150
   );
   logRow(p4b);
@@ -155,7 +155,7 @@ async function main() {
   const prefixTokens = p1.cacheRead; // full driver prefix as measured by replay
   const obsPromptTokens = Math.round(p2.reduce((sum, row) => sum + row.input, 0) / p2.length);
   const mTokens = p0.output; // output tokens of M ≈ its input cost when replayed
-  log(`measured: driver prefix ≈ ${prefixTokens}, observer prompt ≈ ${obsPromptTokens}, M (output) ≈ ${mTokens}\n`);
+  log(`measured: driver prefix ≈ ${prefixTokens}, observation prompt ≈ ${obsPromptTokens}, M (output) ≈ ${mTokens}\n`);
 
   let all = true;
 
@@ -195,11 +195,11 @@ async function main() {
   ) && all;
 
   // ── Cost model summary ──
-  log("\n══ Cost interpretation (per observer, for the latest-message tokens M) ══");
-  log("  fork n-1:                0, but the observer judges a stale snapshot");
-  log("  fork n, no marker:       1.0× input price for M, every observer, every turn");
-  log("  fork n, marker, serial:  1.25× once (first observer), 0.1× for later observers");
-  log(`  fork n, marker, parallel: ${writers === p4a.length ? "1.25× for EACH racing observer (no dedup)" : "partially deduped; see P4a rows"}`);
+  log("\n══ Cost interpretation (per observation, for the latest-message tokens M) ══");
+  log("  fork n-1:                0, but the observation judges a stale snapshot");
+  log("  fork n, no marker:       1.0× input price for M, every observation, every turn");
+  log("  fork n, marker, serial:  1.25× once (first observation), 0.1× for later observations");
+  log(`  fork n, marker, parallel: ${writers === p4a.length ? "1.25× for EACH racing observation (no dedup)" : "partially deduped; see P4a rows"}`);
 
   log(all ? "\nAll hypotheses confirmed." : "\nSome hypotheses NOT confirmed; read rows above.");
 }
