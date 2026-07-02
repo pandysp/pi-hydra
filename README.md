@@ -26,11 +26,11 @@ These are measurements, not estimates: the harness in [`experiments/`](experimen
 
 ## Compared to subagents
 
-pi ships four tools and no subagents; both arrive as extensions. They sit at opposite ends of two coupled choices. A head rides the driver's exact prompt cache, so it is locked to the driver's model and costs a cache read; a subagent ([pi-subagents](https://github.com/tintinweb/pi-subagents), the most capable pi subagent extension) rebuilds context from scratch, so it picks any model and pays full input price. And a head *watches in place*, replaying at the driver's commit points and able to act on what it sees live. A subagent is *spawned and returns*: it runs on its own clock and hands back a result the parent reads when it is done.
+pi's core ships four tools and no subagents; heads and subagents both arrive as extensions, and they sit at opposite ends of two coupled choices: where the reviewer's context comes from, and how its run relates to the driver's. On context, a head rides the driver's exact prompt cache, so it is locked to the driver's model and costs a cache read; a subagent ([pi-subagents](https://github.com/tintinweb/pi-subagents)) rebuilds context from scratch, so it picks any model and pays full input price. On the run, a head *watches in place*, replaying at the driver's commit points and able to act on what it sees live; a subagent is *spawned and returns*: it runs on its own clock and hands back a result the parent reads when it is done.
 
 | | subagents | hydra heads |
 |---|---|---|
-| Context | fresh, isolated by default; zero anchoring | the driver's payload byte-for-byte; maximal anchoring |
+| Context | fresh, isolated by default; zero anchoring to the driver's assumptions | the driver's payload byte-for-byte; fully anchored to the driver's assumptions |
 | Model | free: a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
 | Cost | a full-price context rebuild per task | ~1% of build cost per observation; ~30% per session always-on |
 | Timing | on its own clock: Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points, in time to steer the next step |
