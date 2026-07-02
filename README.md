@@ -16,6 +16,21 @@ hydra inverts this. Observation happens during the run, at the exact moments the
 
 A bad assumption caught mid-implementation costs one correction message. Caught in review, it costs a refactor. Caught in production, an incident. The heads do not need to catch much to pay for themselves.
 
+## Compared to subagents
+
+pi ships four tools and no subagents; both arrive as extensions. They sit at opposite ends of two coupled choices. A head rides the driver's exact prompt cache, so it is locked to the driver's model and costs a cache read; a subagent ([pi-subagents](https://github.com/tintinweb/pi-subagents), the most capable pi subagent extension) rebuilds context from scratch, so it picks any model and pays full input price. And a head *watches in place* — replaying at the driver's commit points, able to act on what it sees live — where a subagent is *spawned and returns*, on its own clock, handing back a result the parent reads when it is done.
+
+| | subagents | hydra heads |
+|---|---|---|
+| Context | fresh, isolated by default; zero anchoring | the driver's payload byte-for-byte; maximal anchoring |
+| Model | free — a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
+| Cost | a full-price context rebuild per task | ~1% of build cost — a cache read at 10% of input |
+| Timing | on its own clock — Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points — in time to steer the next step |
+| Direction | spawned downward; can be `steer`ed downward (parent → child) and returns a final message | watches the same run; can `steer` or pull the cord upward (head → agent) |
+| What crosses | passive data — inert until the parent reads and acts on it | an act — a `steer` or `interrupt` that fires whether the agent agrees or not |
+
+Reach for a subagent when fresh eyes, a stronger model, or heavy isolated work is the point; reach for a head to catch the bad turn while it is still molten. The two stack around the driver: heads steer it from above, and it spawns subagents for the isolated work below.
+
 ## Quick start
 
 You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity replay is validated on the Anthropic Messages API).
