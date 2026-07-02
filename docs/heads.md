@@ -146,11 +146,11 @@ The four review examples are designed to catch different things rather than repe
 **Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about implementation, not the contract.
 **Boundary:** Do not comment on internal code structure.
 
-## More heads worth writing
+## More head ideas
 
-Reference designs; each is one head file away. They are grouped by the shape the head takes. The groups are suggestions, not a type system, and good heads exist that fit none of them.
+Ideas for heads to write yourself, grouped by the shape a head takes. The grouping is loose. Many good heads fit none of these shapes.
 
-**Watchdog heads** judge against a standard the head file carries; `tools: []`, mostly noop, escalate on violations:
+**Watchdog heads** judge against a standard the head file carries. Most run judge-only (`tools: []`) and stay quiet until the standard is violated:
 
 - **Observability**: logging, monitoring, traceability, "can you diagnose this at 3am?" Nobody thinks about production operations during development.
 - **Testing**: coverage gaps, untested edge cases, error handling paths. Pre-merge and complex business logic.
@@ -159,30 +159,30 @@ Reference designs; each is one head file away. They are grouped by the shape the
 - **Domain Expert**: business rule accuracy, edge cases in domain logic, terminology. When correctness matters more than code quality.
 - **Architecture**: structural design, coupling, layer separation. For large codebases and early design phases; overlaps with Simplifier on DRY.
 
-**Navigator heads** judge against the task. Their yardstick is not in the file but in the session: the spec, the ask, the agreed scope.
+**Navigator heads** judge against the task. Their yardstick lives in the session: the spec, the ask, the agreed scope.
 
-- **Scope-keeper**: flags work nobody asked for: gold-plating, drive-by refactors, rabbit holes. Steers the run back to the ask.
+- **Scope-keeper**: flags work nobody asked for (gold-plating, drive-by refactors, rabbit holes) and steers the run back to the ask.
 - **Spec-alignment**: compares the work against the requirements as stated in the conversation. Catches quiet reinterpretation of the task.
 
-**Caretaker heads** act through tools and usually end noop, because the files they maintain are the work product:
+**Caretaker heads** act through tools and usually end noop because the files they maintain are the work product:
 
 - **Docs-keeper**: keeps a notes file current with decisions as they happen (the example in the README).
 - **Changelog**: appends user-facing changes as they land, so the notes exist by release time.
 - **Glossary**: maintains the project's terms as the domain language grows.
 
-**Reporter heads** deliver to you, never the agent; print-only:
+**Reporter heads** print notes for you and never write into the agent's context:
 
-- **Narrator**: prints a running summary of a long autonomous run: decisions taken, work skipped.
+- **Narrator**: prints a running summary of a long autonomous run: what was decided and what was skipped.
 - **Assumption-flagger**: prints assumptions the agent acts on without stating them.
 
-**Red-team heads** attack premises instead of guarding standards. Wanted during design, muted during execution.
+**Red-team heads** attack the premises of the work. They are most useful during design and usually muted during execution:
 
 - **Devil's Advocate**: challenge the entire approach. "Why this way and not another?" Zero overlap with code-level review. Do NOT comment on code-level bugs or style; think meta.
 - **Threat-modeler**: attacks the design the way an adversary would, before the code exists.
 
-**Evaluator heads** measure and never intervene; their findings leave the session as data:
+**Evaluator heads** measure and never intervene. Their findings go to a file or log for later analysis:
 
-- **Behavior-annotator**: scores each run against a rubric and appends the scores to an eval log. Live evals at cache prices instead of full-price trajectory replay.
+- **Behavior-annotator**: scores each run against a rubric and appends the scores to an eval log. This is how you run live evals without full-price trajectory replay.
 - **Failure-collector**: records dead ends, retries, and error loops for later analysis of where the agent wastes time.
 
 Heads whose subject is the other heads (the foreman and tuner) are covered in [Heads that manage heads](#heads-that-manage-heads).
