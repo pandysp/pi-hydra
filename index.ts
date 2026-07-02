@@ -1,5 +1,5 @@
 /**
- * hydra: commit-point observation for pi.
+ * hydra: commit-point oversight for pi.
  *
  * Watches the driver's conversation through a side model that replays the
  * driver's exact provider payload with one observation prompt appended. Because
