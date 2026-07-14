@@ -417,8 +417,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	function observationPromptFor(name: string, tools: string[] | undefined): string {
-		const instruction = heads.get(name)?.prompt ?? "";
-		return buildObservationPrompt(name, instruction, tools);
+		if (name in DIAGNOSTIC_PROMPTS) {
+			return DIAGNOSTIC_PROMPTS[name as keyof typeof DIAGNOSTIC_PROMPTS];
+		}
+		return buildObservationPrompt(name, heads.get(name)?.prompt ?? "", tools);
 	}
 
 	// A head's executable allowance: diagnostics never act; a head file's
