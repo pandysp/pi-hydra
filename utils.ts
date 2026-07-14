@@ -320,6 +320,52 @@ export function selectFinalAssistant<T extends FinalAssistantCandidate>(
 	return null;
 }
 
+/**
+ * Whether a pi transport setting means the driver sends its full input on
+ * every request. Full-input drivers never send previous_response_id, so
+ * there is no server-side continuation reference for an observation under
+ * a shared session to evict — the codex sharing precondition. Deliberately
+ * typed over plain strings: settings files hold untrusted input, and
+ * anything unrecognized must classify as unsafe.
+ */
+export function isFullInputTransport(transport: string): boolean {
+	return transport === "websocket" || transport === "sse";
+}
+
+/**
+ * The single owner of the codex share-loss decision: null when the
+ * transport keeps sharing safe, otherwise the human-readable reason every
+ * gate site records into codexShareLostReason (monotonically, via `??=`).
+ * One owner because the reason string doubles as the warnOnce dedup key.
+ */
+export function classifyCodexShareLoss(transport: string): string | null {
+	return isFullInputTransport(transport)
+		? null
+		: `pi transport "${transport}" (the driver's delta continuation would break under a shared session)`;
+}
+
+// The codex continuation-failure signature, tolerant of wording variants
+// ("previous_response_id", "could not be found") and of multi-line error
+// bodies (s flag). False positives are fenced by the stopReason gate in
+// hasDriverContinuationError, and cost only cache economics; a false
+// negative costs repeated driver breakage, so match generously.
+const CONTINUATION_ERROR = /previous[ _]?response.*not.*found/is;
+
+/**
+ * Whether a run's messages contain the codex continuation-failure signature
+ * on an errored assistant message: the one known driver-breaking symptom of
+ * observing under the driver's session. The tripwire that consumes this
+ * permanently downgrades codex observations to their own session.
+ */
+export function hasDriverContinuationError(messages: FinalAssistantCandidate[]): boolean {
+	return messages.some(
+		(message) =>
+			message.role === "assistant" &&
+			message.stopReason === "error" &&
+			CONTINUATION_ERROR.test(message.errorMessage ?? ""),
+	);
+}
+
 /** Shutdown grace from its raw env value: 0 means "don't wait"; unset or invalid falls back. */
 export function parseShutdownGrace(raw: string | undefined, fallback: number): number {
 	const parsed = raw == null || raw.trim() === "" ? Number.NaN : Number(raw);
@@ -450,4 +496,74 @@ export function mergeObservationPayload(captured: AnthropicPayload, tail: Payloa
 	}
 	merged.messages = [...merged.messages, ...tailMessages];
 	return merged;
+}
+
+// OpenAI Responses payloads (`input` items instead of `messages`), same
+// structural stance: `input` is the one field the merge touches, everything
+// else passes through byte-for-byte.
+
+export interface OpenAIResponsesPayload {
+	input: unknown[];
+	[key: string]: unknown;
+}
+
+export function isOpenAIResponsesPayload(value: unknown): value is OpenAIResponsesPayload {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		Array.isArray((value as { input?: unknown }).input)
+	);
+}
+
+/** Remove every explicit cache breakpoint from the items' content blocks in place. */
+function stripPromptCacheBreakpoints(items: unknown[]): void {
+	for (const item of items) {
+		const content = (item as { content?: unknown } | null)?.content;
+		if (!Array.isArray(content)) {
+			continue;
+		}
+		for (const block of content) {
+			if (typeof block === "object" && block !== null) {
+				delete (block as { prompt_cache_breakpoint?: unknown }).prompt_cache_breakpoint;
+			}
+		}
+	}
+}
+
+/**
+ * Merge the observation tail (pi-ai's own serialization of `[M?, prompt,
+ * ...tool-loop turns]`) onto the captured driver payload, OpenAI Responses
+ * shape.
+ *
+ * The captured prefix is replayed byte-true — `prompt_cache_key`, `store`,
+ * `instructions`, everything. Unlike Anthropic, no marker ever moves:
+ * GPT-5.6 caching runs in implicit mode, where the server itself
+ * breakpoints each request's latest message, so each observation writes
+ * its own frontier and the next one reads it — the economics the Anthropic
+ * merge arranges by hand with `cache_control` moves. Whether an
+ * observation can also read the entries the DRIVER wrote depends on
+ * backend routing hydra does not control; observing under the driver's
+ * own session id makes it reliable, which is the transport-gated session
+ * strategy decided in index.ts (see the OpenAI section of
+ * docs/architecture.md for the measurements).
+ *
+ * A marker-style run-end pre-warm of the driver has no expressible form
+ * here: explicit breakpoints are legal only on input blocks (`input_text`,
+ * `input_image`, `input_file`), never on assistant output. The fork still
+ * observes M cheaply either way.
+ *
+ * Explicit breakpoints pi-ai might one day place on the tail are dropped:
+ * hydra owns marker placement, and on this provider that means none.
+ */
+export function mergeOpenAIObservationPayload(captured: OpenAIResponsesPayload, tail: unknown[]): OpenAIResponsesPayload {
+	// Clone the tail before stripping: it is pi-ai's own request body. The
+	// captured prefix is never mutated here (unlike the Anthropic merge,
+	// whose deep clone is load-bearing for the marker moves), so a shallow
+	// copy suffices and spares re-copying the full context on every
+	// acting-loop call. The merged payload therefore aliases the captured
+	// items — sound because pi-ai only serializes the body after onPayload;
+	// nothing downstream mutates request items.
+	const tailItems = structuredClone(tail) as unknown[];
+	stripPromptCacheBreakpoints(tailItems);
+	return { ...captured, input: [...captured.input, ...tailItems] };
 }

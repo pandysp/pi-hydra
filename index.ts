@@ -4,7 +4,9 @@
  * Watches the driver's conversation through a side model that replays the
  * driver's exact provider payload with one observation prompt appended. Because
  * the prefix is byte-identical, every observation is a prompt-cache read of
- * the entry the driver itself just wrote (97%+ hit ratio). The head
+ * entries the driver itself wrote (97%+ hit ratio on Anthropic; on OpenAI
+ * Codex the backend's commit latency bounds it lower, see
+ * docs/architecture.md). The head
  * answers with a JSON decision naming its finding's delivery (noop, print,
  * queue, steer, or interrupt) which hydra routes back into the session.
  *
@@ -24,9 +26,11 @@
  *   request is a pure cache read, fresh through the latest tool results.
  * - Run-end (agent_end): no further driver request will carry the final
  *   assistant message M into the cache, so the observation appends M itself,
- *   serialized by pi-ai's own provider code via the onPayload hook, and
- *   moves the driver's message-level cache marker onto it. The fork pays M's
- *   write once and pre-warms the driver's next, human-paced turn.
+ *   serialized by pi-ai's own provider code via the onPayload hook. On
+ *   Anthropic, the driver's message-level cache marker moves onto M, so the
+ *   fork's write also pre-warms the driver's next, human-paced turn. On
+ *   OpenAI (GPT-5.6+, implicit breakpoints), no marker exists to move: the
+ *   fork reads the warm prefix and pays the newest turn plus its own tail.
  *
  * Usage:
  *   pi install git:github.com/pandysp/pi-hydra
@@ -43,7 +47,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { runAgentLoop } from "@earendil-works/pi-agent-core";
+import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Message, Model, Static, ToolCall } from "@earendil-works/pi-ai";
@@ -56,16 +60,21 @@ import {
 	createReadTool,
 	createWriteTool,
 	getAgentDir,
+	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type { Action, AnthropicPayload, Decision, HeadDefinition, ObservationUsage } from "./utils";
 import {
 	buildObservationPrompt,
+	classifyCodexShareLoss,
 	demoteStaleInterrupt,
+	hasDriverContinuationError,
 	headActs,
 	isAnthropicPayload,
+	isOpenAIResponsesPayload,
 	mergeObservationPayload,
+	mergeOpenAIObservationPayload,
 	parseDecision,
 	parseHeadFile,
 	parseHeadList,
@@ -120,6 +129,10 @@ interface HydraCall {
 	turnIndex: number;
 	head: string;
 	kind?: ObserveKind;
+	// The provider API the call ran under; healthy hit ratios differ per
+	// provider, so display must not blend them. Absent on pre-codex
+	// entries, which were all Anthropic.
+	api?: string;
 	action: Action;
 	input: number;
 	output: number;
@@ -237,6 +250,37 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			current = parent;
 		}
+	}
+
+	// The driver's transport, resolved through pi's own SettingsManager so
+	// file locations, precedence, trust gating, and the legacy
+	// `websockets: true` migration stay pi's code and evolve with it. Read
+	// fresh per observation, never cached: pi's settings selector retargets
+	// the LIVE agent mid-session (onTransportChange assigns
+	// agent.transport, which the agent reads per request), so a cached
+	// value would go stale in the unsafe direction. The session strategy in
+	// observe() is monotone — sharing can be lost, never regained — which
+	// covers both mutation channels (the settings UI and external file
+	// edits) except one irreducible in-flight race, named and accepted at
+	// codexShareLostReason.
+	let lastReadTransport: string | null = null;
+	function driverTransport(ctx: ExtensionContext): string {
+		// A transient read failure (lock contention, a hand-edit saving
+		// invalid JSON mid-write) must not masquerade as a transport flip:
+		// under the monotone strategy a single misread "auto" would
+		// permanently end sharing. SettingsManager swallows load errors into
+		// empty settings and surfaces them via drainErrors(), so only a
+		// clean load updates the memory; errored or throwing reads trust
+		// the last good value, and a never-read session falls to "auto".
+		try {
+			const settings = SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() });
+			if (settings.drainErrors().length === 0) {
+				lastReadTransport = settings.getTransport();
+			}
+		} catch {
+			// Environment-level failure: same treatment as an errored load.
+		}
+		return lastReadTransport ?? "auto";
 	}
 
 	function loadHeadsFromDir(ctx: ExtensionContext, dir: string, source: "user" | "project"): Map<string, DiscoveredHead> {
@@ -412,6 +456,25 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const runners = new Map<string, HeadRunner>();
 	const lifecycleAbort = new AbortController();
 
+	// The observer's backend session identity for codex observations, one
+	// per extension instance; see the sessionId option in runObservationLoop
+	// for the constraints it satisfies.
+	const observerSessionId = uuidv7();
+
+	// Once codex cache sharing is lost it stays lost for the process
+	// (monotone): after a transport flip, the driver may hold continuation
+	// state that shared-mode observations already evicted, and re-upgrading
+	// after a flip back could resurrect exactly that stale reference. Set
+	// at the first agent_start (pinning the decision to a moment where the
+	// settings file and the live agent provably agree), by the per-
+	// observation re-read, and by the driver-error tripwire in agent_end.
+	// One residual race is irreducible client-side and accepted: a settings-
+	// UI flip to "auto" while a shared observation is in flight can evict
+	// the driver's first post-flip continuation reference — at most one
+	// break, which the tripwire then makes final.
+	let codexShareLostReason: string | null = null;
+	let initialTransportPinned = false;
+
 	// Stats, rebuilt from the current session branch on restore.
 	let calls: HydraCall[] = [];
 	const delivered = new Set<string>();
@@ -419,20 +482,43 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
-	function cumulative() {
+	function cumulative(currentApi: string | undefined) {
 		let cost = 0;
 		let read = 0;
 		let write = 0;
 		let input = 0;
+		let hitRead = 0;
+		let hitReadable = 0;
 		for (const call of calls) {
 			cost += call.cost;
 			read += call.cacheRead;
 			write += call.cacheWrite;
 			input += call.input;
+			// Money and token totals are session-wide; the mean hit ratio
+			// only aggregates calls comparable to the current model, so a
+			// mid-session provider switch cannot recolor healthy history
+			// against the wrong band. Entries without api predate codex
+			// support and were all Anthropic.
+			if (currentApi === undefined || (call.api ?? "anthropic-messages") === currentApi) {
+				hitRead += call.cacheRead;
+				hitReadable += call.cacheRead + call.cacheWrite + call.input;
+			}
 		}
-		const readable = read + write + input;
-		return { cost, read, write, input, meanHit: readable > 0 ? (read / readable) * 100 : 0 };
+		// null, not 0: "no comparable calls yet" (right after a provider
+		// switch) must not render as a total cache miss.
+		return { cost, read, write, input, meanHit: hitReadable > 0 ? (hitRead / hitReadable) * 100 : null };
 	}
+
+	// Healthy differs per provider: ~97%+ on Anthropic, ~84–87% measured on
+	// codex, where the newest turn always rides inside the backend's commit
+	// window and is paid as fresh input. The codex "good" bar sits below
+	// the measured band to absorb backend volatility. One table for the
+	// footer color and the /hydra-stats target, so the two cannot drift.
+	const HIT_BANDS = {
+		codex: { good: 80, fair: 60, target: "84%+ (codex)" },
+		default: { good: 97, fair: 90, target: "97%+" },
+	} as const;
+	const hitBands = (ctx: ExtensionContext) => (ctx.model?.api === "openai-codex-responses" ? HIT_BANDS.codex : HIT_BANDS.default);
 
 	function updateFooter(ctx: ExtensionContext) {
 		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
@@ -440,14 +526,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
 			return;
 		}
-		const { cost, meanHit } = cumulative();
+		const { cost, meanHit } = cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
-		const hitColor = meanHit >= 97 ? "success" : meanHit >= 90 ? "warning" : "error";
+		const { good, fair } = hitBands(ctx);
+		const hitColor = meanHit === null ? "muted" : meanHit >= good ? "success" : meanHit >= fair ? "warning" : "error";
+		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
 			"hydra",
 			ctx.ui.theme.fg("toolTitle", `hydra:${headLabel}`) +
 				" " +
-				ctx.ui.theme.fg(hitColor, `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`) +
+				ctx.ui.theme.fg(hitColor, hitLabel) +
 				" " +
 				ctx.ui.theme.fg("dim", `$${cost.toFixed(4)} (${calls.length} obs)`),
 		);
@@ -537,19 +625,82 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			warnOnce(job.ctx, "hydra: no model selected; observations skipped");
 			return;
 		}
-		// Cache-parity replay is validated on Anthropic's Messages API only.
-		if (model.provider !== "anthropic") {
-			if (!warnedProviders.has(model.provider)) {
-				warnedProviders.add(model.provider);
-				notifyUser(job.ctx, `hydra: observations disabled for provider "${model.provider}" (cache-parity replay is validated on Anthropic only)`, "warning");
+		// Cache-parity replay is validated per provider/API pair: Anthropic's
+		// Messages API (explicit cache_control markers) and OpenAI's Codex
+		// Responses backend (prompt_cache_key routing + implicit breakpoints,
+		// GPT-5.6+). Other providers fall through with a one-time warning
+		// until someone measures them (docs/architecture.md has the
+		// procedure); the OpenAI API-key path shares the codex serializer but
+		// stays gated for the same reason.
+		const anthropic = model.provider === "anthropic" && model.api === "anthropic-messages";
+		const codex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
+		if (!anthropic && !codex) {
+			const pair = `${model.provider}/${model.api}`;
+			if (!warnedProviders.has(pair)) {
+				warnedProviders.add(pair);
+				notifyUser(job.ctx, `hydra: observations disabled for ${pair} (cache-parity replay is validated on Anthropic and OpenAI Codex only)`, "warning");
 			}
 			return;
 		}
-		if (!isAnthropicPayload(job.payload)) {
-			warnOnce(job.ctx, "hydra: captured payload has an unexpected shape; observations skipped (pi upgrade?)");
+
+		// Run-end observations carry M so pi-ai's own provider code serializes
+		// it; piggyback payloads already contain everything. The onPayload
+		// hook receives pi-ai's serialization of these messages and splices it
+		// onto the captured prefix; see the payload mergers in utils.ts for
+		// the per-provider cache story. The shape guard doubles as the mid-run
+		// model-switch guard: a payload captured under one API must not be
+		// merged under another.
+		const bindMerge = <T>(guard: (value: unknown) => value is T, merge: (captured: T, built: T) => unknown) => {
+			if (!guard(job.payload)) {
+				return null;
+			}
+			const captured = job.payload;
+			return (built: unknown) => {
+				if (!guard(built)) {
+					throw new Error(`unexpected payload shape from provider ${model.provider}`);
+				}
+				return merge(captured, built);
+			};
+		};
+		const mergeBuilt = anthropic
+			? bindMerge(isAnthropicPayload, (captured, built) => mergeObservationPayload(captured, built.messages))
+			: bindMerge(isOpenAIResponsesPayload, (captured, built) => mergeOpenAIObservationPayload(captured, built.input));
+		if (!mergeBuilt) {
+			warnOnce(job.ctx, `hydra: captured payload does not match ${model.api} (model switched mid-run, or pi changed shape); observation skipped`);
 			return;
 		}
-		const captured = job.payload;
+
+		// Codex session strategy. The backend scopes its prompt cache by
+		// session id, so observing under the DRIVER's id is the whole prize:
+		// every observation reads the entries the driver itself writes (no
+		// cold start, ~85%+ from the first observation) and the run-end
+		// write pre-warms the driver's next turn. Sharing is safe only
+		// while the driver sends full input per turn (transport "websocket"
+		// or "sse") — and structurally so: a full-input driver never sends
+		// previous_response_id, so there is no server-side reference for an
+		// observation to evict. Under "auto"/"websocket-cached" there is,
+		// and evicting it fails the driver's next request ("Previous
+		// response ... not found", reproduced; measurements in
+		// docs/architecture.md). The transport is re-read every observation
+		// (pi can retarget the live agent mid-session) and the strategy
+		// only ever moves toward the observer's own session — never back —
+		// with the agent_end tripwire as the final backstop.
+		let codexSessionId: string | undefined;
+		if (codex) {
+			codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+			if (codexShareLostReason === null) {
+				codexSessionId = job.ctx.sessionManager.getSessionId();
+			} else {
+				codexSessionId = observerSessionId;
+				const advice = codexShareLostReason.startsWith("pi transport")
+					? ' Full cache sharing needs { "transport": "websocket" } in pi\'s settings.json from session start.'
+					: "";
+				warnOnce(
+					job.ctx,
+					`hydra: codex observations run in their own cache scope (paying the driver context once, plus re-pays after idle pauses) because of ${codexShareLostReason}.${advice}`,
+				);
+			}
+		}
 
 		const auth = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (!auth.ok || !auth.apiKey) {
@@ -558,21 +709,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 
-		// Run-end observations carry M so pi-ai's own provider code serializes
-		// it; piggyback payloads already contain everything. The onPayload hook
-		// receives pi-ai's serialization of these messages and splices it onto
-		// the captured prefix; see mergeObservationPayload for the cache story.
 		const onPayload = (built: unknown) => {
-			if (!isAnthropicPayload(built)) {
-				throw new Error(`unexpected payload shape from provider ${model.provider}`);
-			}
-			const merged = mergeObservationPayload(captured, built.messages);
+			const merged = mergeBuilt(built);
 			if (debugDir) {
 				// A diagnostic must never kill the observation it diagnoses:
 				// on any write failure, drop the dump dir and keep observing.
 				const stem = `${Date.now()}-${job.head}-${debugSeq++}`;
 				try {
-					writeFileSync(join(debugDir, `hydra-driver-${stem}.json`), JSON.stringify(captured, null, 2));
+					writeFileSync(join(debugDir, `hydra-driver-${stem}.json`), JSON.stringify(job.payload, null, 2));
 					writeFileSync(join(debugDir, `hydra-observation-${stem}.json`), JSON.stringify(merged, null, 2));
 				} catch (error) {
 					debugDir = null;
@@ -583,7 +727,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 
 		const t0 = Date.now();
-		const outcome = await runObservationLoop(job, model, auth.apiKey, auth.headers, onPayload, signal);
+		const outcome = await runObservationLoop(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
 		if (!outcome || signal.aborted) {
 			return;
 		}
@@ -618,6 +762,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			turnIndex: job.turnIndex,
 			head: job.head,
 			kind: job.kind,
+			api: model.api,
 			action: decision.action,
 			input: summary.input,
 			output: summary.output,
@@ -659,13 +804,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// loop exits, one provider call exactly like a bare complete(). Every
 	// provider call the loop makes flows through the same byte-true merge
 	// (onPayload discards the loop's own built context), so the driver
-	// prefix stays a pure cache read and any loop turns are cached once by
-	// the marker the merge advances; see mergeObservationPayload.
+	// prefix stays a pure cache read and any loop turns are cached once —
+	// by the marker the merge advances on Anthropic, by the server's
+	// implicit breakpoint on OpenAI; see the mergers in utils.ts.
 	async function runObservationLoop(
 		job: Observation,
-		model: Model<"anthropic-messages">,
+		model: Model<"anthropic-messages" | "openai-codex-responses">,
 		apiKey: string,
 		headers: Record<string, string> | undefined,
+		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
 	): Promise<ObserveOutcome | null> {
@@ -677,6 +824,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
 		let iterations = 0;
+		// Whether this observation runs under the DRIVER's session; loop-
+		// invariant, and the reason a wind-down can be about share loss.
+		const sharedSession = sessionId !== undefined && sessionId !== observerSessionId;
+		let stoppedForShareLoss = false;
 		let messages: Awaited<ReturnType<typeof runAgentLoop>>;
 		try {
 			messages = await runAgentLoop(
@@ -686,6 +837,33 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					model,
 					apiKey,
 					headers,
+					// An OAuth token can expire inside a long acting-head loop;
+					// re-resolve per provider call, exactly as the driver does
+					// (contract: must not throw).
+					getApiKey: async () => {
+						try {
+							const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
+							return fresh.ok ? (fresh.apiKey ?? undefined) : undefined;
+						} catch {
+							return undefined;
+						}
+					},
+					// Codex only; the Anthropic path is validated without
+					// either option. Which id — the driver's (cache sharing)
+					// or the observer's own (fallback) — is the strategy
+					// decided in observe(). Either way UUIDv7: GPT-5.6
+					// entitlements were measured misrouting missing/v4 ids to
+					// a nonexistent free-tier variant on 2026-07-13 (not
+					// reproduced on -14; kept as a costless defensive
+					// invariant, and it matches pi's own id format). The
+					// transport is pinned to plain full-input websocket —
+					// never "auto", whose delta continuation leaves evictable
+					// server-side state that another request under the same
+					// session can invalidate mid-loop. SSE would be equally
+					// continuation-free but was measured refused for GPT-5.6
+					// on -13; websocket has never misbehaved.
+					sessionId,
+					transport: model.api === "openai-codex-responses" ? "websocket" : undefined,
 					onPayload,
 					// Our tail messages are plain LLM messages already; drop
 					// anything else defensively (contract: must not throw).
@@ -696,8 +874,22 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						),
 					// Correctness guard, not a cost ceiling: wind down a loop
 					// that does not converge on a decision, and wind down early
-					// when the head is deactivated mid-loop.
-					shouldStopAfterTurn: () => !activeHeads.includes(job.head) || ++iterations >= MAX_TOOL_ITERATIONS,
+					// when the head is deactivated mid-loop. A loop observing
+					// under the DRIVER's session also winds down the moment
+					// sharing is lost — a mid-loop transport flip or tripwire
+					// must not leave an acting head injecting responses into
+					// the driver's session for up to 25 more turns.
+					shouldStopAfterTurn: () => {
+						iterations++;
+						if (sharedSession) {
+							codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+							if (codexShareLostReason !== null) {
+								stoppedForShareLoss = true;
+								return true;
+							}
+						}
+						return !activeHeads.includes(job.head) || iterations >= MAX_TOOL_ITERATIONS;
+					},
 					afterToolCall: async (event) => {
 						toolsUsed.push(event.toolCall.name);
 						if (!event.isError) {
@@ -731,7 +923,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			return null;
 		}
-		if (response.stopReason === "toolUse" && activeHeads.includes(job.head)) {
+		if (stoppedForShareLoss && response.stopReason === "toolUse") {
+			job.ctx.ui.notify(`hydra: ${job.head} wound down after ${iterations} turn${iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`, "warning");
+		} else if (response.stopReason === "toolUse" && activeHeads.includes(job.head)) {
 			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
 		return { response, usages, iterations, toolsUsed };
@@ -934,6 +1128,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.on("agent_start", (_event, ctx) => {
 		awaitingFirstResponseOfRun = true;
 		capturedThisRun = false;
+		// Pin the codex share decision to the first run, as close as an
+		// extension can get to the moment the driver's agent was built from
+		// the same settings file. Later hand-edits of the file never
+		// retarget the running agent, so a mid-session flip to "websocket"
+		// must NOT enable sharing against a driver still, live, using delta
+		// continuation. A file rewrite inside the launch window (another pi
+		// process's settings UI, a hand edit before the first prompt) can
+		// still slip past the pin — bounded to one break by the tripwire,
+		// like the in-flight race named at codexShareLostReason.
+		if (!initialTransportPinned) {
+			initialTransportPinned = true;
+			codexShareLostReason ??= classifyCodexShareLoss(driverTransport(ctx));
+		}
 		// Pick up head edits made since the last run (the in-session tuning loop).
 		discoverHeads(ctx);
 	});
@@ -960,10 +1167,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// Piggyback trigger: a driver response began streaming, which is the
 	// moment Anthropic commits the request's cache entry (commit-at-TTFT,
-	// verified in the experiments). Observing the captured payload now is a
-	// pure cache read, and the decision lands while the response is still
-	// streaming. The run's first request is skipped; the previous run-end
-	// observation has already reviewed everything before it.
+	// verified in the experiments; on OpenAI the observation reads whatever
+	// prefix entries exist and pays the uncommitted remainder as its own
+	// write — degradation, not failure). Observing the captured payload now
+	// is a near-pure cache read, and the decision lands while the response
+	// is still streaming. The run's first request is skipped; the previous
+	// run-end observation has already reviewed everything before it.
 	pi.on("message_start", (event, ctx) => {
 		if (event.message.role !== "assistant") {
 			return;
@@ -991,6 +1200,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Runs that produced no usable M (command-only input, immediate aborts,
 	// error turns) have nothing new to review and schedule nothing.
 	pi.on("agent_end", (event, ctx) => {
+		// Tripwire on the one known driver-breaking signature. The backend's
+		// eviction mechanism is a black box; if the driver itself hits a
+		// continuation error — whatever the cause — codex observations stop
+		// sharing its session for the rest of this session. Backing off
+		// costs pennies; a repeat breaks the user's work. The state flips
+		// even with no heads active (protection must survive a later
+		// activation); the notice is only worth showing when heads exist.
+		if (ctx.model?.api === "openai-codex-responses" && codexShareLostReason === null && hasDriverContinuationError(event.messages)) {
+			codexShareLostReason = "a driver continuation error (hydra backed off to keep the driver safe)";
+			if (activeHeads.length > 0) {
+				notifyUser(ctx, "hydra: the driver hit a continuation error; codex observations retreat to their own cache scope for the rest of this session", "warning");
+			}
+		}
 		if (activeHeads.length === 0 || !capturedPayload || !capturedThisRun) {
 			return;
 		}
@@ -1237,7 +1459,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("hydra: no observations yet", "info");
 				return;
 			}
-			const { cost, read, write, input, meanHit } = cumulative();
+			const { cost, read, write, input, meanHit } = cumulative(ctx.model?.api);
 			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
@@ -1256,7 +1478,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit.toFixed(2)}%   ← target: 97%+`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBands(ctx).target}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,

@@ -8,7 +8,7 @@ hydra replays the driver's exact provider payload with one observation prompt ap
 
 **Piggyback (mid-run).** When a driver response begins streaming (`message_start`, the moment Anthropic's cache entry becomes readable; commit+0 free rides verified), hydra replays that request's captured payload plus an observation prompt. The driver just paid the cache write, so the observation is a pure cache read, includes the latest assistant message and tool results, and its decision typically lands while the driver's response is still streaming. The run's first response is skipped: the previous run-end observation already reviewed everything before it.
 
-**Run-end (agent_end).** When the driver hands control back to the user, no next request will carry the final assistant message M into the cache, so the observation appends M itself. It hands M to its `runAgentLoop` call, and pi-ai's own provider code serializes it: thinking blocks, signatures, surrogate sanitization, parity by construction. The `onPayload` hook then splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observation pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observation TTFT.
+**Run-end (agent_end).** When the driver hands control back to the user, no next request will carry the final assistant message M into the cache, so the observation appends M itself. It hands M to its `runAgentLoop` call, and pi-ai's own provider code serializes it: thinking blocks, signatures, surrogate sanitization, parity by construction. On Anthropic, the `onPayload` hook then splices that output onto the captured prefix and moves the driver's message-level cache marker (TTL included) onto M's last markable block (text or tool_use), staying inside the 4-breakpoint budget. The observation pays M's write once (1.25×) and pre-warms the driver's next turn, which reads M at 0.1×: a ~5:1 bet that lands because human latency far exceeds observation TTFT. On OpenAI the splice is marker-free — implicit caching breakpoints the latest message server-side; see [OpenAI Codex support](#openai-codex-support).
 
 ```
 mid-run:  request N+1 dispatched ─► payload captured
@@ -80,6 +80,34 @@ HYDRA_SHUTDOWN_GRACE_MS=120000 pi -p -c --session-dir /tmp/v "Thanks. One senten
 jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage | [.cacheRead, .cacheWrite, .output] | @csv' /tmp/v/*.jsonl
 ```
 
+## OpenAI Codex support
+
+GPT-5.6 aligned OpenAI's caching economics with Anthropic's (reads 0.1×, writes billed 1.25×, explicit breakpoints, documented 30-minute retention), which lets the same capture-and-replay design apply nearly unchanged. The ChatGPT Codex backend that pi's `openai-codex` provider talks to turned out to obey almost none of the documented platform semantics, so everything below is measured against it directly (gpt-5.6-luna, July 2026). The probes are checked in — [`../experiments/codex-cache-scoping.mjs`](../experiments/codex-cache-scoping.mjs) and [`../experiments/codex-entitlement.mjs`](../experiments/codex-entitlement.mjs), cents of subscription quota — re-run them after pi upgrades or suspicious footer numbers.
+
+**The merge is append-only.** `mergeOpenAIObservationPayload` splices pi-ai's serialization of `[M?, prompt, ...loop turns]` onto the captured `input` and touches nothing else. No marker moves: implicit caching breakpoints the latest message server-side, which is the frontier-advance the Anthropic merge arranges by hand. A marker on M is not even expressible — explicit breakpoints are legal only on input blocks (`input_text`, `input_image`, `input_file`), never on assistant output.
+
+**Measured backend behavior — and its volatility.** The probes ran on consecutive days and partially disagreed, which is itself the most important finding: treat every number here as a dated snapshot, not a constant. Stable across both runs: cache entries behave *session-scoped* in controlled probes (same `prompt_cache_key` from a different session reads nothing; a different key from the same session reads everything), entries become readable in under ~65 s (a +40 s probe missed; sometimes near-instant in full-stack traffic), reads quantize to 128-token blocks, and `cache_write_tokens` is never reported (writes appear free on subscription). Volatile: entry lifetime was ~2–9 minutes on 2026-07-13 and under ~85 s of idle on -14 (never anywhere near the platform's documented 30 minutes); GPT-5.6 refused missing/v4 session ids and the SSE transport outright on -13 (`Model not found gpt-5.6-luna-free-1p-...` — the failure pi-ai's own v4 fallback request id would produce) but accepted all of them on -14. hydra keeps the UUIDv7 id and websocket pin as costless invariants that were required at least once. Full-stack pi traffic also showed occasional cross-session reads of identical content, so treat scoping as multi-signal routing where sharing the session id *guarantees* co-location and anything else is opportunistic. The safety machinery below deliberately depends on none of these numbers — volatility moves the economics (visible in the footer), never the driver's safety.
+
+**Session strategy is transport-gated — and monotone.** Observing under the *driver's* session id is the prize: every observation reliably reads the entries the driver itself writes — no cold start, ~87% from a session's first observation — and the run-end write lands where the driver's next turn can find it. It is safe only when the driver sends its full input every turn (pi setting `"transport": "websocket"`, or `"sse"`), and the safety is structural, not just measured: a full-input driver never sends `previous_response_id`, so there is no server-side reference for an observation to evict. Under the default `"auto"`, the driver relies on its websocket *delta continuation*, whose client-side bookkeeping lives in a different pi-ai module instance than the extension's; an observation response under the shared session then evicts the reference server-side and the driver's own next request fails with `Previous response with id 'resp_...' not found` (reproduced 2/2 under `auto`; 0 failures under `websocket`). hydra therefore pins the share decision at the first `agent_start` (the closest an extension gets to the moment the driver was built from the same settings file) and re-resolves the setting *per observation* — pi's settings selector retargets the live agent mid-session, so a cached read would go stale in the unsafe direction — and the strategy is monotone: full-input transports observe under the driver's session; the moment any read is a continuation transport, hydra drops to one observer-owned UUIDv7 per extension instance for the rest of the session, never upgrading back (a flip back could resurrect continuation state that shared-mode observations already evicted). The fallback is backstopped two ways: measured (zero driver failures across five fallback sessions against an `auto` driver) and actively — if any driver request ends in the continuation-error signature, hydra permanently retreats to its own session for the session and says so, and in-flight acting-head loops wind down at their next turn boundary, converting an unknown backend change from "breaks repeatedly" into "at most one break." One residual race is irreducible client-side and accepted: a settings flip to `"auto"` while a shared observation request is in flight can evict the driver's first post-flip continuation reference — one break at most, which the tripwire then makes final. The delta saves no tokens on this backend (a full-input resend bills its prefix as cache read, measured driver CH ~87% either way), so the `websocket` setting costs the driver upload bandwidth only. The clean fix is upstream: extensions sharing pi's own pi-ai instance would give shared client bookkeeping, which handles the divergence correctly by construction (verified in single-instance reproduction).
+
+**Untested corners, named.** Multi-head fan-out on codex is unmeasured (the e2e was single-head): N parallel observer connections under one session id could contend with the backend's per-session connection limits — measure before running several acting heads. All measurements are GPT-5.6; older codex models (gpt-5.4, gpt-5.5) pass the same gate but their cache economics are unvalidated (visible in the footer if they misbehave). Hit ratios were measured on 4–6K-token e2e sessions and the probe matrix at ~15K tokens; large-context behavior (commit latency under heavy prefill, entry lifetime under eviction pressure) is projected, not measured. On subscription codex, observations also spend the same account quota as the driver. And pi-ai keeps a per-session SSE-fallback registry that one websocket connect failure can trip permanently: hydra's observations would then run SSE for the rest of the session — the driver is unaffected (separate module instance), but on days the backend refuses SSE for GPT-5.6, every observation fails with a per-observation error until restart.
+
+**What the numbers mean per provider.** The footer's 97% target is an Anthropic number. On codex, a healthy warm observation reads ~84–87% (measured) and pays the newest turn plus the observation tail as input; `write` stays 0 because the backend doesn't report it. An observation racing the ~1-minute commit window can pay its snapshot as fresh input once — degradation, not failure. The live e2e in shared mode (`transport: "websocket"`, gpt-5.6-luna, judge-only quality head, July 2026):
+
+```
+turn 1 piggyback:         hit 87.4%  $0.0021   first observation of the session — no cold start
+turn 1 run-end:           hit 86.5%  $0.0015
+turn 2 run-end:           hit 85.7%  $0.0017
+turn 3 piggyback:         hit 84.7%  $0.0018
+turn 3 run-end:           hit 84.4%  $0.0016
+turn 4 run-end:           hit 84.1%  $0.0017
+driver throughout:        CH ~87%, zero errors across every shared-mode run
+```
+
+Byte-parity itself was verified separately on every captured pair of the session: the observation payload minus its appended items reproduces the driver payload byte-for-byte (the recipe below).
+
+**The API-key path (`openai/openai-responses`) shares this serializer but stays gated off** in `observe()` until someone measures it: the platform API documents 30-minute retention, itemized `cache_write_tokens`, and key-based scoping, so both its numbers and its economics should differ from the codex backend in hydra's favor.
+
 ## Acting heads
 
 By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable set, down to `[]` for a judge-only head (a hard no-tools wrapper and the single-call fast path). The mechanism extends the replay; it does not replace it:
@@ -100,7 +128,7 @@ By default a head may run tool calls before its decision; a head file's `tools:`
 
 ## Limitations & roadmap
 
-**Anthropic-only for v0.1.** The capture/replay pattern requires the provider to support prompt caching with explicit `cache_control` markers, validated so far only on Anthropic's Messages API. OpenAI, Google etc. would either need their own cache markers or fall through to no-cache (still works, but expensive). Detected at runtime: hydra skips observation, with a one-time warning, when the driver is on a non-Anthropic provider.
+**Two providers.** Cache-parity replay is validated on Anthropic's Messages API (97%+ hit ratio) and on the OpenAI Codex backend for GPT-5.6 (~84–87%, no cold start with pi's `"transport": "websocket"`; observer-scoped fallback otherwise — see [OpenAI Codex support](#openai-codex-support)). Everything else — the OpenAI API-key path included — skips observation with a one-time warning until someone measures it; the gate is per provider/API pair in `observe()`.
 
 **Acting heads cannot be hard-aborted mid-tool.** The lifecycle abort signal reaches the loop at turn boundaries and tool executions receive it, but a long-running bash command started by a head runs to completion on shutdown grace expiry. A known limitation we accept for now.
 
@@ -144,6 +172,14 @@ diff /tmp/drv.json /tmp/obs.json   # expected: empty
 # marker onto it, so drop both tail messages and the markers before diffing:
 jq -S 'walk(if type == "object" then del(.cache_control) else . end)' <driver.json> > /tmp/drv.json
 jq -S 'del(.messages[-2:]) | walk(if type == "object" then del(.cache_control) else . end)' <observation.json> > /tmp/obs.json
+diff /tmp/drv.json /tmp/obs.json   # expected: empty
+
+# OpenAI pairs are input-shaped and marker-free; the observation must be the
+# driver payload with items appended (1 for piggyback; M may serialize to
+# several, so truncate by the driver's length instead of a fixed count):
+N=$(jq '.input | length' <driver.json>)
+jq -S '.' <driver.json> > /tmp/drv.json
+jq -S --argjson n "$N" '.input |= .[:$n]' <observation.json> > /tmp/obs.json
 diff /tmp/drv.json /tmp/obs.json   # expected: empty
 ```
 

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
+import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
 	buildObservationPrompt,
+	classifyCodexShareLoss,
 	demoteStaleInterrupt,
+	hasDriverContinuationError,
 	headActs,
 	isAnthropicPayload,
+	isFullInputTransport,
+	isOpenAIResponsesPayload,
 	isValidHeadName,
 	mergeObservationPayload,
+	mergeOpenAIObservationPayload,
 	parseDecision,
 	parseHeadFile,
 	parseHeadList,
@@ -281,6 +286,165 @@ describe("mergeObservationPayload", () => {
 		const capturedBefore = structuredClone(captured);
 		const tailBefore = structuredClone(tail);
 		mergeObservationPayload(captured, tail);
+		expect(captured).toEqual(capturedBefore);
+		expect(tail).toEqual(tailBefore);
+	});
+});
+
+describe("isFullInputTransport", () => {
+	it("admits exactly the transports without delta continuation", () => {
+		expect(isFullInputTransport("websocket")).toBe(true);
+		expect(isFullInputTransport("sse")).toBe(true);
+		expect(isFullInputTransport("auto")).toBe(false);
+		expect(isFullInputTransport("websocket-cached")).toBe(false);
+		expect(isFullInputTransport("")).toBe(false);
+		expect(isFullInputTransport("WEBSOCKET")).toBe(false);
+	});
+});
+
+describe("classifyCodexShareLoss", () => {
+	it("clears full-input transports and names everything else", () => {
+		expect(classifyCodexShareLoss("websocket")).toBeNull();
+		expect(classifyCodexShareLoss("sse")).toBeNull();
+		expect(classifyCodexShareLoss("auto")).toContain('pi transport "auto"');
+		expect(classifyCodexShareLoss("websocket-cached")).toContain("delta continuation");
+		expect(classifyCodexShareLoss("")).not.toBeNull();
+	});
+});
+
+describe("hasDriverContinuationError", () => {
+	const errored = (errorMessage: string) => ({ role: "assistant", stopReason: "error", errorMessage });
+
+	it("matches the measured signature and wording variants", () => {
+		expect(hasDriverContinuationError([errored("Codex error: Previous response with id 'resp_02e6a5' not found.")])).toBe(true);
+		expect(hasDriverContinuationError([errored("previous_response_id resp_1 was not found")])).toBe(true);
+		expect(hasDriverContinuationError([errored("The previous response could not be found")])).toBe(true);
+		expect(hasDriverContinuationError([errored("Previous response with id 'resp_1'\nwas not\nfound")])).toBe(true);
+	});
+
+	it("requires an errored assistant message, not just the words", () => {
+		expect(hasDriverContinuationError([{ role: "assistant", stopReason: "stop", errorMessage: "previous response not found" }])).toBe(false);
+		expect(hasDriverContinuationError([{ role: "user", stopReason: "error", errorMessage: "previous response not found" }])).toBe(false);
+		expect(hasDriverContinuationError([errored("rate limit exceeded")])).toBe(false);
+		expect(hasDriverContinuationError([{ role: "assistant", stopReason: "error" }])).toBe(false);
+		expect(hasDriverContinuationError([])).toBe(false);
+	});
+});
+
+describe("isOpenAIResponsesPayload", () => {
+	it("accepts an object with an input array and rejects everything else", () => {
+		expect(isOpenAIResponsesPayload({ input: [] })).toBe(true);
+		expect(isOpenAIResponsesPayload({ input: [{ type: "message" }], model: "gpt-5.6-luna" })).toBe(true);
+		expect(isOpenAIResponsesPayload({ messages: [] })).toBe(false);
+		expect(isOpenAIResponsesPayload({ input: "not an array" })).toBe(false);
+		expect(isOpenAIResponsesPayload(null)).toBe(false);
+		expect(isOpenAIResponsesPayload("input")).toBe(false);
+	});
+});
+
+describe("mergeOpenAIObservationPayload", () => {
+	const capturedFixture = (): OpenAIResponsesPayload => ({
+		model: "gpt-5.6-luna",
+		store: false,
+		stream: true,
+		instructions: "You are pi.",
+		prompt_cache_key: "session-abc",
+		include: ["reasoning.encrypted_content"],
+		input: [
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+			{ type: "function_call", name: "read", call_id: "call_1", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_1", output: "file contents" },
+		],
+		tools: [{ type: "function", name: "read" }],
+	});
+
+	const promptTail = () => ({
+		type: "message",
+		role: "user",
+		content: [{ type: "input_text", text: "observe this" }],
+	});
+
+	it("appends the tail and replays every other captured field byte-true", () => {
+		const captured = capturedFixture();
+		const tail = [promptTail()];
+		const merged = mergeOpenAIObservationPayload(captured, tail);
+
+		expect(merged.input).toEqual([...captured.input, promptTail()]);
+		const { input: _mergedInput, ...mergedRest } = merged;
+		const { input: _capturedInput, ...capturedRest } = capturedFixture();
+		expect(mergedRest).toEqual(capturedRest);
+	});
+
+	it("carries a run-end M through as pi-ai serialized it, reasoning items included", () => {
+		const tail = [
+			{ type: "reasoning", id: "rs_1", encrypted_content: "opaque", summary: [] },
+			{ type: "message", role: "assistant", id: "msg_1", content: [{ type: "output_text", text: "done" }] },
+			promptTail(),
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input.slice(3)).toEqual(structuredClone(tail));
+	});
+
+	it("strips explicit cache breakpoints from the tail (hydra owns marker placement)", () => {
+		const tail = [
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "observe this", prompt_cache_breakpoint: { mode: "explicit" } },
+					{ type: "input_text", text: "and this" },
+				],
+			},
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input[3]).toEqual({
+			type: "message",
+			role: "user",
+			content: [
+				{ type: "input_text", text: "observe this" },
+				{ type: "input_text", text: "and this" },
+			],
+		});
+	});
+
+	it("leaves breakpoints in the captured prefix untouched (the driver's markers are the driver's)", () => {
+		const captured = capturedFixture();
+		const first = captured.input[0] as { content: Array<Record<string, unknown>> };
+		first.content[0].prompt_cache_breakpoint = { mode: "explicit" };
+		const merged = mergeOpenAIObservationPayload(captured, [promptTail()]);
+		// Assert the marker's VALUE survives, not object equality: the merge
+		// may alias prefix items, and an aliased comparison cannot fail.
+		const mergedFirst = merged.input[0] as { content: Array<Record<string, unknown>> };
+		expect(mergedFirst.content[0].prompt_cache_breakpoint).toEqual({ mode: "explicit" });
+		expect(mergedFirst.content[0].text).toBe("hi");
+	});
+
+	it("tolerates tail items without block content", () => {
+		const tail = [
+			{ type: "function_call", name: "read", call_id: "call_2", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_2", output: "ok" },
+			null,
+			{ type: "message", role: "user", content: "plain string content" },
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input.slice(3)).toEqual(structuredClone(tail));
+	});
+
+	it("mutates neither the captured payload nor the tail", () => {
+		const captured = capturedFixture();
+		// Seed a marker into the prefix so a regression that strips markers
+		// from captured items (not just the tail) is actually detectable.
+		(captured.input[0] as { content: Array<Record<string, unknown>> }).content[0].prompt_cache_breakpoint = { mode: "explicit" };
+		const tail = [
+			{
+				type: "message",
+				role: "user",
+				content: [{ type: "input_text", text: "observe", prompt_cache_breakpoint: { mode: "explicit" } }],
+			},
+		];
+		const capturedBefore = structuredClone(captured);
+		const tailBefore = structuredClone(tail);
+		mergeOpenAIObservationPayload(captured, tail);
 		expect(captured).toEqual(capturedBefore);
 		expect(tail).toEqual(tailBefore);
 	});

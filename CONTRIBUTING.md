@@ -27,7 +27,7 @@ Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hyd
 
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
 - Steps toward mid-generation interrupts (see "Where this is going" in the README)
-- Provider support beyond Anthropic (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
+- Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
 - Replications or extensions of the [`experiments/`](experiments/README.md)
 
 ## The bar

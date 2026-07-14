@@ -18,7 +18,7 @@ A bad assumption caught mid-implementation costs one correction message, and the
 
 ## What it costs
 
-An observation costs its prompt (~220 tokens) plus a cache read at 10% of input price. On a 17K-token session that is about half a cent, or roughly 1% of what the driver paid to build the same context. Measured cache hit rates are 97%+ across real sessions; the 17K reference measurement hits 99%.
+An observation costs its prompt (~220 tokens) plus a cache read at 10% of input price. On a 17K-token session that is about half a cent, or roughly 1% of what the driver paid to build the same context. Measured cache hit rates are 97%+ across real Anthropic sessions (the 17K reference measurement hits 99%); codex measures ~84–87% ([why](docs/architecture.md)).
 
 A session costs more than the per-observation number suggests. An always-on head observes at every cache commit, and a session has many of those. Measured across real sessions, one head adds roughly 30% to total session cost: a driver session that would cost $1.00 costs about $1.30.
 
@@ -41,7 +41,7 @@ Reach for a subagent when fresh eyes, a stronger model, or heavy isolated work i
 
 ## Quick start
 
-You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity replay is validated on the Anthropic Messages API).
+You need [pi](https://pi.dev/) with an Anthropic model or an OpenAI Codex (ChatGPT subscription) GPT-5.6 model — hydra's cache-parity replay is validated on those two; the cache economics differ per provider ([details](docs/architecture.md)).
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
@@ -112,14 +112,14 @@ The tool deliberately stops there. Everything the agent does to its heads is vis
 
 ## How it works
 
-hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and the cache stays warm for the agent. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
+hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
 
 ## Limitations
 
-- Anthropic only for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
+- Two providers for now: Anthropic (Messages API) and OpenAI Codex (ChatGPT backend, GPT-5.6). Anthropic delivers the 97%+ hit ratio; codex measures ~84–87%, and sharing the driver's cache from the first observation needs pi's `"transport": "websocket"` setting — under the default `"auto"`, hydra falls back to its own cache scope to keep the driver's delta continuation safe ([measured](docs/architecture.md)). Nothing else is verified — the OpenAI API-key path shares the code but stays disabled until measured.
 - A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
-- An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)).
+- An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)). On subscription codex that spend comes out of the same account quota as the agent's own work.
 
 ## Where this is going
 

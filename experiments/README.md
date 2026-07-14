@@ -1,9 +1,11 @@
 # Cache experiments
 
-Empirical verification of Anthropic prompt-cache behavior around the "latest
-assistant message": the rationale behind hydra's original n-1 fork heuristic,
-and the economics of replacing it with fork-from-n. Run June 2026 on
-`claude-haiku-4-5` via OAuth (pi credentials), non-streaming Messages API.
+Empirical verification of prompt-cache behavior on the two providers hydra
+supports. The Anthropic scripts (June 2026, `claude-haiku-4-5` via OAuth,
+non-streaming Messages API) probe the "latest assistant message" question
+behind hydra's fork design. The codex scripts (July 2026, `gpt-5.6-luna` via
+a ChatGPT subscription login) probe the ChatGPT Codex backend, whose cache
+obeys almost none of OpenAI's documented platform semantics.
 
 ## Scripts
 
@@ -14,18 +16,33 @@ and the economics of replacing it with fork-from-n. Run June 2026 on
 | `cache-stagger.mjs` | 4 forks, one writer at t=0, three delayed by `--stagger-ms`: do the delayed ones free-ride? `--m-words` scales M, `--thinking` enables adaptive thinking, `--stagger-from commit` anchors the stagger on the writer's `message_start` |
 | `cache-thinking-walkback.mjs` | Does a driver-shaped next request (marker only on its own new user message, none on M) find the observation's prefix+M entry via breakpoint walk-back when M carries thinking blocks? |
 | `cache-automatic.mjs` | Does automatic caching (top-level `cache_control`) cache the generated response? (No.) |
+| `codex-cache-scoping.mjs` | Codex backend: what scopes the prompt cache (the session id, not `prompt_cache_key`), how long until a write is readable (under ~65s), and how long until it expires (minutes at best — and volatile: ~2–9 min one day, under ~85s idle the next)? |
+| `codex-entitlement.mjs` | Codex backend: why do observations carry a UUIDv7 session id? (A missing or v4 id misrouted GPT-5.6 to a nonexistent `-free-1p-` variant on 2026-07-13; gone on -14 — the volatility is the finding.) |
 
-`lib.mjs` holds the shared harness: OAuth, padding, the Messages call, and
-cold-start guards. Every script takes `--model` and `--padding-sentences`
-(default 100 sentences ≈ 6.5K tokens, above Haiku 4.5's 4096-token cache
-minimum; fable's is 512).
+`lib.mjs` holds the shared Anthropic harness: OAuth, padding, the Messages
+call, and cold-start guards. Every Anthropic script takes `--model` and
+`--padding-sentences` (default 100 sentences ≈ 6.5K tokens, above Haiku
+4.5's 4096-token cache minimum; fable's is 512). The codex scripts drive
+pi-ai's own codex client, borrow only `argOf`/`sleep` from `lib.mjs`, and
+take `--model`.
 
-All scripts read the OAuth token from `~/.pi/agent/auth.json` in-process
-(never printed) and mimic Claude Code, which the token is gated to: Bearer
-auth, the claude-code/oauth beta headers, the CC user-agent, and the CC
-identity as the first system block. Each run weaves a unique nonce into every
-padding sentence, so runs start cold and cannot satisfy each other's lookups;
-the scripts hard-fail if a cold start shows any cache read.
+All scripts read their token from `~/.pi/agent/auth.json` in-process (never
+printed): the Anthropic ones mimic Claude Code, which the OAuth token is
+gated to — Bearer auth, the claude-code/oauth beta headers, the CC
+user-agent, and the CC identity as the first system block; the codex ones
+send through pi-ai's codex client exactly as pi does. Each run weaves a
+unique nonce into every padding sentence, so runs start cold and cannot
+satisfy each other's lookups; the scripts hard-fail if a cold start shows
+any cache read.
+
+One caveat the codex scripts cannot capture: the driver-breaking eviction
+(`Previous response ... not found` after an observation under the driver's
+session while the driver runs delta continuation) reproduces reliably in the
+full pi stack but not in standalone probes — three isolated reproductions
+(serialized connection reuse, cross-process interleave, mid-stream race) all
+passed. The transport gate in hydra is therefore structural (full-input
+drivers never send `previous_response_id`, so there is nothing to evict)
+rather than resting on a standalone repro; see docs/architecture.md.
 
 ## Findings
 
