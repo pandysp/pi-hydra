@@ -116,7 +116,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 ## Limitations
 
-- Two providers for now: Anthropic (Messages API) and OpenAI Codex (ChatGPT backend, GPT-5.6). Anthropic delivers the 97%+ hit ratio; codex measures ~84–87%, and sharing the driver's cache from the first observation needs pi's `"transport": "websocket"` setting — under the default `"auto"`, hydra falls back to its own cache scope to keep the driver's delta continuation safe ([measured](docs/architecture.md)). Nothing else is verified — the OpenAI API-key path shares the code but stays disabled until measured.
+- Two providers for now: Anthropic (Messages API) and OpenAI Codex (ChatGPT backend, GPT-5.6). Anthropic delivers the 97%+ hit ratio; codex measures ~84–87%, and sharing the driver's cache from the first observation needs pi's `"transport": "websocket"` setting — under the default `"auto"`, hydra falls back to its own cache scope to keep the driver's delta continuation safe ([measured](docs/architecture.md)). Nothing else is verified — hydra targets subscription auth on both providers; the OpenAI API-key path shares the code but stays disabled unless someone measures it.
 - A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
 - An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)). On subscription codex that spend comes out of the same account quota as the agent's own work.
