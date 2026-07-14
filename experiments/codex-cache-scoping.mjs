@@ -28,13 +28,16 @@
  * a backend mood, not a constant, and nothing in hydra depends on it
  * beyond economics. Reads quantize to 128-token blocks;
  * cache_write_tokens is never reported; nothing resembles the platform's
- * documented 30-minute retention.
+ * documented 30-minute retention. At --facts 2400 (~65K tokens, 2026-07-14)
+ * the structure is identical: readable in under 65s despite 4x prefill,
+ * cross-session still 0, and the ~2-minute control hit at 65K on the same
+ * day the 15K run's control missed — lifetime volatility, not size decay.
  *
  * Requires a ChatGPT subscription login in ~/.pi/agent/auth.json
  * ("openai-codex"; run `pi` and log in). Costs subscription quota
  * (~75K input tokens ≈ cents) and ~13 minutes of wall clock.
  *
- * Usage: node experiments/codex-cache-scoping.mjs [--model gpt-5.6-luna]
+ * Usage: node experiments/codex-cache-scoping.mjs [--model gpt-5.6-luna] [--facts 600]
  */
 
 import { readFileSync } from "node:fs";
@@ -45,6 +48,9 @@ import { argOf, sleep } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const MODEL_ID = argOf(args, "--model", "gpt-5.6-luna");
+// ~26 tokens per fact: 600 ≈ 15K-token prompt (the reference run), 2400 ≈ 62K
+// (the large-context run — commit latency under heavy prefill).
+const FACTS = Number(argOf(args, "--facts", "600"));
 
 const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"))["openai-codex"];
 if (!auth?.access) {
@@ -65,7 +71,7 @@ if (!model) {
 // this run's lookups, mirroring lib.mjs's cold-start discipline.
 const nonce = uuidv7().slice(-12);
 const filler = Array.from(
-  { length: 600 },
+  { length: FACTS },
   (_, i) => `Fact ${i} [${nonce}]: the sequence value is ${(i * 7919) % 104729} and its label is item-${i}.`,
 ).join(" ");
 

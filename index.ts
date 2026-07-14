@@ -461,8 +461,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// for the constraints it satisfies.
 	const observerSessionId = uuidv7();
 
-	// Once codex cache sharing is lost it stays lost for the process
-	// (monotone): after a transport flip, the driver may hold continuation
+	// Verification hook, deliberately unsafe: skips the TRANSPORT leg of the
+	// share gate (never the monotone state or the tripwire) so the tripwire
+	// can be fired and watched end-to-end against a real delta-continuation
+	// driver. Under "auto" this recreates the driver-breaking eviction the
+	// gate exists to prevent — set it only in a throwaway session; the
+	// recipe lives in docs/architecture.md ("Verifying the tripwire").
+	const unsafeForceShare = process.env.HYDRA_UNSAFE_FORCE_SHARE === "1";
+
+	// Once codex cache sharing is lost it stays lost for this session
+	// runtime (monotone; /new, fork, and resume re-create the extension): after a transport flip, the driver may hold continuation
 	// state that shared-mode observations already evicted, and re-upgrading
 	// after a flip back could resurrect exactly that stale reference. Set
 	// at the first agent_start (pinning the decision to a moment where the
@@ -687,7 +695,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// with the agent_end tripwire as the final backstop.
 		let codexSessionId: string | undefined;
 		if (codex) {
-			codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+			if (!unsafeForceShare) {
+				codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+			}
 			if (codexShareLostReason === null) {
 				codexSessionId = job.ctx.sessionManager.getSessionId();
 			} else {
@@ -882,7 +892,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					shouldStopAfterTurn: () => {
 						iterations++;
 						if (sharedSession) {
-							codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+							if (!unsafeForceShare) {
+								codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
+							}
 							if (codexShareLostReason !== null) {
 								stoppedForShareLoss = true;
 								return true;
@@ -1139,7 +1151,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// like the in-flight race named at codexShareLostReason.
 		if (!initialTransportPinned) {
 			initialTransportPinned = true;
-			codexShareLostReason ??= classifyCodexShareLoss(driverTransport(ctx));
+			if (!unsafeForceShare) {
+				codexShareLostReason ??= classifyCodexShareLoss(driverTransport(ctx));
+			}
 		}
 		// Pick up head edits made since the last run (the in-session tuning loop).
 		discoverHeads(ctx);
