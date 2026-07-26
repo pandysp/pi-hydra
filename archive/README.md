@@ -210,11 +210,11 @@ tmux attach -t mob
 
 ## Lenses
 
-See [`lenses.md`](lenses.md) for the full lens reference. Available lenses: `quality`, `security`, `simplifier`, `api-design`.
+Available lenses: `quality`, `security`, `simplifier`, `api-design`.
 
 ## Architecture
 
-The fork-per-epoch design is documented in [`fork-per-epoch-plan.md`](fork-per-epoch-plan.md). Deep research into Claude Code internals (prompt caching, `/btw` architecture, cache-fix preload) is in [`docs/research-claude-code-cache-2026-04-15.md`](docs/research-claude-code-cache-2026-04-15.md).
+The fork-per-epoch design is documented in [`fork-per-epoch-plan.md`](fork-per-epoch-plan.md). Deep research into Claude Code internals (prompt caching, `/btw` architecture, cache-fix preload) is in [`research-claude-code-cache-2026-04-15.md`](research-claude-code-cache-2026-04-15.md).
 
 ## History
 
