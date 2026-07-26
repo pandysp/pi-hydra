@@ -6,6 +6,10 @@ Contents: `andon-observer.sh` (the observer loop), `andon-cache-fix.mjs` (the fe
 
 ---
 
+> Everything below this line is the original andon README, reproduced as it stood in April 2026.
+> Andon has been retired and replaced by pi-hydra. The commands below drive that old system, not
+> this one. For the current project see [../README.md](../README.md).
+
 # Andon
 
 > Pull the cord on bad AI code — real-time observers for AI coding sessions.
