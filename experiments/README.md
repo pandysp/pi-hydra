@@ -18,6 +18,15 @@ obeys almost none of OpenAI's documented platform semantics.
 | `cache-automatic.mjs` | Does automatic caching (top-level `cache_control`) cache the generated response? (No.) |
 | `codex-cache-scoping.mjs` | Codex backend: what scopes the prompt cache (the session id, not `prompt_cache_key`), how long until a write is readable (under ~65s), and how long until it expires (minutes at best — and volatile: ~2–9 min one day, under ~85s idle the next)? |
 | `codex-entitlement.mjs` | Codex backend: why do observations carry a UUIDv7 session id? (A missing or v4 id misrouted GPT-5.6 to a nonexistent `-free-1p-` variant on 2026-07-13; gone on -14 — the volatility is the finding.) |
+| `completion-causal-ablation.mjs` | Which part of enforceable completion changes cost and latency: schema, envelope, or JSON/tool transport? Includes deterministic and natural-review arms. |
+| `completion-protocol-ab.mjs` | Does strict tool-free completion preserve review reliability and quality against the provider-specific production protocol? |
+| `completion-acting-ab.mjs` | Does the same completion comparison preserve acting-head behavior, management receipts, and terminal self-removal? |
+| `main-agent-schema-ablation.mjs` | Does the expanded public Hydra schema also change driver cost or head-management behavior? |
+
+The dated causal findings and rejected optimizations are in
+[`COMPLETION-COST-CAUSAL-ABLATION.md`](COMPLETION-COST-CAUSAL-ABLATION.md).
+The subsequent universal tool-free A/B and decision are in
+[`TOOL-FREE-COMPLETION-AB.md`](TOOL-FREE-COMPLETION-AB.md).
 
 `lib.mjs` holds the shared Anthropic harness: OAuth, padding, the Messages
 call, and cold-start guards. Every Anthropic script takes `--model` and
@@ -322,3 +331,137 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    sessions): the driver's next first request read prefix+M to the token
    (5292 = 4867 + 425) and wrote only its new user prompt (21 tok).
    Re-verification procedure: [`../docs/architecture.md`](../docs/architecture.md#observation-timing).
+
+## Observation-handoff and acting-head A/B (July 2026)
+
+The handoff experiments compare role order, protocol authority, review quality,
+and real acting-head behavior rather than cache metrics alone:
+
+- `handoff-quality-ab.mjs` runs the randomized provider/model/thinking matrix.
+- `judge-handoff-quality.mjs` and the two summarizers provide blinded quality
+  judgments and aggregate the fixed artifacts.
+- `role-order-quality.mjs` plus the two `anthropic-mid-system-*` probes isolate
+  Anthropic's legal system-message positions and authority behavior.
+- `envelope-acting-ab.mjs` executes docs, tuner, and foreman cases in fresh real
+  workspaces through pi's file tools. `envelope-variants.mjs` preserves rejected
+  discovery arms; the final arm now calls the production envelope and delivery
+  helpers directly.
+
+Example production-path smoke:
+
+```bash
+node experiments/envelope-acting-ab.mjs \
+  --output /tmp/acting-smoke.jsonl \
+  --samples 1 --thinking low --models terra --arms split-final3 \
+  --cases docs-new-decision,tuner-dismissed-finding,foreman-two-uncovered-risks
+```
+
+The frozen final confirmation was 78 OpenAI pairs across luna, terra, and sol:
+the typed-contract arm scored 77/78 versus 63/78, with 14 treatment-only wins,
+zero control-only wins, fewer calls (201 versus 227), lower cost ($0.7499 versus
+$0.8330), and lower mean latency (7.10 s versus 7.99 s). The full decision log
+and artifact names are recorded in `ENVELOPE-GENERALITY-AB.md` beside the sweep
+outputs; the production design is summarized in
+[`../docs/architecture.md`](../docs/architecture.md#acting-heads).
+
+An Anthropic combined-user confirmation then ran 42 pairs across Sonnet, Opus,
+and Fable: 38/42 versus 31/42, with seven treatment-only wins and no
+control-only wins. Calls fell 120→112, cost $0.7782→$0.7285, and mean/p95
+latency fell 7.37/12.01 s→7.05/11.67 s. Parse validity was 41/42 versus 42/42;
+the one malformed treatment response is retained as a failure, not repaired.
+
+A focused Anthropic Foreman A/B then isolated the capability-scoped active-head
+snapshot from every other final-contract change. Across five cases, three
+models, and three samples (45 pairs), snapshot/no-snapshot scored 45/45 versus
+44/45, with one snapshot-only Fable win and no control-only wins. The snapshot
+used 91 versus 103 provider calls, reduced mean latency from 7.50 s to 6.73 s,
+and cost $0.8975 versus $0.9458. The stable-crew case explains most of the call
+saving: 9 calls with the snapshot versus 16 without it, because Foreman can
+noop without probing the current set through an idempotent mutation.
+
+## Enforceable completion A/B (July 2026)
+
+`completion-protocol-ab.mjs` freezes the prior JSON-return protocol as the
+control and compares it with the public `complete_observation` action on three
+immutable real-trajectory checkpoints. Both quality and security run at every
+checkpoint. `completion-acting-ab.mjs` exercises real read/write/edit tools,
+post-write delivery, head addition, and terminal self-removal in isolated
+workspaces. Each measured request gets an identical unrecorded warm request in
+its own provider session; warm latency and usage are excluded. Arm order is
+randomized within each pair, output is resumable JSONL, `--sample-start` adds
+later replicates without rerunning earlier ones, and `--retry-errors` retries
+provider-failed rows without erasing them.
+
+The OpenAI confirmation covered luna, terra, and sol at low, medium, high, and
+xhigh, with two samples per cell: 144 review pairs and 96 acting pairs.
+
+| Review arm | Valid | Correct | Calls | Extra turns | Input | Output | Cache read | Mean / p50 / p95 | Cache hit | Zero-cache | Cost |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| JSON control | 142/144 | 40/144 | 167 | 23 | 168,338 | 32,863 | 261,120 | 6.71 / 5.11 / 15.81 s | 60.8% | 35/144 | $0.9860 |
+| Tool treatment | 144/144 | 42/144 | 144 | 0 | 178,343 | 32,587 | 239,104 | 6.68 / 5.54 / 14.19 s | 57.3% | 39/144 | $1.1508 |
+
+Paired review outcomes: 28 both correct, 12 control-only, 14 treatment-only,
+and 90 neither. Semantic quality is therefore effectively flat in this small
+matrix. The difficult shared failure is deduplication: both heads often repeat
+findings already present in the saved trajectory. No runtime memory or
+scenario-specific exception was added to hide it. The treatment's concrete
+gain is protocol reliability: it removed two invalid returns and all 23 retry
+turns, with nearly identical mean latency and 1.62 s lower p95. Its larger
+tool contract coincided with 16.7% higher measured cost.
+
+| Acting arm | Valid | Correct | Calls | Extra turns | Input | Output | Cache read | Mean / p50 / p95 | Cache hit | Zero-cache | Cost |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| JSON control | 96/96 | 96/96 | 305 | 209 | 308,300 | 21,846 | 14,336 | 9.26 / 8.81 / 17.54 s | 4.4% | 87/96 | $1.1953 |
+| Tool treatment | 96/96 | 95/96 | 301 | 205 | 353,609 | 25,372 | 99,840 | 9.62 / 9.69 / 22.42 s | 22.0% | 55/96 | $1.4051 |
+
+Both arms were correct together in 95 pairs; one Terra/medium treatment steered
+the agent to add security instead of calling `manage_heads`. That miss remains
+visible: forcing every management observation to complete with `none` would
+also suppress legitimate distinct feedback. Self-removal was 24/24 in both
+arms, but fell from exactly two provider calls and 5.61 s mean to one call and
+3.09 s. The treatment used four fewer calls overall and raised cache hit, but
+cost 17.6% more and added 0.37 s mean latency. One tuner row in each arm was
+rescored after inspection: both correctly wrote “Never raise naming or style,”
+but the frozen evaluator's negative-word list had omitted `never`; the
+summarizer applies that symmetric correction.
+
+### Anthropic transport decision
+
+Anthropic does not use the native completion action in the product. The
+decision is empirical, not a capability guess. A low-thinking Sonnet/Opus
+screen used the same 24 judge checkpoints:
+
+| Completion transport | Valid | Correct | Calls | Mean | Cost |
+|---|---:|---:|---:|---:|---:|
+| Compact JSON | 24/24 | 5/24 | 24 | 2.62 s | $0.0707 |
+| Flat native tool | 24/24 | 6/24 | 24 | 5.30 s | $0.1669 |
+
+The flat schema eliminated the retry failure seen with the equivalent `anyOf`
+schema, but not the native tool's output, latency, or cost penalty. A separate
+eight-case acting sample was also worse with native completion: 7/8 correct
+and valid versus 8/8 for JSON, 9.71 s versus 9.15 s mean, and $0.0957 versus
+$0.0838. Opus correctly edited the file in the miss but omitted the required
+completion call.
+
+The shipped hybrid keeps real work, `manage_heads`, automatic receipts, and
+terminal self-removal as tools; only the final delivery decision is compact
+JSON. In a fresh eight-case acting comparison both arms were 8/8 correct. The
+hybrid used 21 versus 25 calls and averaged 7.84 s versus 8.81 s, at $0.0792
+versus $0.0767. A 12-case judge check scored 3/12 versus 2/12 for the frozen
+control, with one call per case; the sample is too small to claim a quality
+gain.
+
+The intended full Anthropic model/thinking matrix could not finish: the
+subscription returned `You're out of extra usage`, and Fable separately
+returned 429 at concurrency one. The partial rows remain in the scratch
+artifacts; they are not promoted into a full-matrix claim here.
+
+Summarize split or resumed artifacts with:
+
+```bash
+node experiments/summarize-completion-ab.mjs \
+  --quality-control control.jsonl,sample-2.jsonl \
+  --quality-treatment treatment.jsonl,sample-2.jsonl \
+  --acting-control acting-control.jsonl,acting-sample-2.jsonl \
+  --acting-treatment acting-treatment.jsonl,acting-sample-2.jsonl
+```

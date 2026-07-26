@@ -73,14 +73,16 @@ A head is one markdown file: frontmatter for identity and capabilities, body for
 name: docs-keeper
 description: Keeps docs/notes.md current with decisions as they happen
 tools: read, write, edit, ls
+after-change: noop
 ---
-You maintain docs/notes.md. When the conversation contains a decision,
-constraint, or surprise not yet in the file, read it, add the missing
-entry, and keep entries one line each. Your decision is usually noop:
-the file is your work product. Do not edit anything else.
+PURPOSE: Maintain docs/notes.md as durable memory for future work.
+ACT WHEN: The driver trajectory establishes a new project decision or
+constraint that is not already recorded.
+WORK: Read docs/notes.md and add exactly one one-line entry. Edit nothing else.
+DELIVER: Complete with none; the file is the work product.
 ```
 
-Your heads live in `~/.pi/agent/hydra/`; a repo can ship its own in `.pi/hydra/` (a project head overrides a same-named user head, so a team can specialize your generic heads with ones that know the codebase). Files are re-read at the start of every run, so editing a head tunes the very next observation. `tools:` defaults to everything the agent has; `tools: []` makes a judge-only head; a list narrows to a subset. `autostart: true` puts a head in the active set of every fresh session. The full format and a library of example perspectives are in [`docs/heads.md`](docs/heads.md).
+Your heads live in `~/.pi/agent/hydra/`; a repo can ship its own in `.pi/hydra/` (a project head overrides a same-named user head, so a team can specialize your generic heads with ones that know the codebase). Files are re-read at the start of every run, so editing a head tunes the very next observation. `tools:` defaults to everything the agent has; `tools: []` makes a judge-only head; a list narrows to a subset. `after-change: noop|print` gives a writing head deterministic delivery after a successful `write` or `edit`. `autostart: true` puts a head in the active set of every fresh session. The full format and a library of example perspectives are in [`docs/heads.md`](docs/heads.md).
 
 ### Commands
 
@@ -94,19 +96,21 @@ The active head set persists per session and survives resume. For headless runs 
 
 ### Decisions
 
-Every observation ends in a decision that names the finding's delivery: when and how it reaches the agent, if at all.
+Every observation returns the same delivery decision. OpenAI heads call the typed `hydra` tool with `action: "complete_observation"`; Anthropic heads currently return a compact JSON decision whose `action` carries the delivery because a native completion call measured substantially slower and more expensive there.
 
-- `noop`: nothing to report, nothing delivered.
+- `none`: nothing to report, nothing delivered (`/hydra-stats` labels this internal outcome `noop`).
 - `print`: a note to you. Renders in the TUI, never enters the agent's context.
 - `queue`: waits until the run ends, then joins the context of the agent's next turn.
 - `steer`: injected as a real user message between turns of the current run, so the agent corrects course while still working.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Queue against steer is a timeliness choice; interrupt is for findings that cannot wait for the run to end. There is no setting that caps any of this: when a head may pull the cord is part of its instruction, and the file is the audit trail.
+`message` must be exactly empty for `none` and non-empty for every other delivery. OpenAI rejects invalid tool arguments; Anthropic validates the returned object and records malformed output as `noop`. Queue against steer is a timeliness choice; interrupt is for findings that cannot wait for the run to end. `after-change` only fixes delivery after a successful `write` or `edit`; it never decides whether the head should act and does nothing on observations without one. When a head may pull the cord remains part of its instruction, and the file is the audit trail.
 
 ### The agent manages its own heads
 
-hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
+hydra registers one discriminated tool. The agent uses `action: "manage_heads"` with `operation: "add"|"remove"`, one head name, and a short message explaining why the change fits the current trajectory. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
+
+The same action is available to a head only when its `tools:` allowance includes `hydra` (or is omitted). A real observer-originated set change automatically prints one factual receipt plus the head's explanation; idempotent and failed changes print nothing. Removing itself is terminal, so a foreman can print and leave in one enforced action. All other OpenAI observations finish through `complete_observation`; Anthropic observations return the corresponding decision as JSON.
 
 The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which the agent cannot touch.
 

@@ -1,6 +1,6 @@
 # Heads
 
-A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and answers with one of five decisions (noop, print, queue, steer, interrupt). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
+A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and completes with one of five deliveries (none, print, queue, steer, interrupt). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
 
 ## Head files
 
@@ -24,6 +24,7 @@ Frontmatter keys:
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
 | `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means all of the agent's tools; `tools: []` means none (the head judges, never acts). |
 | `autostart` | no | `true` joins the active set at session start. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
+| `after-change` | no | `noop` or `print`, for heads with `write` or `edit` (or omitted `tools`). After a successful write/edit, hydra requires the matching completion delivery. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
@@ -53,7 +54,7 @@ The active set is session state: which heads observe right now.
 - `/hydra-heads` opens a multi-select picker over every discovered head.
 - `/hydra-heads quality,security` sets the active set directly; `/hydra-heads none` clears it (`none` is reserved as a head name).
 - `--hydra-heads quality,security` seeds headless runs (`pi -p`).
-- The agent uses the `hydra` tool to `add` or `remove` one head at a time.
+- The agent uses `hydra` with `action: "manage_heads"` to add or remove one head at a time.
 
 Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so each additional head costs a cache read instead of a context rebuild.
 
@@ -61,28 +62,36 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 ## Tools: acting heads
 
-By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it decides. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually ends `noop`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
+By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` narrows this. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head: a hard no-tools wrapper and the single-call fast path. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
+`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head. On OpenAI, the `hydra` action `complete_observation` remains available to every head because it is the return channel, not a work capability. Anthropic returns the corresponding decision as compact JSON. On both providers, `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
 
 Authoring guidance for heads that act:
 
-1. **Direct the tool use explicitly.** The wrapper permits tools; the head's instruction says when and on what. A head that only judges should carry `tools: []` and keep the single-call fast path.
-2. **Say what the decision should usually be.** Acting heads typically end `noop` (the work product is their side effect), `print` (a note for you), or `steer` (a research head delivering a finding).
+1. **Write a positive contract.** State the head's purpose, the observable condition that warrants work, the work itself, what done means, and delivery. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful shape, not special syntax. Positive conditions generalize better than accumulating benchmark-shaped exception lists.
+2. **Declare post-mutation delivery where it matters.** After a successful `write` or `edit`, `after-change: noop` requires `delivery: "none"` because the file is the work product; `after-change: print` requires a non-empty printed note. OpenAI enforces a wrong completion as a tool error; Anthropic normalizes the returned decision to the declared delivery. It does not make the head act. Without it, the head chooses delivery.
 3. **Avoid state-mutating bash mid-run.** The head works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
-4. **Loops are bounded.** A head that has not produced a decision after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
+4. **Loops are bounded.** A head that has not completed after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
+
+Tracked mutations for `after-change` are successful `write` and `edit` calls. Head-set changes have a separate, stronger contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately; other OpenAI head-set changes are followed by `complete_observation`, while Anthropic returns the equivalent completion object. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
 
 ## Decisions: when findings land
 
-Every observation ends in a decision. The decision names the finding's delivery: when and how it reaches the agent, if at all.
+On OpenAI, every observation ends with one `hydra` call:
 
-- `noop`: nothing to report. Nothing is delivered anywhere; a head that mostly noops is a quiet head, and `/hydra-stats` shows it.
+```json
+{"action":"complete_observation","delivery":"none","message":""}
+```
+
+The call must be alone in its tool-call turn, after fallible work has completed. This makes completion causally last: a parallel write failure cannot be hidden by an already accepted decision. `message` is exactly empty for `none` and non-empty for the other deliveries; invalid combinations are tool errors, not text that hydra guesses how to repair. Anthropic instead returns `{"action":"noop|print|queue|steer|interrupt","reason":"…","message":"…"}` after its work. Hydra validates that object, but cannot enforce its production with a tool; malformed output becomes `noop`. The provider split is deliberate and benchmarked, not part of the head-authoring API.
+
+- `none`: nothing to report. Nothing is delivered anywhere; `/hydra-stats` labels this internal outcome `noop`.
 - `print`: a note to you. The message renders in the TUI and never enters the agent's context. A watch-only head simply always prints.
 - `queue`: the finding waits until the run ends, then joins the context of the agent's next turn.
 - `steer`: the finding is injected as a real user message between turns of the current run, so the agent corrects course while still working.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Queue against steer is a choice about timing: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. There is no setting that caps any of this. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+Queue against steer is a choice about timing: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
 
 ## Heads that manage heads
 
@@ -96,12 +105,14 @@ name: foreman
 description: Matches the active heads to the work at hand
 tools: hydra, read, write
 ---
-You manage which heads observe this session. Early in the session, infer
-what the work is (designing, implementing, reviewing, debugging) and staff
-accordingly: add heads that fit the phase, remove ones that do not, and
-write a new head file when no existing head covers a risk you see coming.
-When the work shifts phase, re-crew. Print the change and the reason
-whenever you re-crew; otherwise noop.
+PURPOSE: Keep the active heads matched to the work at hand.
+ACT WHEN: The current phase or risks are not fully covered by the active heads.
+WORK: Add fitting heads, remove irrelevant heads, and write then activate a new
+head when no existing head covers a current risk.
+DONE WHEN: The active heads cover every current phase and risk without
+irrelevant heads.
+DELIVER: Explain each crew change in manage_heads; it prints its own receipt.
+Otherwise complete with none.
 ```
 
 The **tuner** reads your reactions and maintains the head files: a head whose findings get dismissed is sharpened for every future session.
@@ -111,16 +122,19 @@ The **tuner** reads your reactions and maintains the head files: a head whose fi
 name: tuner
 description: Judges the other heads' findings and tunes their files
 tools: read, write, edit, ls
+after-change: print
 ---
-You maintain the head files in ~/.pi/agent/hydra/. When the user dismisses,
-contradicts, or ignores another head's finding, sharpen that head's file:
-narrow its focus, add a boundary, shorten its instruction. When the user
-acts on a finding, leave the head alone. Edit one head per observation at
-most, and never edit your own file. Print the edit you made; otherwise
-noop.
+PURPOSE: Maintain the other head files in ~/.pi/agent/hydra/ from the user's
+reactions to their findings.
+ACT WHEN: The user dismisses, contradicts, or ignores another head's finding.
+WORK: Sharpen that head's file by narrowing its focus, adding a boundary, or
+shortening its instruction. Edit at most one head and never your own.
+DONE WHEN: The edited head excludes the kind of finding the user rejected.
+DELIVER: Print the edit you made; complete with none when the act condition is
+not met.
 ```
 
-Their decisions deliver to you: a print renders in the TUI and never enters the agent's context, so every re-crewing and every tuning edit is visible as it happens. The tuner's file edits also get the standard write notice the agent sees; the notice records the change and carries no finding. The two combine well: a foreman can activate the tuner when a session warrants it.
+Foreman changes are visible by construction: `manage_heads` accepts a required explanation and auto-prints it only when the set actually changes. Self-removal prints and terminates in that same call. Tuner edits are visible through its `after-change: print` contract: OpenAI rejects a conflicting completion for correction; Anthropic normalizes its returned decision to `print`. A print renders in the TUI and never enters the agent's context. The tuner's file edits also get the standard write notice the agent sees; the notice records the change and carries no finding. The two combine well: a foreman can activate the tuner when a session warrants it.
 
 ## Example heads (minimal overlap)
 
@@ -164,7 +178,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Scope-keeper**: flags work nobody asked for (gold-plating, drive-by refactors, rabbit holes) and steers the run back to the ask.
 - **Spec-alignment**: compares the work against the requirements as stated in the conversation. Catches quiet reinterpretation of the task.
 
-**Caretaker heads** act through tools and usually end noop because the files they maintain are the work product:
+**Caretaker heads** act through tools and usually complete with `none` because the files they maintain are the work product:
 
 - **Docs-keeper**: keeps a notes file current with decisions as they happen (the example in the README).
 - **Changelog**: appends user-facing changes as they land, so the notes exist by release time.

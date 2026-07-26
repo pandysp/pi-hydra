@@ -2,13 +2,14 @@
  * hydra: commit-point oversight for pi.
  *
  * Watches the driver's conversation through a side model that replays the
- * driver's exact provider payload with one observation prompt appended. Because
+ * driver's exact provider payload with an observation handoff appended. Because
  * the prefix is byte-identical, every observation is a prompt-cache read of
  * entries the driver itself wrote (97%+ hit ratio on Anthropic; on OpenAI
  * Codex the backend's commit latency bounds it lower, see
  * docs/architecture.md). The head
- * answers with a JSON decision naming its finding's delivery (noop, print,
- * queue, steer, or interrupt) which hydra routes back into the session.
+ * returns a validated delivery decision (typed `hydra` completion on OpenAI,
+ * compact JSON on Anthropic) naming where its finding lands: nowhere, the
+ * TUI, the agent's next turn, its current run, or an emergency abort.
  *
  * A head is one markdown file: frontmatter for identity and capabilities,
  * body for the instruction. Files live in ~/.pi/agent/hydra (user) and
@@ -40,8 +41,8 @@
  *   /hydra-debug      dump driver/observation payload pairs for diffing
  *
  * The agent manages head files like any other file and points the heads
- * through the registered `hydra` tool (add, remove). The active set is
- * session state; everything else about a head lives in its file.
+ * through the registered `hydra` tool's `manage_heads` action. The active set
+ * is session state; everything else about a head lives in its file.
  */
 
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -49,8 +50,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import type { AssistantMessage, Message, Model, Static, ToolCall } from "@earendil-works/pi-ai";
+import { cleanupSessionResources } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	createBashTool,
 	createEditTool,
@@ -64,11 +66,33 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
-import type { Action, AnthropicPayload, Decision, HeadDefinition, ObservationUsage } from "./utils";
+import type {
+	Action,
+	AfterChangeAction,
+	AnthropicPayload,
+	Decision,
+	HeadDefinition,
+	ObservationLoopStopReason,
+	ObservationUsage,
+} from "./utils";
 import {
+	hydraToolDescription,
+	hydraToolParameters,
+	isTerminalHydraAction,
+	validateHydraToolParams,
+} from "./protocol";
+import type { ManageHeadsParams } from "./protocol";
+import {
+	advanceObservationLoopGuard,
+	applyAfterChangeDelivery,
+	buildObservationEnvelope,
+	buildAnthropicObservationPrompt,
 	buildObservationPrompt,
 	classifyCodexShareLoss,
+	decisionFromCompletion,
+	decisionFromLoopStopReason,
 	demoteStaleInterrupt,
+	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
 	isAnthropicPayload,
@@ -84,6 +108,7 @@ import {
 	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
+	usesSplitObservationHandoff,
 } from "./utils";
 
 // How long session_shutdown waits for an in-flight observation before
@@ -100,16 +125,8 @@ const MAX_TOOL_ITERATIONS = 25;
 // smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
 // completions and the picker.
 const DIAGNOSTIC_PROMPTS = {
-	test: `<system-reminder>Developer integration test for the hydra framework. The wrapper requires EXACTLY this output, with no preamble, no markdown, no thinking, no explanation:
-
-{"action":"queue","reason":"test fire","message":"hydra test head fired (e2e pipeline verified)"}
-
-This is not a real review. Output the JSON above byte-for-byte and stop.</system-reminder>`,
-	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Output EXACTLY this JSON, nothing else:
-
-{"action":"interrupt","reason":"test interrupt","message":"hydra interrupt fired; if you see this in your context, interrupt delivery works"}
-
-No preamble, no thinking, no explanation. Just the JSON, byte-for-byte.</system-reminder>`,
+	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "queue", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
+	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Call the hydra tool exactly once with action "complete_observation", delivery "interrupt", and message "hydra interrupt fired; if you see this in your context, interrupt delivery works". Do nothing else.</system-reminder>`,
 } as const;
 
 type ObserveKind = "piggyback" | "run-end";
@@ -157,6 +174,14 @@ interface Observation {
 	turnIndex: number;
 	head: string;
 	prompt: string; // resolved at scheduling time, so head edits never race an in-flight job
+	// Split handoff: provider-elevated protocol inserted directly after the raw
+	// lens user message. Undefined means the combined-user handoff.
+	envelope?: string;
+	afterChange?: AfterChangeAction;
+	// Anthropic's native tool calls cost materially more output and latency
+	// for completion-only observers. Its retained JSON return remains a
+	// supported fallback; actual work and head management still use tools.
+	jsonCompletion?: boolean;
 	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
 	kind: ObserveKind;
 }
@@ -416,11 +441,33 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		updateFooter(ctx);
 	}
 
-	function observationPromptFor(name: string, tools: string[] | undefined): string {
+	function observationHandoffFor(
+		ctx: ExtensionContext,
+		name: string,
+		tools: string[] | undefined,
+	): Pick<Observation, "prompt" | "envelope" | "afterChange" | "jsonCompletion"> {
 		if (name in DIAGNOSTIC_PROMPTS) {
-			return DIAGNOSTIC_PROMPTS[name as keyof typeof DIAGNOSTIC_PROMPTS];
+			return { prompt: DIAGNOSTIC_PROMPTS[name as keyof typeof DIAGNOSTIC_PROMPTS] };
 		}
-		return buildObservationPrompt(name, heads.get(name)?.prompt ?? "", tools);
+		const head = heads.get(name);
+		const instruction = head?.prompt ?? "";
+		const afterChange = head?.afterChange;
+		const protocol = { afterChange, activeHeads: [...activeHeads] };
+		const jsonCompletion = ctx.model?.api === "anthropic-messages";
+		if (jsonCompletion) {
+			return {
+				prompt: buildAnthropicObservationPrompt(name, instruction, tools, protocol),
+				afterChange,
+				jsonCompletion,
+			};
+		}
+		return usesSplitObservationHandoff(handoffOverride, ctx.model?.api)
+			? {
+					prompt: instruction,
+					envelope: buildObservationEnvelope(name, tools, protocol),
+					afterChange,
+				}
+			: { prompt: buildObservationPrompt(name, instruction, tools, protocol), afterChange };
 	}
 
 	// A head's executable allowance: diagnostics never act; a head file's
@@ -470,6 +517,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// gate exists to prevent — set it only in a throwaway session; the
 	// recipe lives in docs/architecture.md ("Verifying the tripwire").
 	const unsafeForceShare = process.env.HYDRA_UNSAFE_FORCE_SHARE === "1";
+	// Internal reproducibility override: "current" forces the combined-user
+	// control and "split" forces the elevated-role treatment on every provider.
+	// Unset uses the evidence-backed provider default.
+	const handoffOverride = process.env.HYDRA_OBSERVER_HANDOFF;
 
 	// Once codex cache sharing is lost it stays lost for this session
 	// runtime (monotone; /new, fork, and resume re-create the extension): after a transport flip, the driver may hold continuation
@@ -610,13 +661,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		adoptHeadSet([...heads.values()].filter((head) => head.autostart).map((head) => head.name).sort());
 	}
 
-	// One observation's outcome. A judging head is the zero-tool case: the
-	// loop exits after one turn, so iterations stays 1.
+	// One observation's outcome. A judging head has no work tools but still
+	// receives hydra as its typed return channel.
 	interface ObserveOutcome {
 		response: AssistantMessage;
 		usages: ObservationUsage[];
 		iterations: number;
 		toolsUsed: string[];
+		completion: Decision | null;
+		selfRemoved: boolean;
+		fileStateChanged: boolean;
+		loopStopReason: ObservationLoopStopReason;
+	}
+
+	interface ObservationToolState {
+		completion: Decision | null;
+		selfRemoved: boolean;
+		fileStateChanged: boolean;
 	}
 
 	function flattenUsage(usage: AssistantMessage["usage"]): ObservationUsage {
@@ -673,8 +734,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		};
 		const mergeBuilt = anthropic
-			? bindMerge(isAnthropicPayload, (captured, built) => mergeObservationPayload(captured, built.messages))
-			: bindMerge(isOpenAIResponsesPayload, (captured, built) => mergeOpenAIObservationPayload(captured, built.input));
+			? bindMerge(isAnthropicPayload, (captured, built) => mergeObservationPayload(captured, built.messages, job.envelope))
+			: bindMerge(isOpenAIResponsesPayload, (captured, built) =>
+					mergeOpenAIObservationPayload(captured, built.input, job.envelope),
+				);
 		if (!mergeBuilt) {
 			warnOnce(job.ctx, `hydra: captured payload does not match ${model.api} (model switched mid-run, or pi changed shape); observation skipped`);
 			return;
@@ -743,7 +806,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!outcome || signal.aborted) {
 			return;
 		}
-		const { response, usages, iterations, toolsUsed } = outcome;
+		const {
+			response,
+			usages,
+			iterations,
+			toolsUsed,
+			completion,
+			selfRemoved,
+			fileStateChanged,
+			loopStopReason,
+		} = outcome;
 		const summary = summarizeLoopUsage(usages);
 
 		// A zero-usage, zero-content response is a provider hiccup (e.g. an
@@ -754,19 +826,33 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
-		// An acting head can stop before its decision (iteration guard, or the
-		// head deactivated mid-loop); record that honestly. A head that stops
-		// speaking JSON is recorded as noop too, but loudly: silently dead
-		// heads would be indistinguishable from genuinely quiet ones.
-		let decision: Decision;
-		if (response.stopReason === "toolUse") {
-			decision = { action: "noop", reason: "loop stopped before deciding", message: "" };
-		} else {
-			const parsed = parseDecision(text);
-			if (!parsed) {
-				warnOnce(job.ctx, `hydra: ${job.head} answered with an unparseable decision; recorded as noop`);
-			}
-			decision = parsed ?? { action: "noop", reason: "unparseable response", message: "" };
+		// A successful self-removal is inherently terminal: the management
+		// action already printed its runtime-owned receipt, and asking a head
+		// that no longer exists for a second completion would be both slower
+		// and racy. Other OpenAI paths use typed completion; Anthropic parses
+		// its measured compact-JSON fallback below.
+		let decision = completion;
+		if (!decision && selfRemoved) {
+			decision = { action: "noop", reason: "completed by self-removal", message: "" };
+		}
+		if (!decision && job.jsonCompletion) {
+			decision = parseDecision(text);
+		}
+		if (decision && job.jsonCompletion) {
+			decision = applyAfterChangeDelivery(decision, job.afterChange, fileStateChanged);
+		}
+		if (!decision) {
+			decision = decisionFromLoopStopReason(loopStopReason);
+		}
+		if (!decision) {
+			const reason = job.jsonCompletion ? "unparseable Anthropic decision" : "missing completion tool call";
+			warnOnce(
+				job.ctx,
+				job.jsonCompletion
+					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
+					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
+			);
+			decision = { action: "noop", reason, message: "" };
 		}
 
 		const call: HydraCall = {
@@ -783,7 +869,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			cost: summary.cost,
 			durationMs: Date.now() - t0,
 			hitRatio: summary.hitRatio,
-			rawResponse: text.length > 200 ? `${text.slice(0, 200)}…` : text,
+			rawResponse:
+				completion !== null
+					? JSON.stringify({
+							action: "complete_observation",
+							delivery: completion.action === "noop" ? "none" : completion.action,
+							message: completion.message,
+						})
+					: text.length > 200
+						? `${text.slice(0, 200)}…`
+						: text,
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
@@ -811,9 +906,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Every observation runs through pi's own agent loop rather than a
 	// hand-rolled imitation: argument validation, unknown-tool error results,
 	// parallel vs sequential execution policy, and abort discipline stay
-	// pi's code and evolve with it. A judging head is not a separate path,
-	// just the zero-tool case: it answers its decision in one turn and the
-	// loop exits, one provider call exactly like a bare complete(). Every
+	// pi's code and evolve with it. A judging head is not a separate path:
+	// hydra is its only executable tool, and completion normally takes one
+	// provider call. Every
 	// provider call the loop makes flows through the same byte-true merge
 	// (onPayload discards the loop's own built context), so the driver
 	// prefix stays a pure cache read and any loop turns are cached once —
@@ -835,7 +930,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
-		let iterations = 0;
+		let loopGuard = { iterations: 0 };
+		const toolState: ObservationToolState = {
+			completion: null,
+			selfRemoved: false,
+			fileStateChanged: false,
+		};
+		let loopStopReason: ObservationLoopStopReason = null;
 		// Whether this observation runs under the DRIVER's session; loop-
 		// invariant, and the reason a wind-down can be about share loss.
 		const sharedSession = sessionId !== undefined && sessionId !== observerSessionId;
@@ -844,7 +945,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		try {
 			messages = await runAgentLoop(
 				[prompt],
-				{ systemPrompt: "", messages: job.assistant ? [job.assistant] : [], tools: observationTools(job.ctx, job.tools) },
+				{
+					systemPrompt: "",
+					messages: job.assistant ? [job.assistant] : [],
+					tools: observationTools(job.ctx, job.tools, job, toolState),
+				},
 				{
 					model,
 					apiKey,
@@ -884,6 +989,25 @@ export default function hydraExtension(pi: ExtensionAPI) {
 							(message): message is Message =>
 								message.role === "user" || message.role === "assistant" || message.role === "toolResult",
 						),
+					// Completion (and self-removal, which is itself terminal)
+					// must be the only tool call in its assistant turn. This
+					// keeps "done" causally after every fallible action and
+					// prevents a parallel sibling failure from being hidden by
+					// an already accepted completion.
+					beforeToolCall: async ({ assistantMessage, toolCall, args }) => {
+						if (toolCall.name !== "hydra" || !isTerminalHydraAction(args, job.head)) {
+							return undefined;
+						}
+						const calls = assistantMessage.content.filter((block) => block.type === "toolCall");
+						if (calls.length !== 1) {
+							return {
+								block: true,
+								reason:
+									"Terminal hydra actions must be the only tool call in their turn. Finish the other work, inspect its results, then call the terminal action alone.",
+							};
+						}
+						return undefined;
+					},
 					// Correctness guard, not a cost ceiling: wind down a loop
 					// that does not converge on a decision, and wind down early
 					// when the head is deactivated mid-loop. A loop observing
@@ -892,20 +1016,38 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					// must not leave an acting head injecting responses into
 					// the driver's session for up to 25 more turns.
 					shouldStopAfterTurn: () => {
-						iterations++;
+						let shareLost = false;
 						if (sharedSession) {
 							if (!unsafeForceShare) {
 								codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
 							}
-							if (codexShareLostReason !== null) {
-								stoppedForShareLoss = true;
-								return true;
-							}
+							shareLost = codexShareLostReason !== null;
 						}
-						return !activeHeads.includes(job.head) || iterations >= MAX_TOOL_ITERATIONS;
+						const advanced = advanceObservationLoopGuard(loopGuard, {
+							shareLost,
+							completed: toolState.completion !== null || toolState.selfRemoved,
+							headActive: activeHeads.includes(job.head),
+							maxIterations: MAX_TOOL_ITERATIONS,
+						});
+						loopGuard = advanced.state;
+						loopStopReason = advanced.stopReason;
+						if (advanced.stopReason === "share-loss") {
+							stoppedForShareLoss = true;
+						}
+						return advanced.stopReason !== null;
 					},
 					afterToolCall: async (event) => {
-						toolsUsed.push(event.toolCall.name);
+						const hydraAction =
+							event.toolCall.name === "hydra" &&
+							typeof event.toolCall.arguments === "object" &&
+							event.toolCall.arguments !== null
+								? (event.toolCall.arguments as { action?: unknown }).action
+								: undefined;
+						if (hydraAction !== "complete_observation") {
+							toolsUsed.push(event.toolCall.name);
+						}
+						toolState.fileStateChanged ||=
+							!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit");
 						if (!event.isError) {
 							announceWrite(job, event.toolCall);
 						}
@@ -916,9 +1058,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					if (event.type === "message_end" && event.message.role === "assistant") {
 						usages.push(flattenUsage((event.message as AssistantMessage).usage));
 					}
-				},
-				signal,
-			);
+					},
+					signal,
+					streamSimple,
+				);
 		} catch (error) {
 			if (!signal.aborted) {
 				notifyUser(job.ctx, `hydra: observation loop failed: ${errorText(error)}`, "error");
@@ -938,11 +1081,28 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return null;
 		}
 		if (stoppedForShareLoss && response.stopReason === "toolUse") {
-			job.ctx.ui.notify(`hydra: ${job.head} wound down after ${iterations} turn${iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`, "warning");
-		} else if (response.stopReason === "toolUse" && activeHeads.includes(job.head)) {
+			job.ctx.ui.notify(
+				`hydra: ${job.head} wound down after ${loopGuard.iterations} turn${loopGuard.iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`,
+				"warning",
+			);
+		} else if (
+			response.stopReason === "toolUse" &&
+			toolState.completion === null &&
+			!toolState.selfRemoved &&
+			activeHeads.includes(job.head)
+		) {
 			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
-		return { response, usages, iterations, toolsUsed };
+		return {
+			response,
+			usages,
+			iterations: loopGuard.iterations,
+			toolsUsed,
+			completion: toolState.completion,
+			selfRemoved: toolState.selfRemoved,
+			fileStateChanged: toolState.fileStateChanged,
+			loopStopReason,
+		};
 	}
 
 	// The head executes through pi's own tool implementations at the
@@ -955,7 +1115,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// call outside the list (or to another extension's tool, or MCP) gets
 	// pi's standard "tool not found" error result and the head moves on.
 	let standardObservationTools: AgentTool[] | null = null;
-	function observationTools(ctx: ExtensionContext, allowed: string[] | undefined): AgentTool[] {
+	function observationTools(
+		ctx: ExtensionContext,
+		allowed: string[] | undefined,
+		job: Observation,
+		state: ObservationToolState,
+	): AgentTool[] {
 		if (!standardObservationTools) {
 			standardObservationTools = [
 				createReadTool(ctx.cwd),
@@ -967,20 +1132,30 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				createLsTool(ctx.cwd),
 			];
 		}
-		// Plus hydra's own tool: an acting head may re-crew its peers through
-		// the same tool the driver uses.
-		const all = [
-			...standardObservationTools,
+		const workTools =
+			allowed === undefined ? standardObservationTools : standardObservationTools.filter((tool) => allowed.includes(tool.name));
+		// The protocol action is universal, including for `tools: []` judge
+		// heads. manage_heads is authorized separately: one public schema,
+		// action-level enforcement, no alternate "observer tool" for models
+		// to learn.
+		return [
+			...workTools,
 			{
 				name: hydraToolDefinition.name,
 				label: hydraToolDefinition.label,
 				description: hydraToolDefinition.description,
 				parameters: hydraToolDefinition.parameters,
 				execute: (toolCallId, params, toolSignal, _onUpdate) =>
-					hydraToolDefinition.execute(toolCallId, params as HydraToolParams, toolSignal, undefined, ctx),
+					executeObservationHydra(
+						toolCallId,
+						params as Parameters<typeof validateHydraToolParams>[0],
+						toolSignal,
+						ctx,
+						job,
+						state,
+					),
 			} satisfies AgentTool,
 		];
-		return allowed === undefined ? all : all.filter((tool) => allowed.includes(tool.name));
 	}
 
 	// Every head file write also queues a one-line note, so the driver is
@@ -1093,6 +1268,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
 		for (const name of activeHeads) {
 			const tools = headTools(name);
+			const handoff = observationHandoffFor(ctx, name, tools);
 			let runner = runners.get(name);
 			if (!runner) {
 				runner = { pending: null, running: null };
@@ -1104,7 +1280,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				assistant,
 				turnIndex: currentTurnIndex,
 				head: name,
-				prompt: observationPromptFor(name, tools),
+				...handoff,
 				tools,
 				kind,
 			};
@@ -1256,6 +1432,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			clearTimeout(timer);
 		}
 		lifecycleAbort.abort();
+		// pi owns and cleans the driver's provider session. Codex observations
+		// may fall back to hydra's separate session id, so hydra must release
+		// that session's cached WebSocket itself or a headless process remains
+		// alive until the provider cache's idle TTL expires.
+		cleanupSessionResources(observerSessionId);
 	});
 
 	pi.registerMessageRenderer<FeedbackDetails>("hydra-feedback", (message, { expanded }, theme) => {
@@ -1280,71 +1461,114 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return box;
 	});
 
-	// The agent's hand on the head set. Head files themselves are the
-	// agent's to manage with its ordinary file tools; this tool only points
-	// the heads, which is the one piece of state not on disk. The definition
-	// is named so acting heads can execute it too (observationTools).
-	const hydraToolParameters = Type.Object({
-		action: StringEnum(["add", "remove"] as const, { description: "What to do" }),
-		head: Type.String({ description: "The head name" }),
-	});
-	type HydraToolParams = Static<typeof hydraToolParameters>;
+	// One public, discriminated contract. The driver and every observer see
+	// the same schema (important for prompt-cache parity); the runtime grants
+	// actions by caller: the driver manages heads, every observer completes,
+	// and only a head whose work-tool allowance includes hydra may manage.
+	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext) {
+		const name = params.head.trim();
+		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
+		discoverHeads(ctx);
+		const activeLabel = () => (activeHeads.length > 0 ? activeHeads.join(", ") : "none");
+		const reply = (text: string, changed = false) => ({
+			content: [{ type: "text" as const, text }],
+			details: {
+				action: params.action,
+				operation: params.operation,
+				head: name,
+				heads: [...activeHeads],
+				changed,
+			},
+		});
+
+		if (params.operation === "add") {
+			if (!headExists(name)) {
+				throw new Error(`Unknown head "${name}". Available: ${headNames().join(", ") || "none"}.`);
+			}
+			if (activeHeads.includes(name)) {
+				return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
+			}
+			setHeadSet(ctx, [...activeHeads, name]);
+			return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
+		}
+
+		if (!activeHeads.includes(name)) {
+			return reply(`"${name}" is not active. Observing with: ${activeLabel()}.`);
+		}
+		const remaining = activeHeads.filter((active) => active !== name);
+		if (remaining.length > 0) {
+			setHeadSet(ctx, remaining);
+		} else {
+			clearHeadSet(ctx);
+		}
+		return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
+	}
+
+	async function executeObservationHydra(
+		_toolCallId: string,
+		rawParams: Parameters<typeof validateHydraToolParams>[0],
+		_signal: AbortSignal | undefined,
+		ctx: ExtensionContext,
+		job: Observation,
+		state: ObservationToolState,
+	) {
+		const params = validateHydraToolParams(rawParams);
+		if (params.action === "complete_observation") {
+			if (state.completion) {
+				throw new Error("complete_observation was already accepted for this observation");
+			}
+			const decision = decisionFromCompletion(params.delivery, params.message);
+			if (state.fileStateChanged && job.afterChange === "print" && decision.action !== "print") {
+				throw new Error('This head requires delivery "print" with a message after a successful write or edit');
+			}
+			if (state.fileStateChanged && job.afterChange === "noop" && decision.action !== "noop") {
+				throw new Error('This head requires delivery "none" with message "" after a successful write or edit');
+			}
+			state.completion = decision;
+			return {
+				content: [{ type: "text" as const, text: "Observation completed." }],
+				details: { action: params.action, changed: false },
+				terminate: true,
+			};
+		}
+
+		if (job.tools !== undefined && !job.tools.includes("hydra")) {
+			throw new Error(`Head "${job.head}" is not allowed to manage heads`);
+		}
+		const receipt = formatHeadManagementReceipt(params.operation, params.head, params.message);
+		const result = executeHeadManagement(params, ctx);
+		const changed = (result.details as { changed?: unknown }).changed === true;
+		if (!changed) {
+			return result;
+		}
+
+		// Observer tool results are hidden from both user and driver. A real
+		// set change therefore gets one immediate, mandatory print receipt.
+		// Driver-originated calls skip this path because their tool result is
+		// already visible.
+		ctx.ui.notify(`hydra [${job.head}] ${receipt}`, "info");
+		const selfRemoved = params.operation === "remove" && params.head.trim() === job.head;
+		state.selfRemoved ||= selfRemoved;
+		return { ...result, terminate: selfRemoved };
+	}
+
 	const hydraToolDefinition = {
 		name: "hydra",
 		label: "Hydra",
-		description: [
-			"Point your hydra heads: `add` puts a head on the active set,",
-			"`remove` takes it off (both idempotent; the set is session state). Each",
-			"active head independently reviews your full context as you work. Heads",
-			`are markdown files in ${userHeadDir} (user) and .pi/hydra (project):`,
-			"frontmatter `name:` and `description:` are required; `tools:` is omitted",
-			"for all tools, `[]` for a judge-only head, or a comma-separated subset;",
-			"`autostart: true` joins fresh sessions; the body is the head's",
-			"instruction (one focus, explicit do-NOT boundaries, short). To create or",
-			"tune a head, write the file with your file tools, then `add` it: files",
-			"are re-discovered on every call. Swap heads when the work changes phase",
-			"(design wants devil's-advocate thinking, execution wants quality and",
-			"security, review wants simplifier).",
-		].join(" "),
+		description: hydraToolDescription(userHeadDir),
 		parameters: hydraToolParameters,
 		async execute(
 			_toolCallId: string,
-			params: HydraToolParams,
+			rawParams: Parameters<typeof validateHydraToolParams>[0],
 			_signal: AbortSignal | undefined,
 			_onUpdate: unknown,
 			ctx: ExtensionContext,
 		) {
-			const reply = (text: string) => ({
-				content: [{ type: "text" as const, text }],
-				details: { heads: activeHeads },
-			});
-			const activeLabel = () => (activeHeads.length > 0 ? activeHeads.join(", ") : "none");
-			discoverHeads(ctx);
-			const name = params.head.trim();
-			switch (params.action) {
-				case "add": {
-					if (!headExists(name)) {
-						return reply(`Unknown head "${name}". Available: ${headNames().join(", ") || "none"}.`);
-					}
-					if (activeHeads.includes(name)) {
-						return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
-					}
-					setHeadSet(ctx, [...activeHeads, name]);
-					return reply(`Observing with: ${activeLabel()}.`);
-				}
-				case "remove": {
-					if (!activeHeads.includes(name)) {
-						return reply(`"${name}" is not active. Observing with: ${activeLabel()}.`);
-					}
-					const remaining = activeHeads.filter((active) => active !== name);
-					if (remaining.length > 0) {
-						setHeadSet(ctx, remaining);
-					} else {
-						clearHeadSet(ctx);
-					}
-					return reply(`Observing with: ${activeLabel()}.`);
-				}
+			const params = validateHydraToolParams(rawParams);
+			if (params.action === "complete_observation") {
+				throw new Error("complete_observation is only available while hydra is running a head observation");
 			}
+			return executeHeadManagement(params, ctx);
 		},
 	};
 	pi.registerTool(hydraToolDefinition);
