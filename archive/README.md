@@ -214,7 +214,7 @@ tmux attach -t mob
 
 ## Lenses
 
-Available lenses: `quality`, `security`, `simplifier`, `api-design`.
+See [`lenses.md`](lenses.md) for the full lens reference. Available lenses: `quality`, `security`, `simplifier`, `api-design`.
 
 ## Architecture
 
