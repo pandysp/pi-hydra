@@ -27,7 +27,7 @@ Frontmatter keys:
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
-There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model; that is what makes observation cost ~1% of what the agent paid.
+There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model. That is the constraint that makes the replay a cache read rather than a context rebuild, and it is why a head cannot be given a stronger model than the driver's.
 
 ## Where heads live
 
@@ -127,22 +127,22 @@ Their decisions deliver to you: a print renders in the TUI and never enters the 
 The four review examples are designed to catch different things rather than repeat each other:
 
 ### Quality
-**Focus:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
+**Lens:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
 **Why:** The broadest net and the recommended default. The agent believes its own code works; this head asks what would prove it.
 **Boundary:** Do not nitpick style.
 
 ### Security
-**Focus:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
+**Lens:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
 **Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are invisible to every other lens. The agent is thinking about functionality rather than attack surface.
 **Boundary:** Do not comment on style or product scope.
 
 ### Simplifier
-**Focus:** unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, over-built solutions.
+**Lens:** unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, over-built solutions.
 **Why:** Every other head adds requirements. This one argues for removing code instead.
 **Boundary:** Do not comment on unrelated bugs or security. You argue for less, not more.
 
 ### API Design
-**Focus:** contract clarity, compatibility, consistency, error shapes, naming, ergonomics.
+**Lens:** contract clarity, compatibility, consistency, error shapes, naming, ergonomics.
 **Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about the implementation rather than the contract.
 **Boundary:** Do not comment on internal code structure.
 

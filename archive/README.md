@@ -6,6 +6,10 @@ Contents: `andon-observer.sh` (the observer loop), `andon-cache-fix.mjs` (the fe
 
 ---
 
+> Everything below this line is the original andon README, reproduced as it stood in April 2026.
+> Andon has been retired and replaced by pi-hydra. The commands below drive that old system, not
+> this one. For the current project see [../README.md](../README.md).
+
 # Andon
 
 > Pull the cord on bad AI code — real-time observers for AI coding sessions.
@@ -214,7 +218,7 @@ See [`lenses.md`](lenses.md) for the full lens reference. Available lenses: `qua
 
 ## Architecture
 
-The fork-per-epoch design is documented in [`fork-per-epoch-plan.md`](fork-per-epoch-plan.md). Deep research into Claude Code internals (prompt caching, `/btw` architecture, cache-fix preload) is in [`docs/research-claude-code-cache-2026-04-15.md`](docs/research-claude-code-cache-2026-04-15.md).
+The fork-per-epoch design is documented in [`fork-per-epoch-plan.md`](fork-per-epoch-plan.md). Deep research into Claude Code internals (prompt caching, `/btw` architecture, cache-fix preload) is in [`research-claude-code-cache-2026-04-15.md`](research-claude-code-cache-2026-04-15.md).
 
 ## History
 
