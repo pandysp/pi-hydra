@@ -1,6 +1,23 @@
 export const DRIVER_INVISIBLE = "driver-invisible";
 export const DRIVER_AWARE = "driver-aware";
 
+export const GOLDEN_ARM_IMPLEMENTATIONS = Object.freeze({
+	A: "main-json",
+	B: "control",
+	C: "samehead",
+});
+
+export function implementationArm(arm) {
+	return GOLDEN_ARM_IMPLEMENTATIONS[arm] ?? arm;
+}
+
+export function sameHeadDeliveryContext(state, head) {
+	return {
+		...state,
+		pending: state.pending.filter((item) => item.head === head),
+	};
+}
+
 const buckets = new Map([
 	["none", DRIVER_INVISIBLE],
 	["print", DRIVER_INVISIBLE],

@@ -147,6 +147,14 @@ describe("delivery ledger and router", () => {
 		expect(runtime.persisted).toEqual([]);
 	});
 
+	it("drops an idle user delivery when a non-text user message starts", () => {
+		const ledger = new DeliveryLedger();
+		const runtime = harness(true);
+		routeFeedback(ledger, runtime.gateway, decision("steer", "expected"), "security", false);
+		ledger.discardIdleUserDeliveries();
+		expect(ledger.contextFor("security")).toEqual({ lastByThisHead: null, pending: [] });
+	});
+
 	it("demotes stale interrupt before staging and preserves live interrupt semantics", () => {
 		const staleLedger = new DeliveryLedger();
 		const staleRuntime = harness(false);

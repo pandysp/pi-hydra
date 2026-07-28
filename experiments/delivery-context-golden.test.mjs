@@ -6,7 +6,9 @@ import {
 	DRIVER_AWARE,
 	DRIVER_INVISIBLE,
 	deliveryBucket,
+	implementationArm,
 	isDeliveryBucketCorrect,
+	sameHeadDeliveryContext,
 } from "./delivery-context-evaluation.mjs";
 import { buildJudgePrompt, parseBinaryJudgments } from "./delivery-context-judge-protocol.mjs";
 
@@ -90,6 +92,25 @@ describe("frozen delivery-context golden corpus", () => {
 			expect(deliveryBucket(delivery)).toBe(DRIVER_AWARE);
 		}
 		expect(isDeliveryBucketCorrect(null, "steer")).toBe(false);
+	});
+
+	it("maps C to production same-head context and withholds sibling pending state", () => {
+		expect(implementationArm("C")).toBe("samehead");
+		expect(
+			sameHeadDeliveryContext(
+				{
+					lastByThisHead: null,
+					pending: [
+						{ head: "security", delivery: "steer", message: "same head" },
+						{ head: "quality", delivery: "queue", message: "sibling" },
+					],
+				},
+				"security",
+			),
+		).toEqual({
+			lastByThisHead: null,
+			pending: [{ head: "security", delivery: "steer", message: "same head" }],
+		});
 	});
 
 	it("keeps compact trajectories provider-safe and delivery state bounded", () => {

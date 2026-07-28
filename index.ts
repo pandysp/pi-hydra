@@ -1531,6 +1531,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
 				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), { role: "user", content });
+			} else {
+				deliveryLedger.discardIdleUserDeliveries();
 			}
 		} else if (event.message.role === "custom" && event.message.customType === "hydra-feedback") {
 			const content = plainMessageText(event.message.content);

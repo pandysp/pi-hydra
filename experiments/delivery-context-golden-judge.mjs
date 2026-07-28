@@ -148,6 +148,19 @@ async function judgeBatch(batch) {
 	}
 }
 
+function recordBatchFailure(batch, error) {
+	const failure = {
+		timestamp: new Date().toISOString(),
+		judge: judgeName,
+		judgeModel: judge.id,
+		judgeThinking: judgeSpec.reasoning,
+		metric,
+		sourceKeys: batch.map(sourceKey),
+		error: error instanceof Error ? error.message : String(error),
+	};
+	appendFileSync(`${outputPath}.failures.jsonl`, `${JSON.stringify(failure)}\n`);
+}
+
 // TODO: Add a separate unwarranted-noise judgment only if finding quality and
 // improper-repeat metrics fail to expose economically meaningful noisy sends.
 
@@ -162,7 +175,12 @@ let nextBatch = 0;
 async function worker() {
 	while (nextBatch < batches.length) {
 		const index = nextBatch++;
-		await judgeBatch(batches[index]);
+		try {
+			await judgeBatch(batches[index]);
+		} catch (error) {
+			recordBatchFailure(batches[index], error);
+			throw error;
+		}
 	}
 }
 await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, () => worker()));

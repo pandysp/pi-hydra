@@ -75,9 +75,13 @@ export class DeliveryLedger {
 		// An idle send is not represented in Pi's queues. If another user
 		// message starts instead, the send failed before reaching the driver.
 		if (message.role === "user") {
-			this.pending = this.pending.filter((item) => item.origin !== "idle-user");
+			this.discardIdleUserDeliveries();
 		}
 		return null;
+	}
+
+	discardIdleUserDeliveries(): void {
+		this.pending = this.pending.filter((item) => item.origin !== "idle-user");
 	}
 
 	settle(): DeliveryRecord[] {

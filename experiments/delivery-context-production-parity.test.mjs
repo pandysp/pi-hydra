@@ -12,7 +12,7 @@ import {
 
 const productionState = {
 	lastByThisHead: { delivery: "steer", message: "The redirect permits an external origin." },
-	pending: [{ head: "quality", delivery: "queue", message: "Cover the adjacent mutation bug." }],
+	pending: [{ head: "security", delivery: "queue", message: "Check the related redirect variant." }],
 };
 
 const experimentalState = {

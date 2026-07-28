@@ -9,8 +9,8 @@ The runtime gives an observation only two facts that its fork may not yet see:
 
 - `lastByThisHead`: the latest delivery from this head accepted by the runtime,
   whether its route reached the user, durable session state, or the driver; and
-- `pending`: every `queue` or `steer` message still held in a live Pi queue and
-  not yet consumed by the driver, across all heads.
+- `pending`: this head's `queue` or `steer` messages still held in a live Pi
+  queue and not yet consumed by the driver.
 
 The head decides whether related feedback should be repeated. The extension
 does not suppress it. Visible conversation history remains evidence: explicit
@@ -51,7 +51,8 @@ Across the corpus the expected outcomes include genuine `none`, `print`,
 `queue`, `steer`, and `interrupt` decisions. The contextual boundaries include:
 
 - fresh findings;
-- pending equivalent and unrelated feedback;
+- pending equivalent feedback and sibling-head pending state that production
+  deliberately withholds from this head;
 - a latest successful delivery absent from the fork;
 - visible delivery with no driver response;
 - explicit rejection;
@@ -78,8 +79,8 @@ The required blinded A/B/C comparison is paired and randomized:
 2. **B — typed control:** the typed `hydra` completion path at `350e6f5`,
    including its exact-message runtime deduplication.
 3. **C — context treatment:** capability-based tool-free completion for judge-only heads,
-   the existing tool loop for acting heads, the bounded factual delivery
-   context, and no runtime veto of a valid repeated decision.
+   the existing tool loop for acting heads, the bounded same-head factual
+   delivery context, and no runtime veto of a valid repeated decision.
 
 Legacy experimental arms may be run on the development corpus as causal
 diagnostics. They cannot replace A/B/C and may not be tuned from golden
@@ -184,7 +185,9 @@ Observer and driver costs are reported separately.
 ## Production boundaries
 
 - Delivery state is extension-owned and bounded: one successful record per
-  head plus live pending queue/steer records.
+  head plus live pending queue/steer records. Each observation receives only
+  its own head's records; the ledger retains sibling records solely for their
+  own lifecycle accounting.
 - The ledger stores facts, not inferred states such as ignored, rejected,
   partially fixed, or resolved. Heads infer those from the visible trajectory.
 - Same-wave heads cannot see a sibling decision that does not yet exist.

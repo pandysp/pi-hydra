@@ -14,12 +14,8 @@ function writeJsonl(path, rows) {
 	writeFileSync(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }
 
-function summarize(judgments) {
-	const directory = mkdtempSync(join(tmpdir(), "hydra-summary-"));
-	scratch.push(directory);
-	const input = join(directory, "producer.jsonl");
-	const judges = join(directory, "judges.jsonl");
-	writeJsonl(input, [{
+function producerRow(overrides = {}) {
+	return {
 		provider: "openai-codex",
 		model: "terra-medium",
 		arm: "C",
@@ -28,6 +24,7 @@ function summarize(judgments) {
 		completionValid: true,
 		formatValid: true,
 		delivery: "steer",
+		message: "Verify the webhook signature.",
 		deliveryCorrect: true,
 		deliveryExact: true,
 		expectedDelivery: "steer",
@@ -37,7 +34,16 @@ function summarize(judgments) {
 		ms: 100,
 		usage: { cost: 0.01, cacheRead: 100 },
 		hitRatio: 50,
-	}]);
+		...overrides,
+	};
+}
+
+function summarize(judgments, rows = [producerRow()]) {
+	const directory = mkdtempSync(join(tmpdir(), "hydra-summary-"));
+	scratch.push(directory);
+	const input = join(directory, "producer.jsonl");
+	const judges = join(directory, "judges.jsonl");
+	writeJsonl(input, rows);
 	writeJsonl(judges, judgments);
 	const result = spawnSync(
 		process.execPath,
@@ -78,5 +84,36 @@ describe("delivery-context summary judge gate", () => {
 		expect(group.findingQuality).toBe(1);
 		expect(group.judgeCoverage).toBe(1);
 		expect(group.judgeAgreement).toBe(1);
+	});
+
+	it("counts failed observations in quality, routing, and economics", () => {
+		const result = summarize(
+			[
+				judgment("sol", "support"),
+				judgment("sol", "target"),
+				judgment("opus", "support"),
+				judgment("opus", "target"),
+			],
+			[
+				producerRow(),
+				producerRow({
+					sample: 2,
+					completionValid: false,
+					formatValid: false,
+					delivery: null,
+					message: "",
+					deliveryCorrect: false,
+					deliveryExact: false,
+					ms: 300,
+					usage: { cost: 0.03, cacheRead: 100 },
+				}),
+			],
+		);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.valid).toBe(0.5);
+		expect(group.findingQuality).toBe(0.5);
+		expect(group.deliveryBucketCorrect).toBe(0.5);
+		expect(group.observerCostMean).toBe(0.02);
+		expect(group.judgeCoverage).toBe(1);
 	});
 });
