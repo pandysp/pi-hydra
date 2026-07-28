@@ -27,6 +27,8 @@ The dated causal findings and rejected optimizations are in
 [`COMPLETION-COST-CAUSAL-ABLATION.md`](COMPLETION-COST-CAUSAL-ABLATION.md).
 The subsequent universal tool-free A/B and decision are in
 [`TOOL-FREE-COMPLETION-AB.md`](TOOL-FREE-COMPLETION-AB.md).
+The frozen six-model delivery-context A/B/C verdict is in
+[`DELIVERY-CONTEXT-ABC-RESULTS.md`](DELIVERY-CONTEXT-ABC-RESULTS.md).
 
 `lib.mjs` holds the shared Anthropic harness: OAuth, padding, the Messages
 call, and cold-start guards. Every Anthropic script takes `--model` and

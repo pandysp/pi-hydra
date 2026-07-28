@@ -66,9 +66,13 @@ function unanimous(row, metric, answer) {
 	);
 }
 
+function observationSucceeded(row) {
+	return row.completionValid === true && !row.error;
+}
+
 function findingQuality(row) {
 	if (!requiredJudgeSetComplete) return null;
-	if (row.delivery === "none") return false;
+	if (!observationSucceeded(row) || row.delivery === "none") return false;
 	return unanimous(row, "support", true) && unanimous(row, "target", true);
 }
 
@@ -79,7 +83,7 @@ function avoidsImproperRepeat(row) {
 }
 
 function hasRoutedMessage(row) {
-	return typeof row.delivery === "string" && row.delivery !== "none" && Boolean(row.message?.trim?.());
+	return observationSucceeded(row) && typeof row.delivery === "string" && row.delivery !== "none" && Boolean(row.message?.trim?.());
 }
 
 const waitingCategories = new Set([
@@ -93,18 +97,19 @@ const followupCategories = new Set(["explicit-rejection", "material-change", "ol
 function confusionMatrix(group) {
 	const matrix = {};
 	for (const row of group) {
-		const key = `${row.expectedDelivery}->${row.delivery}`;
+		const actual = observationSucceeded(row) ? row.delivery : "failed";
+		const key = `${row.expectedDelivery}->${actual}`;
 		matrix[key] = (matrix[key] ?? 0) + 1;
 	}
 	return matrix;
 }
 
 function summarizeGroup(group) {
-	const valid = group.filter((row) => row.completionValid);
 	const feedbackRows = group.filter((row) => row.expectedDelivery !== "none");
 	const noFeedbackRows = group.filter((row) => row.expectedDelivery === "none");
 	const waitingRows = group.filter((row) => waitingCategories.has(row.category));
 	const followupRows = group.filter((row) => followupCategories.has(row.category));
+	const rejectionRows = group.filter((row) => row.category === "explicit-rejection");
 	const unrelatedRows = group.filter((row) => row.category === "pending-unrelated");
 	const supportItems = feedbackRows
 		.flatMap((row) => metricJudgments(row, "support"))
@@ -129,22 +134,24 @@ function summarizeGroup(group) {
 
 	return {
 		n: group.length,
-		valid: round(rate(group.map((row) => row.completionValid))),
+		valid: round(rate(group.map(observationSucceeded))),
 		formatValid: round(rate(group.map((row) => row.formatValid))),
 		oneCall: round(rate(group.map((row) => row.providerCalls === 1))),
 		recovery: round(rate(group.map((row) => row.recoveryAttempted))),
 		findingQuality: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map(findingQuality))),
-		support: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => row.delivery !== "none" && unanimous(row, "support", true)))),
-		target: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => row.delivery !== "none" && unanimous(row, "target", true)))),
+		support: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => observationSucceeded(row) && row.delivery !== "none" && unanimous(row, "support", true)))),
+		target: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => observationSucceeded(row) && row.delivery !== "none" && unanimous(row, "target", true)))),
 		improperRepeatAvoidance: !requiredJudgeSetComplete ? null : round(rate(noFeedbackRows.map(avoidsImproperRepeat))),
-		deliveryBucketCorrect: round(rate(group.map((row) => row.deliveryCorrect))),
-		deliveryExact: round(rate(group.map((row) => row.deliveryExact ?? row.delivery === row.expectedDelivery))),
-		feedbackBucketCorrect: round(rate(feedbackRows.map((row) => row.deliveryCorrect))),
-		waitingBucketCorrect: round(rate(waitingRows.map((row) => row.deliveryCorrect))),
+		waitingRepeatAvoidance: !requiredJudgeSetComplete ? null : round(rate(waitingRows.map(avoidsImproperRepeat))),
+		deliveryBucketCorrect: round(rate(group.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
+		deliveryExact: round(rate(group.map((row) => observationSucceeded(row) && (row.deliveryExact ?? row.delivery === row.expectedDelivery)))),
+		feedbackBucketCorrect: round(rate(feedbackRows.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
+		waitingBucketCorrect: round(rate(waitingRows.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
 		followupQuality: !requiredJudgeSetComplete ? null : round(rate(followupRows.map(findingQuality))),
+		rejectionQuality: !requiredJudgeSetComplete ? null : round(rate(rejectionRows.map(findingQuality))),
 		unrelatedPendingQuality: !requiredJudgeSetComplete ? null : round(rate(unrelatedRows.map(findingQuality))),
-		falseInterrupts: group.filter((row) => row.delivery === "interrupt" && row.expectedDelivery !== "interrupt").length,
-		genuineInterruptExact: round(rate(group.filter((row) => row.expectedDelivery === "interrupt").map((row) => row.delivery === "interrupt"))),
+		falseInterrupts: group.filter((row) => observationSucceeded(row) && row.delivery === "interrupt" && row.expectedDelivery !== "interrupt").length,
+		genuineInterruptExact: round(rate(group.filter((row) => row.expectedDelivery === "interrupt").map((row) => observationSucceeded(row) && row.delivery === "interrupt"))),
 		runtimeSuppressed: group.filter((row) => row.runtimeSuppressed).length,
 		latencyMedianMs: quantile(group.flatMap((row) => Number.isFinite(row.ms) ? [row.ms] : []), 0.5),
 		latencyP95Ms: quantile(group.flatMap((row) => Number.isFinite(row.ms) ? [row.ms] : []), 0.95),

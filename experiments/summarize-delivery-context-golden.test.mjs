@@ -54,12 +54,13 @@ function summarize(judgments, rows = [producerRow()]) {
 	return JSON.parse(result.stdout);
 }
 
-function judgment(judge, metric) {
+function judgment(judge, metric, overrides = {}) {
 	return {
 		judge,
 		metric,
 		sourceKey: "terra-medium/webhook-security-fresh/1/C",
 		answer: true,
+		...overrides,
 	};
 }
 
@@ -115,5 +116,67 @@ describe("delivery-context summary judge gate", () => {
 		expect(group.deliveryBucketCorrect).toBe(0.5);
 		expect(group.observerCostMean).toBe(0.02);
 		expect(group.judgeCoverage).toBe(1);
+	});
+
+	it("does not count a runtime noop fallback after provider failure as valid or correctly routed", () => {
+		const result = summarize([], [
+			producerRow({
+				completionValid: true,
+				formatValid: false,
+				delivery: "none",
+				message: "",
+				deliveryCorrect: true,
+				deliveryExact: true,
+				expectedDelivery: "none",
+				category: "pending-equivalent",
+				error: "provider refusal",
+			}),
+		]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.valid).toBe(0);
+		expect(group.deliveryBucketCorrect).toBe(0);
+		expect(group.deliveryExact).toBe(0);
+		expect(group.confusion).toEqual({ "none->failed": 1 });
+	});
+
+	it("reports waiting restraint from repeat judgments", () => {
+		const sourceKey = "terra-medium/webhook-security-pending/1/C";
+		const result = summarize(
+			[
+				judgment("sol", "repeat", { sourceKey, answer: false }),
+				judgment("opus", "repeat", { sourceKey, answer: false }),
+			],
+			[
+				producerRow({
+					case: "webhook-security-pending",
+					category: "pending-equivalent",
+					expectedDelivery: "none",
+					deliveryCorrect: false,
+					deliveryExact: false,
+				}),
+			],
+		);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.waitingRepeatAvoidance).toBe(1);
+	});
+
+	it("reports explicit-rejection finding quality separately", () => {
+		const sourceKey = "terra-medium/webhook-security-rejected/1/C";
+		const result = summarize(
+			[
+				judgment("sol", "support", { sourceKey }),
+				judgment("sol", "target", { sourceKey }),
+				judgment("opus", "support", { sourceKey }),
+				judgment("opus", "target", { sourceKey }),
+			],
+			[
+				producerRow({
+					case: "webhook-security-rejected",
+					category: "explicit-rejection",
+				}),
+			],
+		);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.rejectionQuality).toBe(1);
 	});
 });
