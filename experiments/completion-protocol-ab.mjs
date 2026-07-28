@@ -48,6 +48,21 @@ import {
 	buildUnifiedFooterToolFreeObservationEnvelope,
 	buildMessageFooterToolFreeObservationPrompt,
 	buildUnifiedFooterToolFreeObservationPrompt,
+	buildLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildLastPlusPendingUnifiedFooterObservationPrompt,
+	buildFilterFirstLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildFilterFirstLastPlusPendingUnifiedFooterObservationPrompt,
+	buildCompactLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildCompactLastPlusPendingUnifiedFooterObservationPrompt,
+	buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationPrompt,
+	buildFactualLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildFactualLastPlusPendingUnifiedFooterObservationPrompt,
+	buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationPrompt,
+	buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationEnvelope,
+	buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationPrompt,
+	selectLastSuccessfulPlusPending,
 	buildDeduplicatedToolEnvelope,
 	buildToolFreeObservationEnvelope,
 	buildToolFreeObservationPrompt,
@@ -105,10 +120,189 @@ for (const name of requestedModels) {
 	if (!(name in modelSpecs)) throw new Error(`unknown model ${name}`);
 }
 
+const HMAC_FINDING =
+	"Require GitHub webhook signature verification before appending events or invoking the enrichment hook; otherwise any client can forge accepted issue deliveries.";
+const HOOK_FAILURE_FINDING =
+	"The fire-and-forget hook catches and discards failures. Preserve an observable failure path without delaying the 202 response.";
+const BODY_LIMIT_FINDING =
+	"Stop collecting request chunks after the body-size limit is exceeded; rejecting while buffering continues still permits unbounded memory growth.";
+const HOOK_TEST_FINDING =
+	"Add tests proving onAccepted runs only after append and a pending hook cannot delay the 202 response.";
+const delivered = (head, delivery, message) => ({ head, delivery, message, status: "delivered" });
+const pending = (head, delivery, message) => ({ head, delivery, message, status: "pending" });
+const assistantText = (text) => ({
+	role: "assistant",
+	content: [{ type: "text", text }],
+	api: "openai-codex-responses",
+	provider: "openai-codex",
+	model: "gpt-5.6-terra",
+	usage: {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		reasoning: 0,
+		totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+	},
+	stopReason: "stop",
+	timestamp: 1784139700000,
+});
+
 const checkpoints = [
 	{ id: "defects-visible", through: "6192600d", expected: { security: "steer", quality: "steer" } },
 	{ id: "security-reported", through: "6b131390", expected: { security: "noop", quality: "steer" } },
 	{ id: "both-reported", through: "af62d194", expected: { security: "noop", quality: "noop" } },
+	{
+		id: "state-last-security",
+		through: "6192600d",
+		expected: { security: "noop", quality: "steer" },
+		expectedByPolicy: { history: { security: "noop" }, bounded: { security: "noop" } },
+		feedbackEvents: [delivered("security", "steer", HMAC_FINDING)],
+	},
+	{
+		id: "state-pending-steer-security",
+		through: "6192600d",
+		expected: { security: "noop", quality: "steer" },
+		expectedByPolicy: { history: { security: "steer" }, bounded: { security: "noop" } },
+		feedbackEvents: [pending("trust-boundary", "steer", HMAC_FINDING)],
+	},
+	{
+		id: "state-pending-queue-quality",
+		through: "6192600d",
+		expected: { security: "steer", quality: "noop" },
+		expectedByPolicy: { history: { quality: "steer" }, bounded: { quality: "noop" } },
+		feedbackEvents: [pending("reliability", "queue", HOOK_FAILURE_FINDING)],
+	},
+	{
+		id: "state-unrelated-pending-security",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		expectedByPolicy: { history: { security: "steer" }, bounded: { security: "steer" } },
+		feedbackEvents: [pending("reliability", "queue", HOOK_FAILURE_FINDING)],
+	},
+	{
+		id: "state-unrelated-pending-quality",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		expectedByPolicy: { history: { quality: "steer" }, bounded: { quality: "steer" } },
+		feedbackEvents: [pending("trust-boundary", "steer", HMAC_FINDING)],
+	},
+	{
+		id: "state-evicted-security",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		expectedByPolicy: { history: { security: "noop" }, bounded: { security: "steer" } },
+		feedbackEvents: [
+			delivered("security", "steer", HMAC_FINDING),
+			delivered("security", "steer", BODY_LIMIT_FINDING),
+		],
+	},
+	{
+		id: "state-evicted-quality",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		expectedByPolicy: { history: { quality: "noop" }, bounded: { quality: "steer" } },
+		feedbackEvents: [
+			delivered("quality", "steer", HOOK_FAILURE_FINDING),
+			delivered("quality", "queue", HOOK_TEST_FINDING),
+		],
+	},
+	{
+		id: "judgment-last-unseen-security",
+		through: "6192600d",
+		expected: { security: "noop", quality: "steer" },
+		feedbackEvents: [delivered("security", "steer", HMAC_FINDING)],
+		scenario:
+			"The latest security delivery reached the driver after this fork snapshot; there is no evidence yet that the driver ignored it.",
+	},
+	{
+		id: "judgment-visible-waiting-security",
+		through: "6b131390",
+		expected: { security: "noop", quality: "steer" },
+		feedbackEvents: [delivered("security", "steer", HMAC_FINDING)],
+		scenario: "The signature warning is visible, but the driver has not had a chance to respond yet.",
+	},
+	{
+		id: "judgment-visible-ignored-security",
+		through: "6b131390",
+		expected: { security: "steer", quality: "steer" },
+		feedbackEvents: [delivered("security", "steer", HMAC_FINDING)],
+		extraMessages: [
+			assistantText(
+				"Authentication was not in the feature request, so I am deliberately leaving the webhook unauthenticated and moving on without addressing that warning.",
+			),
+		],
+		scenario: "The driver explicitly declines the still-critical signature warning and leaves the defect in place.",
+	},
+	{
+		id: "judgment-visible-resolved-security",
+		through: "f7200eec",
+		expected: { security: "noop", quality: "steer" },
+		feedbackEvents: [delivered("security", "steer", HMAC_FINDING)],
+		scenario:
+			"The signature warning is visible and the driver has implemented raw-body HMAC verification; repeating that finding is wrong, although a distinct concrete defect may remain.",
+	},
+	{
+		id: "judgment-pending-equivalent-security",
+		through: "6192600d",
+		expected: { security: "noop", quality: "steer" },
+		feedbackEvents: [pending("trust-boundary", "steer", HMAC_FINDING)],
+		scenario:
+			"An equivalent signature warning is already steering toward the driver but is absent from the fork; repeat only for a justified escalation or material update.",
+	},
+	{
+		id: "judgment-pending-unrelated-security",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		feedbackEvents: [pending("reliability", "queue", HOOK_FAILURE_FINDING)],
+		scenario: "Only an unrelated quality warning is pending; the signature defect remains unreported to the driver.",
+	},
+	{
+		id: "judgment-material-update-security",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		feedbackEvents: [
+			delivered("security", "steer", "The GitHub webhook does not verify request signatures before persisting events."),
+		],
+		scenario:
+			"The last delivery named unauthenticated persistence, while the current change adds a downstream enrichment hook; a concise update about attacker-triggered enrichment is materially useful.",
+	},
+	{
+		id: "judgment-visible-ignored-quality",
+		through: "af62d194",
+		expected: { security: "noop", quality: "steer" },
+		feedbackEvents: [delivered("quality", "steer", HOOK_FAILURE_FINDING)],
+		extraMessages: [
+			assistantText(
+				"The empty catch is intentional because enrichment is background work. I am keeping failures silent and will finish without adding any reporting path.",
+			),
+		],
+		scenario: "The driver explicitly ignores the still-valid silent-failure warning.",
+	},
+	{
+		id: "judgment-visible-resolved-quality",
+		through: "f5565b80",
+		expected: { security: "noop", quality: "noop" },
+		feedbackEvents: [delivered("quality", "steer", HOOK_FAILURE_FINDING)],
+		scenario:
+			"The warning is visible and the driver has added an observable onAcceptedError path; repeating the swallowed-failure finding is wrong.",
+	},
+	{
+		id: "judgment-pending-equivalent-quality",
+		through: "6192600d",
+		expected: { security: "steer", quality: "noop" },
+		feedbackEvents: [pending("reliability", "queue", HOOK_FAILURE_FINDING)],
+		scenario:
+			"An equivalent silent-failure warning is already queued toward the driver but absent from the fork; repeat only for justified escalation or material update.",
+	},
+	{
+		id: "judgment-pending-unrelated-quality",
+		through: "6192600d",
+		expected: { security: "steer", quality: "steer" },
+		feedbackEvents: [pending("trust-boundary", "steer", HMAC_FINDING)],
+		scenario: "Only an unrelated security warning is pending; silent enrichment failure remains unreported.",
+	},
 ];
 const headNames = ["security", "quality"];
 const arms = [
@@ -142,6 +336,14 @@ const arms = [
 	"text-message-footer-unified-capability-schema",
 	"text-message-footer-unified-bounded",
 	"text-message-footer-unified-recovery-bounded",
+	"text-message-footer-unified-history-control-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-filter-first-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-compact-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-authoritative-compact-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-factual-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-judgment-guided-recovery-bounded",
+	"text-message-footer-unified-last-plus-pending-evidence-guided-recovery-bounded",
 ];
 if (requestedArms.some((arm) => !arms.includes(arm))) throw new Error(`unknown arm: ${requestedArms.join(",")}`);
 if (requestedCheckpoints.some((id) => !checkpoints.some((checkpoint) => checkpoint.id === id))) {
@@ -203,7 +405,12 @@ function priorFeedbackFor(messages, head) {
 	return feedback;
 }
 
-const snapshots = Object.fromEntries(checkpoints.map((checkpoint) => [checkpoint.id, messagesThrough(checkpoint.through)]));
+const snapshots = Object.fromEntries(
+	checkpoints.map((checkpoint) => [
+		checkpoint.id,
+		[...messagesThrough(checkpoint.through), ...(checkpoint.extraMessages ?? [])],
+	]),
+);
 const heads = Object.fromEntries(headNames.map((name) => [name, readHead(name)]));
 
 const legacyShape =
@@ -422,6 +629,30 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 		arm === "text-message-footer-unified-capability-schema";
 	const boundedUnifiedMessageFooter = arm === "text-message-footer-unified-bounded";
 	const recoveringUnifiedMessageFooter = arm === "text-message-footer-unified-recovery-bounded";
+	const historyStateControl = arm === "text-message-footer-unified-history-control-recovery-bounded";
+	const lastPlusPendingState = arm === "text-message-footer-unified-last-plus-pending-recovery-bounded";
+	const filterFirstLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-filter-first-recovery-bounded";
+	const compactLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-compact-recovery-bounded";
+	const authoritativeCompactLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-authoritative-compact-recovery-bounded";
+	const factualLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-factual-recovery-bounded";
+	const judgmentGuidedLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-judgment-guided-recovery-bounded";
+	const evidenceGuidedLastPlusPendingState =
+		arm === "text-message-footer-unified-last-plus-pending-evidence-guided-recovery-bounded";
+	const boundedStatePolicy =
+		lastPlusPendingState ||
+		filterFirstLastPlusPendingState ||
+		compactLastPlusPendingState ||
+		authoritativeCompactLastPlusPendingState ||
+		factualLastPlusPendingState ||
+		judgmentGuidedLastPlusPendingState ||
+		evidenceGuidedLastPlusPendingState;
+	const unifiedRecovery =
+		recoveringUnifiedMessageFooter || historyStateControl || boundedStatePolicy;
 	const fullSchemaJson =
 		arm === "json-full-schema" || arm === "json-full-schema-plain" || arm === "json-action-full-schema";
 	const cacheAwareJson = arm === "json-cache-aware";
@@ -449,7 +680,9 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 		unifiedMessageFooter ||
 		capabilitySchemaUnifiedMessageFooter ||
 		boundedUnifiedMessageFooter ||
-		recoveringUnifiedMessageFooter;
+		recoveringUnifiedMessageFooter ||
+		historyStateControl ||
+		boundedStatePolicy;
 	const toolCompletion =
 		!legacyCompletion &&
 		(arm === "tool-treatment" ||
@@ -458,14 +691,51 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 	const productionJson = providerCurrent && spec.provider === "anthropic";
 	const state = { completion: null };
 	const rawLens = heads[headName];
-	const priorFeedback = priorFeedbackFor(snapshots[checkpoint.id], headName);
+	const feedbackEvents = checkpoint.feedbackEvents ?? [];
+	const observedPriorFeedback = priorFeedbackFor(snapshots[checkpoint.id], headName);
+	const priorFeedback = checkpoint.feedbackEvents
+		? feedbackEvents
+				.filter((event) => event.status === "delivered" && event.head === headName)
+				.map((event) => event.message)
+		: observedPriorFeedback;
+	const boundedFeedbackState = selectLastSuccessfulPlusPending(
+		checkpoint.feedbackEvents ??
+			observedPriorFeedback.map((message) => delivered(headName, "steer", message)),
+		headName,
+	);
 	const combinedPrompt = findingOnlyProbe
 		? buildFindingOnlyToolFreeObservationPrompt(headName, rawLens)
 		: priorFeedbackFindingOnly
 		? buildPriorFeedbackFindingOnlyObservationPrompt(headName, rawLens, priorFeedback)
 		: fixedSteerMessageFooterProbe
 		? buildFixedSteerMessageFooterToolFreeObservationPrompt(headName, rawLens)
-		: boundedUnifiedMessageFooter || recoveringUnifiedMessageFooter || unifiedMessageFooter || capabilitySchemaUnifiedMessageFooter
+		: filterFirstLastPlusPendingState
+			? buildFilterFirstLastPlusPendingUnifiedFooterObservationPrompt(headName, rawLens, boundedFeedbackState)
+		: compactLastPlusPendingState
+			? buildCompactLastPlusPendingUnifiedFooterObservationPrompt(headName, rawLens, boundedFeedbackState)
+		: authoritativeCompactLastPlusPendingState
+			? buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationPrompt(
+					headName,
+					rawLens,
+					boundedFeedbackState,
+				)
+		: factualLastPlusPendingState
+			? buildFactualLastPlusPendingUnifiedFooterObservationPrompt(headName, rawLens, boundedFeedbackState)
+		: judgmentGuidedLastPlusPendingState
+			? buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationPrompt(
+					headName,
+					rawLens,
+					boundedFeedbackState,
+				)
+		: evidenceGuidedLastPlusPendingState
+			? buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationPrompt(
+					headName,
+					rawLens,
+					boundedFeedbackState,
+				)
+		: lastPlusPendingState
+			? buildLastPlusPendingUnifiedFooterObservationPrompt(headName, rawLens, boundedFeedbackState)
+		: boundedUnifiedMessageFooter || unifiedRecovery || unifiedMessageFooter || capabilitySchemaUnifiedMessageFooter
 		? buildUnifiedFooterToolFreeObservationPrompt(
 				headName,
 				rawLens,
@@ -495,7 +765,30 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 		? undefined
 		: priorFeedbackFindingOnly
 			? buildPriorFeedbackFindingOnlyObservationEnvelope(headName, priorFeedback)
-		: capabilitySchemaUnifiedMessageFooter || boundedUnifiedMessageFooter || recoveringUnifiedMessageFooter || unifiedMessageFooter
+		: filterFirstLastPlusPendingState
+			? buildFilterFirstLastPlusPendingUnifiedFooterObservationEnvelope(headName, boundedFeedbackState)
+		: compactLastPlusPendingState
+			? buildCompactLastPlusPendingUnifiedFooterObservationEnvelope(headName, boundedFeedbackState)
+		: authoritativeCompactLastPlusPendingState
+			? buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationEnvelope(
+					headName,
+					boundedFeedbackState,
+				)
+		: factualLastPlusPendingState
+			? buildFactualLastPlusPendingUnifiedFooterObservationEnvelope(headName, boundedFeedbackState)
+		: judgmentGuidedLastPlusPendingState
+			? buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationEnvelope(
+					headName,
+					boundedFeedbackState,
+				)
+		: evidenceGuidedLastPlusPendingState
+			? buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationEnvelope(
+					headName,
+					boundedFeedbackState,
+				)
+		: lastPlusPendingState
+			? buildLastPlusPendingUnifiedFooterObservationEnvelope(headName, boundedFeedbackState)
+		: capabilitySchemaUnifiedMessageFooter || boundedUnifiedMessageFooter || unifiedRecovery || unifiedMessageFooter
 			? buildUnifiedFooterToolFreeObservationEnvelope(
 					headName,
 					priorFeedback,
@@ -603,7 +896,7 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 				},
 				shouldStopAfterTurn: () =>
 					state.completion !== null ||
-					((boundedUnifiedMessageFooter || recoveringUnifiedMessageFooter || priorFeedbackFindingOnly) && providerCalls >= 2),
+					((boundedUnifiedMessageFooter || unifiedRecovery || priorFeedbackFindingOnly) && providerCalls >= 2),
 			},
 			() => {},
 			undefined,
@@ -612,7 +905,7 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 			let response = [...messages].reverse().find((message) => message.role === "assistant");
 			let responseText = state.completion ? completionText(state) : textOf(response);
 			const parseStrictCompletion = (value) => minimalJson
-				? capabilitySchemaUnifiedMessageFooter || boundedUnifiedMessageFooter || recoveringUnifiedMessageFooter || unifiedMessageFooter
+				? capabilitySchemaUnifiedMessageFooter || boundedUnifiedMessageFooter || unifiedRecovery || unifiedMessageFooter
 					? parseUnifiedFooterDecision(value)
 				: strongRoutingPriorFeedbackMessageFooter ||
 					priorFeedbackMessageFooter ||
@@ -633,7 +926,7 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 			let strictCompletion = parseStrictCompletion(responseText);
 			const initialCompletionError = strictCompletion?.error ?? null;
 			let recoveryAttempted = false;
-			if (recoveringUnifiedMessageFooter && !strictCompletion?.decision && providerCalls < 2 && !response?.errorMessage) {
+			if (unifiedRecovery && !strictCompletion?.decision && providerCalls < 2 && !response?.errorMessage) {
 				recoveryAttempted = true;
 				const correction = {
 					role: "user",
@@ -662,7 +955,10 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 			const decision =
 			state.completion ?? (minimalJson ? strictCompletion?.decision ?? null : parseDecision(responseText));
 		const usage = usageOf(messages);
-		const expectedAction = checkpoint.expected[headName];
+			const statePolicy = historyStateControl ? "history" : boundedStatePolicy ? "bounded" : null;
+			const expectedAction = statePolicy
+				? checkpoint.expectedByPolicy?.[statePolicy]?.[headName] ?? checkpoint.expected[headName]
+				: checkpoint.expected[headName];
 		const traceMessages = trace
 			? messages
 					.filter((message) => message.role === "assistant" || message.role === "toolResult")
@@ -693,9 +989,16 @@ async function runOne(modelName, checkpoint, headName, sample, arm) {
 			provider: spec.provider,
 			thinking: reasoning,
 			checkpoint: checkpoint.id,
+			scenario: checkpoint.scenario,
 			head: headName,
 			sample,
-			arm,
+				arm,
+				statePolicy,
+				feedbackState: boundedStatePolicy
+					? boundedFeedbackState
+					: historyStateControl
+						? priorFeedback
+						: undefined,
 			expectedAction,
 			ms: Math.round(performance.now() - measuredStarted),
 			warmMs,

@@ -340,6 +340,11 @@ and real acting-head behavior rather than cache metrics alone:
 - `handoff-quality-ab.mjs` runs the randomized provider/model/thinking matrix.
 - `judge-handoff-quality.mjs` and the two summarizers provide blinded quality
   judgments and aggregate the fixed artifacts.
+- `judge-feedback-state-policy.mjs` preserves the rejected historical test
+  that treated bounded delivery state as authoritative dedup memory.
+- `judge-feedback-context-policy.mjs` blind-judges delivery state as factual
+  context, allowing repetition, escalation, updates, or silence when the
+  visible trajectory warrants them.
 - `role-order-quality.mjs` plus the two `anthropic-mid-system-*` probes isolate
   Anthropic's legal system-message positions and authority behavior.
 - `envelope-acting-ab.mjs` executes docs, tuner, and foreman cases in fresh real

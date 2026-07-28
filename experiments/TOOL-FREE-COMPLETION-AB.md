@@ -356,3 +356,87 @@ future lens. It also proves only per-head feedback history. Supplying the full
 cross-head queued/steered pipeline is a promising generalization, but same-wave
 parallel heads cannot see decisions that do not yet exist; that broader ledger
 needs its own test rather than being claimed here.
+
+## Bounded delivery-context experiment (2026-07-26–27)
+
+The ledger representation survived testing, but its original semantics did
+not. For each observation it contains exactly:
+
+- this head's last successful delivery, or `null`; and
+- every queue or steer message that is still pending, across all heads.
+
+Completed history older than the last same-head delivery is absent. Failed or
+consumed messages and pending print/interrupt deliveries are also absent.
+Deterministic tests cover selection, cross-head provenance, and bounded size
+after 100 completed deliveries.
+
+The rejected experiment treated this bounded ledger as authoritative dedup
+memory. That premise was wrong. A fork already sees the driver's conversation,
+including older delivered feedback and what happened afterward. The bounded
+ledger exists only to bridge races: a successful delivery may be newer than the
+fork snapshot, and pending feedback has not reached the driver yet. It must add
+facts, not erase the fork's history or decide whether a follow-up is warranted.
+
+The corrected experiment compared four prompt semantics on one real immutable
+session with synthetic driver reactions:
+
+1. enforced suppression of related `lastByThisHead` and `pending` records;
+2. factual state with no repetition guidance;
+3. non-binding judgment guidance; and
+4. evidence-guided factual state, which asks the head to look for actual
+   rejection or material change and says unrelated pending feedback remains
+   eligible.
+
+Luna, Terra, and Sol ran at low thinking. A broad one-sample screen covered 11
+contexts per model. A focused two-sample replication covered the seven cases
+that distinguish the designs: just delivered, visible but unanswered,
+explicitly ignored, equivalent pending, and unrelated pending. Blinded Sol
+judges scored factual correctness, context, usefulness, restraint, and routing.
+The first screen used high thinking; the larger replication used medium.
+
+The semantic tradeoff is real:
+
+- Enforced suppression was more conservative overall. In the focused
+  replication it scored 26 passes and 12 failures, versus 20 passes and 22
+  failures for the first judgment-guided wording.
+- It achieved that precision by making contextual recovery impossible. Across
+  the 12 explicitly ignored security and quality cases, the guided arm
+  re-raised the rejected target 12/12 times. The enforced arm did so 0/12; it
+  either stayed silent or diverted to another finding.
+- Evidence-guided wording was the strongest autonomy-preserving version: in a
+  direct comparison it scored 24 passes and 11 failures versus 20 and 16 for
+  the earlier guided wording. It still did not beat enforced suppression
+  universally.
+- Model behavior differed. Against enforced suppression, evidence guidance was
+  materially better on Terra (mean 16.93 versus 13.43 out of 20; one failure
+  versus four), but worse on Luna and Sol. One of its 42 completions remained
+  malformed after bounded recovery.
+
+Runtime did not expose a new UX cost. In the focused replication the first
+guided arm averaged 4.67 seconds and $0.0054 per observation, versus 6.29
+seconds and $0.0073 for enforced suppression. The guided responses were much
+shorter; cache-read volatility also differed, so these numbers show absence of
+a measured penalty, not a causal speedup from the wording.
+
+### Decision and runtime boundary
+
+Reject automatic suppression as the product semantic. It cannot distinguish
+"already handled" from "delivered but explicitly rejected," and that false
+negative is exactly what a continuing observer should be able to correct.
+
+Use the bounded ledger as factual timing context. The best tested generic
+guidance is evidence-based and non-binding: compare only related feedback,
+look for visible rejection or material change, do not treat a merely unresolved
+defect as proof it was ignored, prefer waiting while feedback is pending or
+newly delivered, and leave the final decision to the lens. This adds no
+head-specific or model-specific branch.
+
+This is an OpenAI result. Anthropic confirmation was blocked by an expired
+local login and must happen before claiming cross-provider generality.
+
+Production wiring still needs an owned delivery ledger. Pi exposes only a
+boolean pending-message check to extensions, not the queue contents or its
+`queue_update` event. Hydra can track messages it sends and mark them consumed
+when their exact user/custom `message_start` arrives; `agent_settled` can clear
+any orphaned records. Same-wave parallel heads still cannot see one another's
+decisions before those decisions exist.

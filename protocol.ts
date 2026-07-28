@@ -46,6 +46,25 @@ export interface CompleteObservationParams {
 
 export type HydraToolParams = ManageHeadsParams | CompleteObservationParams;
 
+/**
+ * Recover a typed completion emitted through the cached public hydra schema.
+ * No tool is executed: the call is accepted only when it is the sole tool
+ * call and already satisfies the normal validated API contract.
+ */
+export function completionFromHydraToolCalls(content: readonly unknown[]): CompleteObservationParams | null {
+	const calls = content.filter(
+		(item): item is { type: "toolCall"; name: string; arguments: Parameters<typeof validateHydraToolParams>[0] } =>
+			typeof item === "object" && item !== null && (item as { type?: unknown }).type === "toolCall",
+	);
+	if (calls.length !== 1 || calls[0].name !== "hydra") return null;
+	try {
+		const params = validateHydraToolParams(calls[0].arguments);
+		return params.action === "complete_observation" ? params : null;
+	} catch {
+		return null;
+	}
+}
+
 export function validateHydraToolParams(value: {
 	action: "manage_heads" | "complete_observation";
 	operation?: "add" | "remove";

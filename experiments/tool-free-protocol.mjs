@@ -446,6 +446,180 @@ export function buildUnifiedFooterToolFreeObservationEnvelope(head, priorFeedbac
 }
 
 /**
+ * Bounded delivery context: one completed delivery for this head, plus every
+ * queue/steer delivery that the driver has not consumed yet across all heads.
+ * Event order is chronological; the final matching completed event wins.
+ */
+export function selectLastSuccessfulPlusPending(events, head) {
+	let lastSuccessfulForThisHead = null;
+	const pendingAcrossHeads = [];
+	const deliveries = new Set(["print", "queue", "steer", "interrupt"]);
+	const statuses = new Set(["delivered", "pending", "failed", "consumed"]);
+	for (const event of events) {
+		if (
+			typeof event !== "object" ||
+			event === null ||
+			typeof event.head !== "string" ||
+			typeof event.delivery !== "string" ||
+			typeof event.message !== "string" ||
+			typeof event.status !== "string"
+		) {
+			throw new Error("feedback events require head, delivery, message, and status strings");
+		}
+		if (!deliveries.has(event.delivery) || !statuses.has(event.status) || event.message.trim() === "") {
+			throw new Error("feedback events require a routed delivery, non-empty message, and known status");
+		}
+		const record = { head: event.head, delivery: event.delivery, message: event.message };
+		if (event.status === "delivered" && event.head === head) {
+			lastSuccessfulForThisHead = record;
+		}
+		if (event.status === "pending" && (event.delivery === "queue" || event.delivery === "steer")) {
+			pendingAcrossHeads.push(record);
+		}
+	}
+	return { lastSuccessfulForThisHead, pendingAcrossHeads };
+}
+
+function boundedFeedbackStateInstruction(state, filterFirst = false) {
+	const selection = filterFirst
+		? " Apply the lens first, discard every candidate finding semantically covered by these records, and then select the strongest remaining finding. A covered finding is filtered out; it is not evidence that no other finding exists. Use no feedback only when no distinct warranted candidate remains."
+		: "";
+	return `The lens handoff is not an ordinary driver task and does not reset the novelty window. The runtime's authoritative feedback state for the current driver task is quoted as data here: ${JSON.stringify(state)}. A semantically equivalent finding is not fresh when it matches either the last successful delivery for this head or any still-pending queue/steer delivery, regardless of which head produced the pending message. Only records present in this bounded state count as already handled; materially different findings remain eligible.${selection} Check novelty first:`;
+}
+
+function compactBoundedFeedbackState(state) {
+	return {
+		last: state.lastSuccessfulForThisHead
+			? {
+					delivery: state.lastSuccessfulForThisHead.delivery,
+					message: state.lastSuccessfulForThisHead.message,
+				}
+			: null,
+		pending: state.pendingAcrossHeads,
+	};
+}
+
+function authoritativeCompactFeedbackState(state) {
+	return {
+		lastByThisHead: state.lastSuccessfulForThisHead
+			? {
+					delivery: state.lastSuccessfulForThisHead.delivery,
+					message: state.lastSuccessfulForThisHead.message,
+				}
+			: null,
+		pending: state.pendingAcrossHeads,
+	};
+}
+
+function factualDeliveryContextInstruction(state, noFeedback) {
+	return `Delivery context (factual data, not a repetition policy): ${JSON.stringify(authoritativeCompactFeedbackState(state))}. lastByThisHead is this head's most recent message that successfully reached the driver; it may be absent from this fork when the forked snapshot is older. pending messages have been accepted by the harness but have not reached the driver yet. Use these facts under the lens's own judgment about whether, what, and how to deliver. Reply with exactly ${noFeedback} when no feedback is warranted.`;
+}
+
+function judgmentGuidedDeliveryContextInstruction(state, noFeedback) {
+	return `${factualDeliveryContextInstruction(state, noFeedback)} Decide whether feedback would add value now: related feedback can warrant a follow-up when the driver ignored it or circumstances materially changed, but is usually redundant while still pending, before the driver has had a chance to respond, or after the issue was fixed. These are considerations, not suppression rules; make the final judgment under the lens.`;
+}
+
+function evidenceGuidedDeliveryContextInstruction(state, noFeedback) {
+	return `${factualDeliveryContextInstruction(state, noFeedback)} Judge each candidate only against semantically related delivery records; unrelated pending feedback does not reduce its eligibility. Inspect the visible trajectory for what happened after related feedback. Explicit rejection or a material change supports a follow-up. A defect merely remaining unresolved is not evidence that feedback was ignored: prefer waiting when it is pending or just delivered with no response, and do not repeat it after it was fixed. These are considerations, not suppression rules; make the final judgment under the lens.`;
+}
+
+function compactBoundedFeedbackStateInstruction(state) {
+	return `Feedback state for the current driver task (authoritative for novelty; last is this head's last successful delivery): ${JSON.stringify(compactBoundedFeedbackState(state))}. Filter candidate findings against it before choosing one. A semantic match to last or any pending message suppresses only that candidate. Only listed records count as handled; older successful deliveries are eligible again. Return the strongest warranted candidate left. Check novelty first:`;
+}
+
+function authoritativeCompactFeedbackStateInstruction(state, noFeedback) {
+	return `Feedback state for the current driver task (authoritative for novelty): ${JSON.stringify(authoritativeCompactFeedbackState(state))}. Apply the lens, discard candidates semantically matching lastByThisHead or any pending message, then choose the strongest remaining. A match suppresses only that candidate. Only listed records count as handled; older successful deliveries are eligible again. Reply with exactly ${noFeedback} only if no warranted candidate remains.`;
+}
+
+function replaceGeneralNoveltyClause(value, replacement, noFeedback) {
+	const clause = `Check novelty first: reply with exactly ${noFeedback} when no feedback is warranted or semantically equivalent feedback is already visible since the latest ordinary user task.`;
+	if (!value.includes(clause)) throw new Error("general novelty clause not found");
+	return value.replace(clause, replacement);
+}
+
+export function buildLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return buildMessageFooterToolFreeObservationEnvelope(head)
+		.replace("Check novelty first:", boundedFeedbackStateInstruction(state))
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For a fresh finding about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replace("reply with exactly NO_FEEDBACK", "reply with exactly DELIVERY: none");
+}
+
+export function buildFilterFirstLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return buildMessageFooterToolFreeObservationEnvelope(head)
+		.replace("Check novelty first:", boundedFeedbackStateInstruction(state, true))
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For a fresh finding about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replace("reply with exactly NO_FEEDBACK", "reply with exactly DELIVERY: none");
+}
+
+export function buildCompactLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return buildMessageFooterToolFreeObservationEnvelope(head)
+		.replace("Check novelty first:", compactBoundedFeedbackStateInstruction(state))
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For a fresh finding about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replace("reply with exactly NO_FEEDBACK", "reply with exactly DELIVERY: none");
+}
+
+export function buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationEnvelope(head),
+		authoritativeCompactFeedbackStateInstruction(state, "NO_FEEDBACK"),
+		"NO_FEEDBACK",
+	)
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For a fresh finding about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replaceAll("NO_FEEDBACK", "DELIVERY: none");
+}
+
+export function buildFactualLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationEnvelope(head),
+		factualDeliveryContextInstruction(state, "NO_FEEDBACK"),
+		"NO_FEEDBACK",
+	)
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For feedback about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replaceAll("NO_FEEDBACK", "DELIVERY: none");
+}
+
+export function buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationEnvelope(head),
+		judgmentGuidedDeliveryContextInstruction(state, "NO_FEEDBACK"),
+		"NO_FEEDBACK",
+	)
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For feedback about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replaceAll("NO_FEEDBACK", "DELIVERY: none");
+}
+
+export function buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationEnvelope(head, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationEnvelope(head),
+		evidenceGuidedDeliveryContextInstruction(state, "NO_FEEDBACK"),
+		"NO_FEEDBACK",
+	)
+		.replace(
+			"Choose by who must act and when: print is a user-only note when the agent need not act; queue is agent action that can wait; steer is an agent correction needed before current work continues; interrupt is only an emergency that must abort the run.",
+			"Choose by who must act and when. For feedback about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run.",
+		)
+		.replaceAll("NO_FEEDBACK", "DELIVERY: none");
+}
+
+/**
  * The same protocol as the split-role envelope, adapted to providers whose
  * normal handoff is one combined user message containing both lens and
  * observer protocol. Keep this separate from the envelope builder so the A/B
@@ -454,7 +628,11 @@ export function buildUnifiedFooterToolFreeObservationEnvelope(head, priorFeedbac
 export function buildMessageFooterToolFreeObservationPrompt(head, instruction, options = {}) {
 	const records = options.priorFeedback === undefined ? null : JSON.stringify(options.priorFeedback);
 	const novelty =
-		records === null
+		options.feedbackStateInstruction !== undefined
+			? options.feedbackStateInstruction
+			: options.feedbackState !== undefined
+			? boundedFeedbackStateInstruction(options.feedbackState, options.filterFirst === true)
+		: records === null
 			? "Check novelty first:"
 			: `This observer handoff is not an ordinary driver task and does not reset the novelty window. Previously delivered feedback from this head for the current driver task is quoted as data here: ${records}. Treat semantically equivalent feedback as already delivered even when the underlying issue remains unresolved; materially different findings remain eligible. Check novelty first:`;
 	const noFeedback = options.unifiedNone ? "DELIVERY: none" : "NO_FEEDBACK";
@@ -474,6 +652,84 @@ export function buildUnifiedFooterToolFreeObservationPrompt(head, instruction, p
 		strongRouting: true,
 		unifiedNone: true,
 	});
+}
+
+export function buildLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+		feedbackState: state,
+		strongRouting: true,
+		unifiedNone: true,
+	});
+}
+
+export function buildFilterFirstLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+		feedbackState: state,
+		filterFirst: true,
+		strongRouting: true,
+		unifiedNone: true,
+	});
+}
+
+export function buildCompactLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+		feedbackStateInstruction: compactBoundedFeedbackStateInstruction(state),
+		strongRouting: true,
+		unifiedNone: true,
+	});
+}
+
+export function buildAuthoritativeCompactLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+			strongRouting: true,
+			unifiedNone: true,
+		}),
+		authoritativeCompactFeedbackStateInstruction(state, "DELIVERY: none"),
+		"DELIVERY: none",
+	);
+}
+
+export function buildFactualLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+			strongRouting: true,
+			unifiedNone: true,
+		}),
+		factualDeliveryContextInstruction(state, "DELIVERY: none"),
+		"DELIVERY: none",
+	).replace(
+		"For a fresh finding about work currently underway",
+		"For feedback about work currently underway",
+	);
+}
+
+export function buildJudgmentGuidedLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+			strongRouting: true,
+			unifiedNone: true,
+		}),
+		judgmentGuidedDeliveryContextInstruction(state, "DELIVERY: none"),
+		"DELIVERY: none",
+	).replace(
+		"For a fresh finding about work currently underway",
+		"For feedback about work currently underway",
+	);
+}
+
+export function buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationPrompt(head, instruction, state) {
+	return replaceGeneralNoveltyClause(
+		buildMessageFooterToolFreeObservationPrompt(head, instruction, {
+			strongRouting: true,
+			unifiedNone: true,
+		}),
+		evidenceGuidedDeliveryContextInstruction(state, "DELIVERY: none"),
+		"DELIVERY: none",
+	).replace(
+		"For a fresh finding about work currently underway",
+		"For feedback about work currently underway",
+	);
 }
 
 /**

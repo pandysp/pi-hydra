@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
+	completionFromHydraToolCalls,
 	hydraToolDescription,
 	hydraToolParameters,
 	isTerminalHydraAction,
@@ -11,12 +12,15 @@ import {
 	applyAfterChangeDelivery,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
+	buildJudgeObservationEnvelope,
+	buildJudgeObservationPrompt,
 	buildObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	decisionFromLoopStopReason,
 	demoteStaleInterrupt,
 	formatHeadManagementReceipt,
+	footerFormatCorrection,
 	hasDriverContinuationError,
 	headActs,
 	isAnthropicPayload,
@@ -26,6 +30,7 @@ import {
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
+	parseFooterDecision,
 	parseHeadFile,
 	parseHeadList,
 	parseShutdownGrace,
@@ -45,6 +50,32 @@ function blocks(message: PayloadMessage): PayloadBlock[] {
 }
 
 describe("hydra tool protocol", () => {
+	it("accepts only a sole valid typed completion from cached tool calls", () => {
+		expect(
+			completionFromHydraToolCalls([
+				{ type: "thinking", thinking: "done" },
+				{
+					type: "toolCall",
+					name: "hydra",
+					arguments: { action: "complete_observation", delivery: "steer", message: "Fix it." },
+				},
+			]),
+		).toEqual({ action: "complete_observation", delivery: "steer", message: "Fix it." });
+		expect(
+			completionFromHydraToolCalls([{ type: "toolCall", name: "bash", arguments: { command: "pwd" } }]),
+		).toBeNull();
+		expect(
+			completionFromHydraToolCalls([
+				{
+					type: "toolCall",
+					name: "hydra",
+					arguments: { action: "complete_observation", delivery: "none", message: "" },
+				},
+				{ type: "toolCall", name: "bash", arguments: { command: "pwd" } },
+			]),
+		).toBeNull();
+	});
+
 	it("advertises one flat schema with the two public actions", () => {
 		const schema = hydraToolParameters as {
 			required?: string[];
@@ -442,6 +473,79 @@ describe("buildObservationEnvelope", () => {
 	it("does not expose active state without explicit hydra capability", () => {
 		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
 		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+	});
+});
+
+describe("tool-free judge completion", () => {
+	const context = {
+		lastByThisHead: { delivery: "steer" as const, message: "Fix the redirect." },
+		pending: [{ head: "quality", delivery: "queue" as const, message: "Cover the adjacent mutation bug." }],
+	};
+
+	it("keeps the lens out of the split envelope and supplies factual bounded state", () => {
+		const envelope = buildJudgeObservationEnvelope("security", context);
+		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).toContain(JSON.stringify(context));
+		expect(envelope).toContain("factual data, not a repetition policy");
+		expect(envelope).toContain("These are considerations, not suppression rules");
+		expect(envelope).not.toContain("Fix security issues.");
+		expect(envelope).not.toContain("LENS:");
+		expect(envelope).not.toContain("complete_observation");
+	});
+
+	it("has a combined-user analogue with the same factual state", () => {
+		const prompt = buildJudgeObservationPrompt("security", "Fix security issues.", context);
+		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain(JSON.stringify(context));
+		expect(prompt).toContain("DELIVERY: none");
+	});
+
+	it("strictly parses none and natural findings with one exact footer", () => {
+		expect(parseFooterDecision(" DELIVERY: none\n")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("The redirect permits an external origin.\nDELIVERY: steer")).toEqual({
+			decision: {
+				action: "steer",
+				reason: "observation completed",
+				message: "The redirect permits an external origin.",
+			},
+			error: null,
+		});
+		expect(parseFooterDecision("The redirect permits an external origin. DELIVERY: steer")).toEqual({
+			decision: {
+				action: "steer",
+				reason: "observation completed",
+				message: "The redirect permits an external origin.",
+			},
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: steer")).toMatchObject({
+			decision: null,
+			error: "message must be non-empty",
+		});
+		expect(parseFooterDecision("The issue is already pending.\nDELIVERY: none")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: none\n\nThe issue is already pending.")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: none\nDELIVERY: steer")).toMatchObject({
+			decision: null,
+			error: "feedback contains multiple DELIVERY markers",
+		});
+		expect(parseFooterDecision("finding\nDELIVERY: STEER")).toMatchObject({ decision: null });
+	});
+
+	it("keeps recovery format-only while making cached driver tools explicitly unavailable", () => {
+		const correction = footerFormatCorrection("missing footer");
+		expect(correction).toContain("Preserve its semantic decision and finding");
+		expect(correction).toContain("cached driver request");
+		expect(correction).toContain("unavailable to this observation");
+		expect(correction).toContain("DELIVERY: print|queue|steer|interrupt");
 	});
 });
 
