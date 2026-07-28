@@ -1,0 +1,82 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { afterEach, describe, expect, it } from "vitest";
+
+const scratch = [];
+
+afterEach(() => {
+	for (const path of scratch.splice(0)) rmSync(path, { recursive: true, force: true });
+});
+
+function writeJsonl(path, rows) {
+	writeFileSync(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+}
+
+function summarize(judgments) {
+	const directory = mkdtempSync(join(tmpdir(), "hydra-summary-"));
+	scratch.push(directory);
+	const input = join(directory, "producer.jsonl");
+	const judges = join(directory, "judges.jsonl");
+	writeJsonl(input, [{
+		provider: "openai-codex",
+		model: "terra-medium",
+		arm: "C",
+		case: "webhook-security-fresh",
+		sample: 1,
+		completionValid: true,
+		formatValid: true,
+		delivery: "steer",
+		deliveryCorrect: true,
+		deliveryExact: true,
+		expectedDelivery: "steer",
+		category: "fresh",
+		providerCalls: 1,
+		recoveryAttempted: false,
+		ms: 100,
+		usage: { cost: 0.01, cacheRead: 100 },
+		hitRatio: 50,
+	}]);
+	writeJsonl(judges, judgments);
+	const result = spawnSync(
+		process.execPath,
+		["experiments/summarize-delivery-context-golden.mjs", "--input", input, "--judges", judges, "--json"],
+		{ cwd: process.cwd(), encoding: "utf8" },
+	);
+	expect(result.status, result.stderr).toBe(0);
+	return JSON.parse(result.stdout);
+}
+
+function judgment(judge, metric) {
+	return {
+		judge,
+		metric,
+		sourceKey: "terra-medium/webhook-security-fresh/1/C",
+		answer: true,
+	};
+}
+
+describe("delivery-context summary judge gate", () => {
+	it("does not treat a single judge as sufficient", () => {
+		const result = summarize([judgment("sol", "support"), judgment("sol", "target")]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(result.requiredJudgeSetComplete).toBe(false);
+		expect(group.findingQuality).toBeNull();
+		expect(group.judgeCoverage).toBe(0.5);
+	});
+
+	it("requires complete positive judgments from Sol and Opus", () => {
+		const result = summarize([
+			judgment("sol", "support"),
+			judgment("sol", "target"),
+			judgment("opus", "support"),
+			judgment("opus", "target"),
+		]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(result.requiredJudgeSetComplete).toBe(true);
+		expect(group.findingQuality).toBe(1);
+		expect(group.judgeCoverage).toBe(1);
+		expect(group.judgeAgreement).toBe(1);
+	});
+});

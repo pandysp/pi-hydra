@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import { closeOpenAICodexWebSocketSessions } from "@earendil-works/pi-ai/api/openai-codex-responses";
-import { getModel, streamSimple } from "@earendil-works/pi-ai/compat";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	buildAnthropicObservationPrompt,
 	buildJudgeObservationEnvelope,
@@ -50,13 +50,15 @@ import {
 	structuredContextFormatCorrection,
 } from "./delivery-context-candidate.mjs";
 import { argOf } from "./lib.mjs";
+import { isDeliveryBucketCorrect } from "./delivery-context-evaluation.mjs";
+import { resolveModel } from "./model-catalog.mjs";
 
 const args = process.argv.slice(2);
 const outputPath = argOf(args, "--output", "");
 const samples = Number.parseInt(argOf(args, "--samples", "2"), 10);
 const concurrency = Number.parseInt(argOf(args, "--concurrency", "2"), 10);
-const requestedModels = argOf(args, "--models", "terra,sonnet").split(",").filter(Boolean);
-const requestedArms = argOf(args, "--arms", "control,treatment").split(",").filter(Boolean);
+const requestedModels = argOf(args, "--models", "").split(",").filter(Boolean);
+const requestedArms = argOf(args, "--arms", "A,B,C").split(",").filter(Boolean);
 const requestedCases = argOf(args, "--cases", "").split(",").filter(Boolean);
 const requestedCategories = argOf(args, "--categories", "").split(",").filter(Boolean);
 const corpusName = argOf(args, "--corpus", "golden");
@@ -64,20 +66,33 @@ const retryErrors = args.includes("--retry-errors");
 const skipWarm = args.includes("--no-warm");
 
 if (!outputPath) throw new Error("--output is required");
+if (requestedModels.length === 0) throw new Error("--models is required");
 if (!Number.isInteger(samples) || samples < 1) throw new Error("--samples must be a positive integer");
 if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
 
 const modelSpecs = {
+	"luna-medium": { provider: "openai-codex", id: "gpt-5.6-luna", reasoning: "medium" },
+	"luna-high": { provider: "openai-codex", id: "gpt-5.6-luna", reasoning: "high" },
 	terra: { provider: "openai-codex", id: "gpt-5.6-terra", reasoning: "low" },
 	"terra-medium": { provider: "openai-codex", id: "gpt-5.6-terra", reasoning: "medium" },
 	"terra-high": { provider: "openai-codex", id: "gpt-5.6-terra", reasoning: "high" },
 	sol: { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "low" },
+	"sol-medium": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "medium" },
+	"sol-high": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "high" },
 	sonnet: { provider: "anthropic", id: "claude-sonnet-5", reasoning: "low" },
 	"sonnet-medium": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "medium" },
 	"sonnet-high": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "high" },
 	opus: { provider: "anthropic", id: "claude-opus-4-8", reasoning: "medium" },
+	"opus-medium": { provider: "anthropic", id: "claude-opus-5", reasoning: "medium" },
+	"opus-high": { provider: "anthropic", id: "claude-opus-5", reasoning: "high" },
+	"fable-medium": { provider: "anthropic", id: "claude-fable-5", reasoning: "medium" },
+	"fable-high": { provider: "anthropic", id: "claude-fable-5", reasoning: "high" },
 };
+const armImplementations = { A: "main-json", B: "control", C: "treatment" };
 const knownArms = new Set([
+	"A",
+	"B",
+	"C",
 	"control",
 	"main-json",
 	"base",
@@ -481,9 +496,10 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 
 async function runOne(modelName, testCase, sample, arm) {
 	const spec = modelSpecs[modelName];
-	const model = getModel(spec.provider, spec.id);
+	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unknown model ${spec.provider}/${spec.id}`);
-	const handoff = promptFor(arm, spec.provider, testCase);
+	const implementationArm = armImplementations[arm] ?? arm;
+	const handoff = promptFor(implementationArm, spec.provider, testCase);
 	const prompt = { role: "user", content: [{ type: "text", text: handoff.prompt }], timestamp: Date.now() };
 	const state = { completion: null };
 	const tools = [controlHydraTool(state)];
@@ -513,11 +529,11 @@ async function runOne(modelName, testCase, sample, arm) {
 		}
 		state.completion = null;
 		const started = performance.now();
-		const measured = await measuredObservation({ model, spec, testCase, arm, context, prompt, options, state });
+			const measured = await measuredObservation({ model, spec, testCase, arm: implementationArm, context, prompt, options, state });
 		const ms = Math.round(performance.now() - started);
 		const responseText = textOf(measured.response);
 		const usage = usageOf(measured.allMessages);
-		const routed = arm === "control" || arm === "main-json"
+			const routed = implementationArm === "control" || implementationArm === "main-json"
 			? applyControlRuntimeDedup(testCase, measured.decision)
 			: {
 					delivery: measured.decision?.action === "noop" ? "none" : (measured.decision?.action ?? null),
@@ -535,7 +551,8 @@ async function runOne(modelName, testCase, sample, arm) {
 			counterfactual: testCase.counterfactual,
 			critical: testCase.critical,
 			sample,
-			arm,
+				arm,
+				implementationArm,
 			expectedDelivery: testCase.expectedDelivery,
 			expectedFinding: testCase.expectedFinding,
 			promptHash: createHash("sha256").update(`${handoff.prompt}\n${handoff.envelope ?? ""}`).digest("hex"),
@@ -554,7 +571,8 @@ async function runOne(modelName, testCase, sample, arm) {
 			formatValid: measured.completionFormatValid ?? measured.decision !== null,
 			rawDelivery: measured.decision?.action === "noop" ? "none" : (measured.decision?.action ?? null),
 			delivery: routed.delivery,
-			deliveryCorrect: routed.delivery === testCase.expectedDelivery,
+				deliveryCorrect: isDeliveryBucketCorrect(routed.delivery, testCase.expectedDelivery),
+				deliveryExact: routed.delivery !== null && routed.delivery === testCase.expectedDelivery,
 			runtimeSuppressed: routed.suppressed,
 			message: measured.decision?.message ?? "",
 			response: responseText,

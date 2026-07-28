@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Aggregate the frozen delivery-context A/B and its blind judgments. */
+/** Aggregate delivery-context A/B/C rows and narrow blind judgments. */
 
 import { readFileSync } from "node:fs";
 import { argOf } from "./lib.mjs";
@@ -13,6 +13,9 @@ if (inputPaths.length === 0) throw new Error("--input is required");
 const readJsonl = (path) => readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
 const rows = inputPaths.flatMap(readJsonl);
 const judgments = judgePaths.flatMap(readJsonl);
+const judgeNames = [...new Set(judgments.map((item) => item.judge))].sort();
+const requiredJudges = ["opus", "sol"];
+const requiredJudgeSetComplete = requiredJudges.every((judge) => judgeNames.includes(judge));
 
 function quantile(values, fraction) {
 	if (values.length === 0) return null;
@@ -33,19 +36,46 @@ function round(value, digits = 3) {
 	return value === null ? null : Number(value.toFixed(digits));
 }
 
-const judgmentBySource = new Map();
-for (const judgment of judgments) {
-	const list = judgmentBySource.get(judgment.sourceKey) ?? [];
-	list.push(judgment);
-	judgmentBySource.set(judgment.sourceKey, list);
-}
-
 function sourceKey(row) {
 	return `${row.model}/${row.case}/${row.sample}/${row.arm}`;
 }
 
 function groupKey(row) {
 	return `${row.provider ?? "unknown"}/${row.model}/${row.arm}`;
+}
+
+const judgmentIndex = new Map();
+for (const judgment of judgments) {
+	const key = `${judgment.sourceKey}/${judgment.metric}`;
+	const list = judgmentIndex.get(key) ?? [];
+	list.push(judgment);
+	judgmentIndex.set(key, list);
+}
+
+function metricJudgments(row, metric) {
+	return judgmentIndex.get(`${sourceKey(row)}/${metric}`) ?? [];
+}
+
+function unanimous(row, metric, answer) {
+	const items = metricJudgments(row, metric).filter((item) => requiredJudges.includes(item.judge));
+	return (
+		requiredJudgeSetComplete &&
+		items.length === requiredJudges.length &&
+		new Set(items.map((item) => item.judge)).size === requiredJudges.length &&
+		items.every((item) => item.answer === answer)
+	);
+}
+
+function findingQuality(row) {
+	if (!requiredJudgeSetComplete) return null;
+	if (row.delivery === "none") return false;
+	return unanimous(row, "support", true) && unanimous(row, "target", true);
+}
+
+function avoidsImproperRepeat(row) {
+	if (!requiredJudgeSetComplete) return null;
+	if (row.delivery === "none") return true;
+	return unanimous(row, "repeat", false);
 }
 
 const waitingCategories = new Set([
@@ -56,89 +86,78 @@ const waitingCategories = new Set([
 ]);
 const followupCategories = new Set(["explicit-rejection", "material-change", "older-visible-rejection", "partial-resolution"]);
 
+function confusionMatrix(group) {
+	const matrix = {};
+	for (const row of group.filter((item) => item.completionValid)) {
+		const key = `${row.expectedDelivery}->${row.delivery}`;
+		matrix[key] = (matrix[key] ?? 0) + 1;
+	}
+	return matrix;
+}
+
 function summarizeGroup(group) {
 	const valid = group.filter((row) => row.completionValid);
-	const judged = group.flatMap((row) => judgmentBySource.get(sourceKey(row)) ?? []);
-	const allJudges = (row, predicate) => {
-		const items = judgmentBySource.get(sourceKey(row)) ?? [];
-		return items.length > 0 && items.every(predicate);
-	};
-	const semanticallyCorrect = (item) =>
-		item.support >= 3 && item.target >= 3 && item.context >= 3 && item.route >= 3 && item.verdict !== "fail";
-	const semanticCorrect = group.filter((row) => {
-		const itemJudges = judgmentBySource.get(sourceKey(row)) ?? [];
-		return itemJudges.length > 0 && itemJudges.every(semanticallyCorrect);
-	});
 	const feedbackRows = valid.filter((row) => row.expectedDelivery !== "none");
+	const noFeedbackRows = valid.filter((row) => row.expectedDelivery === "none");
 	const waitingRows = valid.filter((row) => waitingCategories.has(row.category));
 	const followupRows = valid.filter((row) => followupCategories.has(row.category));
 	const unrelatedRows = valid.filter((row) => row.category === "pending-unrelated");
-	const criticalRows = group.filter((row) => row.critical);
+	const supportItems = feedbackRows
+		.flatMap((row) => metricJudgments(row, "support"))
+		.filter((item) => requiredJudges.includes(item.judge));
+	const targetItems = feedbackRows
+		.flatMap((row) => metricJudgments(row, "target"))
+		.filter((item) => requiredJudges.includes(item.judge));
+	const repeatRows = noFeedbackRows.filter((row) => row.delivery !== "none");
+	const repeatItems = repeatRows
+		.flatMap((row) => metricJudgments(row, "repeat"))
+		.filter((item) => requiredJudges.includes(item.judge));
+	const expectedJudgments = requiredJudges.length * (feedbackRows.filter((row) => row.delivery !== "none").length * 2 + repeatRows.length);
+	const actualJudgments = supportItems.length + targetItems.length + repeatItems.length;
+	const agreementSets = [...supportItems, ...targetItems, ...repeatItems].reduce((map, item) => {
+		const key = `${item.sourceKey}/${item.metric}`;
+		const answers = map.get(key) ?? [];
+		answers.push(item.answer);
+		map.set(key, answers);
+		return map;
+	}, new Map());
+	const agreement = [...agreementSets.values()].filter((answers) => answers.length === requiredJudges.length);
+
 	return {
 		n: group.length,
 		valid: round(rate(group.map((row) => row.completionValid))),
+		formatValid: round(rate(group.map((row) => row.formatValid))),
 		oneCall: round(rate(valid.map((row) => row.providerCalls === 1))),
 		recovery: round(rate(valid.map((row) => row.recoveryAttempted))),
-		deliveryCorrect: round(rate(valid.map((row) => row.deliveryCorrect))),
-		feedbackRequiredCorrect: round(rate(valid.filter((row) => row.expectedDelivery !== "none").map((row) => row.deliveryCorrect))),
-		waitingCorrect: round(rate(valid.filter((row) => waitingCategories.has(row.category)).map((row) => row.deliveryCorrect))),
-		followupCorrect: round(rate(valid.filter((row) => followupCategories.has(row.category)).map((row) => row.deliveryCorrect))),
-		unrelatedPendingCorrect: round(rate(valid.filter((row) => row.category === "pending-unrelated").map((row) => row.deliveryCorrect))),
-		feedbackRequiredSemantic: judged.length === 0 ? null : round(rate(feedbackRows.map((row) => allJudges(row, semanticallyCorrect)))),
-		waitingSemantic: judged.length === 0
-			? null
-			: round(rate(waitingRows.map((row) => allJudges(row, (item) => item.context >= 3 && item.verdict !== "fail")))),
-		followupSemantic: judged.length === 0 ? null : round(rate(followupRows.map((row) => allJudges(row, semanticallyCorrect)))),
-		unrelatedPendingSemantic: judged.length === 0 ? null : round(rate(unrelatedRows.map((row) => allJudges(row, semanticallyCorrect)))),
-		criticalSemantic: judged.length === 0 ? null : round(rate(criticalRows.map((row) => allJudges(row, semanticallyCorrect)))),
-		routeSemantic: judged.length === 0
-			? null
-			: round(rate(valid.map((row) => allJudges(row, (item) => item.route >= 3 && item.verdict !== "fail")))),
+		findingQuality: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map(findingQuality))),
+		support: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => row.delivery !== "none" && unanimous(row, "support", true)))),
+		target: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => row.delivery !== "none" && unanimous(row, "target", true)))),
+		improperRepeatAvoidance: !requiredJudgeSetComplete ? null : round(rate(noFeedbackRows.map(avoidsImproperRepeat))),
+		deliveryBucketCorrect: round(rate(valid.map((row) => row.deliveryCorrect))),
+		deliveryExact: round(rate(valid.map((row) => row.deliveryExact ?? row.delivery === row.expectedDelivery))),
+		feedbackBucketCorrect: round(rate(feedbackRows.map((row) => row.deliveryCorrect))),
+		waitingBucketCorrect: round(rate(waitingRows.map((row) => row.deliveryCorrect))),
+		followupQuality: !requiredJudgeSetComplete ? null : round(rate(followupRows.map(findingQuality))),
+		unrelatedPendingQuality: !requiredJudgeSetComplete ? null : round(rate(unrelatedRows.map(findingQuality))),
 		falseInterrupts: valid.filter((row) => row.delivery === "interrupt" && row.expectedDelivery !== "interrupt").length,
-		genuineInterrupt: round(rate(valid.filter((row) => row.expectedDelivery === "interrupt").map((row) => row.delivery === "interrupt"))),
+		genuineInterruptExact: round(rate(valid.filter((row) => row.expectedDelivery === "interrupt").map((row) => row.delivery === "interrupt"))),
 		runtimeSuppressed: valid.filter((row) => row.runtimeSuppressed).length,
 		latencyMedianMs: quantile(valid.map((row) => row.ms), 0.5),
 		latencyP95Ms: quantile(valid.map((row) => row.ms), 0.95),
-		costMean: round(mean(valid.map((row) => row.usage?.cost ?? 0)), 6),
+		observerCostMean: round(mean(valid.map((row) => row.usage?.cost ?? 0)), 6),
 		cacheHitMean: round(mean(valid.map((row) => row.hitRatio ?? 0)), 2),
 		zeroCacheReads: valid.filter((row) => (row.usage?.cacheRead ?? 0) === 0).length,
-		judgeN: judged.length,
-		judgeScoreMean: round(mean(judged.map((item) => item.total)), 2),
-		judgeFailureRate: round(rate(judged.map((item) => item.verdict === "fail"))),
-		judgeDisputes: judged.filter((item) => item.gold_disputed).length,
-		semanticCorrect: judged.length === 0 ? null : round(semanticCorrect.length / group.length),
+		judgeCoverage: expectedJudgments === 0 ? null : round(actualJudgments / expectedJudgments),
+		judgeAgreement: !requiredJudgeSetComplete || agreement.length === 0
+			? null
+			: round(rate(agreement.map((answers) => new Set(answers).size === 1))),
+		confusion: confusionMatrix(group),
 	};
 }
 
 const groups = {};
 for (const key of [...new Set(rows.map(groupKey))].sort()) {
 	groups[key] = summarizeGroup(rows.filter((row) => groupKey(row) === key));
-}
-
-const pairwise = {};
-for (const judge of [...new Set(judgments.map((item) => item.judge))].sort()) {
-	const judgeRows = judgments.filter((item) => item.judge === judge);
-	const index = new Map(judgeRows.map((item) => [`${item.model}/${item.case}/${item.sample}/${item.arm}`, item]));
-	const arms = [...new Set(judgeRows.map((item) => item.arm))].sort();
-	for (let leftIndex = 0; leftIndex < arms.length; leftIndex++) {
-		for (let rightIndex = leftIndex + 1; rightIndex < arms.length; rightIndex++) {
-			const leftArm = arms[leftIndex];
-			const rightArm = arms[rightIndex];
-			let left = 0;
-			let right = 0;
-			let tie = 0;
-			for (const item of judgeRows.filter((row) => row.arm === leftArm)) {
-				const other = index.get(`${item.model}/${item.case}/${item.sample}/${rightArm}`);
-				if (!other) continue;
-				if (item.total > other.total) left++;
-				else if (item.total < other.total) right++;
-				else tie++;
-			}
-			if (left + right + tie > 0) {
-				pairwise[`${judge}/${leftArm}_vs_${rightArm}`] = { [leftArm]: left, [rightArm]: right, tie };
-			}
-		}
-	}
 }
 
 const byProviderArm = {};
@@ -152,11 +171,13 @@ for (const provider of [...new Set(rows.map((row) => row.provider).filter(Boolea
 const result = {
 	inputs: inputPaths,
 	judges: judgePaths,
+	judgeNames,
+	requiredJudges,
+	requiredJudgeSetComplete,
 	rows: rows.length,
 	judgments: judgments.length,
 	groups,
 	byProviderArm,
-	pairwise,
 };
 
 if (jsonOutput) {
@@ -164,20 +185,13 @@ if (jsonOutput) {
 	process.exit(0);
 }
 
-console.log("# Delivery-context golden A/B summary\n");
-console.log(`Rows: ${rows.length}; blind judgments: ${judgments.length}.\n`);
-console.log("| Provider/model/arm | n | valid | semantic | wait | follow-up | route | median | p95 | cost | cache | judge | fails |");
+const pct = (value) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
+console.log("# Delivery-context golden A/B/C summary\n");
+console.log(`Rows: ${rows.length}; narrow blind judgments: ${judgments.length}; judges: ${judgeNames.join(", ") || "none"}.\n`);
+console.log("| Provider/model/arm | n | quality | observer cost | bucket | exact | repeat restraint | format | median | p95 | cache | judge coverage | agreement |");
 console.log("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 for (const [key, item] of Object.entries(groups)) {
-	const pct = (value) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
 	console.log(
-		`| ${key} | ${item.n} | ${pct(item.valid)} | ${pct(item.feedbackRequiredSemantic ?? item.feedbackRequiredCorrect)} | ${pct(item.waitingSemantic ?? item.waitingCorrect)} | ${pct(item.followupSemantic ?? item.followupCorrect)} | ${pct(item.routeSemantic ?? item.deliveryCorrect)} | ${item.latencyMedianMs ?? "—"}ms | ${item.latencyP95Ms ?? "—"}ms | $${item.costMean ?? "—"} | ${item.cacheHitMean ?? "—"}% | ${item.judgeScoreMean ?? "—"}/20 | ${pct(item.judgeFailureRate)} |`,
+		`| ${key} | ${item.n} | ${pct(item.findingQuality)} | $${item.observerCostMean ?? "—"} | ${pct(item.deliveryBucketCorrect)} | ${pct(item.deliveryExact)} | ${pct(item.improperRepeatAvoidance)} | ${pct(item.formatValid)} | ${item.latencyMedianMs ?? "—"}ms | ${item.latencyP95Ms ?? "—"}ms | ${item.cacheHitMean ?? "—"}% | ${pct(item.judgeCoverage)} | ${pct(item.judgeAgreement)} |`,
 	);
-}
-
-if (Object.keys(pairwise).length > 0) {
-	console.log("\n## Blind pairwise\n");
-	for (const [comparison, counts] of Object.entries(pairwise)) {
-		console.log(`- ${comparison}: ${Object.entries(counts).map(([key, value]) => `${key} ${value}`).join(", ")}`);
-	}
 }

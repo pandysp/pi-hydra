@@ -33,19 +33,19 @@ the golden set. Its pre-golden hashes are:
 | `heads/security.md` | `42c33b0c8570c5a201d55b2dceb1a05cadf47c1ee30240dc34f2e21eb937453b` |
 | `heads/quality.md` | `dd9b0d691c5cff10fa3abe22a2963d174976a91e11433e0a3b4624a7582109c4` |
 
-The golden corpus contains 36 cases derived from three saved, real Pi
+The golden corpus contains 41 cases derived from three saved, real Pi
 trajectories. Compact snapshots retain the source session and message IDs.
 Counterfactual driver reactions are allowed only to expose a decision boundary;
 they are labeled and change one fact at a time.
 
 The frozen semantic manifest hash is
-`f576ad4280f85bd5ca6671d64f5399c3d98ed81a42203bd7e1ce6af4008f4ac4`.
+`8dcf719754b23296ee8333bd868107841d43f135ce8e47f5498505195d228773`.
 
 | Trajectory | Cases | Natural risks |
 |---|---:|---|
-| GitHub webhook enrichment | 12 | missing HMAC, silent async failures, body limits, tests |
+| GitHub webhook enrichment | 16 | missing HMAC, hook ordering, async failures, operator settings, destructive repair |
 | Login redirect | 12 | open redirects, URL normalization, missing-user auth, tests |
-| Diagnostics endpoint | 12 | environment leakage, mutating reversal, verification |
+| Diagnostics endpoint | 13 | environment leakage, mutating reversal, verification, deployment settings |
 
 Across the corpus the expected outcomes include genuine `none`, `print`,
 `queue`, `steer`, and `interrupt` decisions. The contextual boundaries include:
@@ -59,6 +59,11 @@ Across the corpus the expected outcomes include genuine `none`, `print`,
 - material change; and
 - older visible feedback that the bounded ledger no longer carries.
 
+Minority routes have at least two examples: three `print`, three `queue`, and
+two `interrupt` cases. One in-flight destructive action has a one-fact
+not-yet-started `steer` counterfactual. A wait case uses a semantic paraphrase
+rather than byte-identical delivery text.
+
 Security and quality exercise judge-only completion. The frozen acting-head
 regression suite remains a separate gate because its file and tool mutations
 need a real workspace, not a static judgment corpus. No golden case is selected
@@ -66,16 +71,18 @@ or rewritten after treatment results are visible.
 
 ## Compared paths
 
-The required blinded comparison is paired and randomized:
+The required blinded A/B/C comparison is paired and randomized:
 
-1. **Control:** actual production behavior at `350e6f5`, including its current
-   completion protocol and exact-message runtime deduplication.
-2. **Treatment:** capability-based tool-free completion for judge-only heads,
+1. **A — shipped main:** compact tool-free JSON from `origin/main` at
+   `b51c157`, including its exact-message runtime deduplication.
+2. **B — typed control:** the typed `hydra` completion path at `350e6f5`,
+   including its exact-message runtime deduplication.
+3. **C — context treatment:** capability-based tool-free completion for judge-only heads,
    the existing tool loop for acting heads, the bounded factual delivery
    context, and no runtime veto of a valid repeated decision.
 
-A frozen tool-free-without-context arm may be run as a causal diagnostic. It
-cannot replace the control/treatment result and may not be tuned from golden
+Legacy experimental arms may be run on the development corpus as causal
+diagnostics. They cannot replace A/B/C and may not be tuned from golden
 outcomes.
 
 The provider payload in every arm retains representative driver tool schemas
@@ -84,15 +91,13 @@ actual completion channel. This reproduces the production cache-replay
 boundary: cached tools remain visible to the model even when unavailable to a
 judge-only observation.
 
-Primary producers are `gpt-5.6-terra` at low thinking and `claude-sonnet-5` at
-low thinking, with two samples per case and arm. `gpt-5.6-sol` at low and
-`claude-opus-4-8` at medium receive a one-sample portability pass. Fable and
-high/xhigh producer settings are out of scope. Model and arm labels are hidden
-from qualitative judges.
+The producer matrix is Luna 5.6, Terra 5.6, Sol 5.6, Sonnet 5, Opus 5, and
+Fable 5, each at medium and high thinking, with two samples per case and arm.
+This is 2,952 producer observations. Model, effort, arm, actual route, expected
+route, category, and criticality are hidden from qualitative judges.
 
-Use a strong OpenAI judge and, when Anthropic credentials permit, a strong
-Anthropic judge. Judge disagreement is reported and manually adjudicated; it
-is not averaged away.
+Every gated qualitative row requires both Sol 5.6 high and Opus 5 high.
+Disagreement is reported and manually adjudicated; it is not averaged away.
 
 ## Acceptance criteria
 
@@ -115,7 +120,20 @@ All gates are declared before production implementation.
 
 ### Contextual judgment
 
-Across each primary provider separately:
+Finding quality is derived from two narrow blind TRUE/FALSE judgments:
+
+- **support:** every factual claim is evidenced by the visible trajectory and
+  delivery state; and
+- **target:** the message identifies the frozen target or a concretely
+  evidenced defect that is at least as consequential.
+
+Both judges must return true for both questions. The route and contextual gold
+labels are absent from these prompts. A missing message fails finding quality
+deterministically. Improper repetition is a separate narrow TRUE/FALSE
+judgment, run only when an expected-`none` case sends a message. A `none`
+decision avoids repetition deterministically.
+
+Across each producer configuration separately:
 
 - at least 85% of cases that require feedback deliver the expected finding or
   a blind-judge-equivalent stronger finding;
@@ -126,38 +144,38 @@ Across each primary provider separately:
 - at least 85% of unrelated-pending cases preserve the fresh finding; and
 - no contextual category collapses to zero on either provider.
 
-Treatment's explicit-rejection recovery may not trail control by more than ten
-percentage points. A relative improvement is reported but is not required:
-current exact-message deduplication can be bypassed by a model paraphrase, so a
-large treatment/control gap would measure wording instability rather than the
-runtime guarantee. The guarantee is tested deterministically: an intentionally
-repeated byte-identical finding must be deliverable after rejection. Treatment's
-duplicate rate on wait/pending/resolved cases may not exceed control by more
-than 10 percentage points.
+C's explicit-rejection recovery may not trail A by more than ten percentage
+points. Relative improvement is reported but is not required: exact-message
+deduplication can be bypassed by paraphrasing, so a large arm gap may partly
+measure wording instability. The runtime guarantee is tested deterministically:
+an intentionally repeated byte-identical finding must be deliverable after
+rejection. C's improper-repeat rate on expected-`none` cases may not exceed A
+by more than ten percentage points.
 
-### Delivery choice and qualitative quality
+### Delivery choice
 
-- Exact delivery choice is correct in at least 85% of routed cases on each
-  primary provider.
-- There are zero false `interrupt` decisions. Every genuine interrupt case is
-  interrupted in both primary-provider samples.
-- Each treatment's mean blind quality score is no more than 0.5 points below
-  control on a 20-point rubric, and its blind failure rate is no more than five
-  percentage points higher.
-- Any case where treatment prevents a critical correct finding, invents an
-  unsupported critical finding, or routes an ordinary review comment as an
-  interrupt is a release blocker regardless of the aggregate.
+The primary deterministic routing metric has two buckets:
+
+- driver-invisible: `none` or `print`; and
+- driver-aware: `queue`, `steer`, or `interrupt`.
+
+Bucket choice is correct in at least 85% of cases for each producer
+configuration. Exact route is retained as a diagnostic confusion matrix, not a
+gate. False and missed interrupts are surfaced for inspection but have no
+separate threshold in this experiment. Any case where C prevents a critical
+correct finding or invents an unsupported critical finding is a release
+blocker regardless of the aggregate.
 
 ### UX and economics
 
 Observer and driver costs are reported separately.
 
-- Treatment median observer latency may be at most 15% above control and p95 at
-  most 20% above control on each primary provider.
-- Treatment observer cost may be at most 10% above control per observation on
-  each primary provider.
-- Cache-hit ratio may be at most three percentage points below the paired
-  control. OpenAI zero-read incidents are reported separately rather than
+- C median observer latency may be at most 15% above A and p95 at most 20%
+  above A on each producer configuration.
+- C observer cost may be at most 10% above A per observation on each producer
+  configuration. B remains the causal typed-completion comparison.
+- Cache-hit ratio may be at most three percentage points below paired A.
+  OpenAI zero-read incidents are reported separately rather than
   hidden in the mean.
 - Hydra adds no driver provider call for `none` or `print`. Any additional
   driver work caused by intentionally delivered feedback is reported as a

@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildAnthropicObservationPrompt, buildObservationEnvelope } from "../utils.ts";
 import { GOLDEN_CASES, GOLDEN_HEADS, GOLDEN_SOURCES } from "./delivery-context-golden-cases.mjs";
+import {
+	DRIVER_AWARE,
+	DRIVER_INVISIBLE,
+	deliveryBucket,
+	isDeliveryBucketCorrect,
+} from "./delivery-context-evaluation.mjs";
+import { buildJudgePrompt, parseBinaryJudgments } from "./delivery-context-judge-protocol.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -21,7 +28,8 @@ function frozenManifest() {
 			head,
 			state,
 			expectedDelivery,
-			expectedFinding,
+				expectedFinding,
+				findingTarget,
 			category,
 			counterfactual,
 			critical,
@@ -32,7 +40,8 @@ function frozenManifest() {
 			head,
 			state,
 			expectedDelivery,
-			expectedFinding,
+				expectedFinding,
+				findingTarget,
 			category,
 			counterfactual,
 			critical,
@@ -42,9 +51,9 @@ function frozenManifest() {
 }
 
 describe("frozen delivery-context golden corpus", () => {
-	it("contains exactly twelve cases from each of three real source trajectories", () => {
-		expect(GOLDEN_CASES).toHaveLength(36);
-		expect(counts("trajectory")).toEqual({ diagnostics: 12, login: 12, webhook: 12 });
+	it("contains 41 cases derived from three real source trajectories", () => {
+		expect(GOLDEN_CASES).toHaveLength(41);
+		expect(counts("trajectory")).toEqual({ diagnostics: 13, login: 12, webhook: 16 });
 		expect(Object.keys(GOLDEN_SOURCES).sort()).toEqual(["diagnostics", "login", "webhook"]);
 		for (const source of Object.values(GOLDEN_SOURCES)) {
 			expect(source.session).toMatch(/^[0-9a-f-]{36}$/);
@@ -53,7 +62,7 @@ describe("frozen delivery-context golden corpus", () => {
 	});
 
 	it("covers the declared contexts and every delivery route", () => {
-		expect(counts("expectedDelivery")).toEqual({ interrupt: 1, none: 14, print: 1, queue: 2, steer: 18 });
+		expect(counts("expectedDelivery")).toEqual({ interrupt: 2, none: 14, print: 3, queue: 3, steer: 19 });
 		const categories = new Set(GOLDEN_CASES.map((item) => item.category));
 		for (const category of [
 			"fresh",
@@ -74,20 +83,60 @@ describe("frozen delivery-context golden corpus", () => {
 		}
 	});
 
+	it("uses the frozen two-bucket delivery contract", () => {
+		expect(deliveryBucket("none")).toBe(DRIVER_INVISIBLE);
+		expect(deliveryBucket("print")).toBe(DRIVER_INVISIBLE);
+		for (const delivery of ["queue", "steer", "interrupt"]) {
+			expect(deliveryBucket(delivery)).toBe(DRIVER_AWARE);
+		}
+		expect(isDeliveryBucketCorrect(null, "steer")).toBe(false);
+	});
+
 	it("keeps compact trajectories provider-safe and delivery state bounded", () => {
 		for (const testCase of GOLDEN_CASES) {
 			expect(testCase.messages[0]?.role).toBe("user");
 			for (let index = 1; index < testCase.messages.length; index++) {
 				expect(testCase.messages[index].role).not.toBe(testCase.messages[index - 1].role);
 			}
-			expect(testCase.state.pending.every((item) => item.delivery === "queue" || item.delivery === "steer")).toBe(true);
-			expect(testCase.state.lastByThisHead === null || typeof testCase.state.lastByThisHead.message === "string").toBe(true);
+				expect(testCase.state.pending.every((item) => item.delivery === "queue" || item.delivery === "steer")).toBe(true);
+				expect(testCase.state.lastByThisHead === null || typeof testCase.state.lastByThisHead.message === "string").toBe(true);
+				expect(testCase.expectedFinding === "none" ? testCase.findingTarget : typeof testCase.findingTarget).toBe(
+					testCase.expectedFinding === "none" ? null : "string",
+				);
+			}
+		});
+
+	it("includes semantic rather than byte-identical repeat coverage", () => {
+		const unseen = GOLDEN_CASES.find((item) => item.id === "webhook-security-last-unseen");
+		const pending = GOLDEN_CASES.find((item) => item.id === "webhook-security-pending-equivalent");
+		expect(unseen.state.lastByThisHead.message).not.toBe(pending.state.pending[0].message);
+		expect(unseen.expectedDelivery).toBe("none");
+	});
+
+	it("keeps narrow judge prompts blind to unrelated gold labels", () => {
+		const testCase = GOLDEN_CASES.find((item) => item.id === "webhook-security-fresh");
+		const supportPrompt = buildJudgePrompt("support", [{ testCase, message: "Verify the webhook signature." }]);
+		const targetPrompt = buildJudgePrompt("target", [{ testCase, message: "Verify the webhook signature." }]);
+		for (const prompt of [supportPrompt, targetPrompt]) {
+			expect(prompt).not.toContain("Expected delivery:");
+			expect(prompt).not.toContain("Category:");
+			expect(prompt).not.toContain("Critical:");
+			expect(prompt).not.toContain("Actual delivery:");
 		}
+		expect(supportPrompt).not.toContain(testCase.findingTarget);
+		expect(targetPrompt).toContain(testCase.findingTarget);
+	});
+
+	it("requires binary judge answers with reasoning", () => {
+		expect(parseBinaryJudgments('{"cases":[{"id":"j01","reasoning":"Visible in code.","answer":true}]}', 1)).toEqual([
+			{ id: "j01", reasoning: "Visible in code.", answer: true },
+		]);
+		expect(parseBinaryJudgments('{"cases":[{"id":"j01","answer":true}]}', 1)).toBeNull();
 	});
 
 	it("freezes the complete semantic manifest", () => {
 		expect(hash(JSON.stringify(frozenManifest()))).toBe(
-			"f576ad4280f85bd5ca6671d64f5399c3d98ed81a42203bd7e1ce6af4008f4ac4",
+			"8dcf719754b23296ee8333bd868107841d43f135ce8e47f5498505195d228773",
 		);
 	});
 
