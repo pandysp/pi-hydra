@@ -94,9 +94,11 @@ const modelSpecs = {
 	sonnet: { provider: "anthropic", id: "claude-sonnet-5", reasoning: "low" },
 	"sonnet-medium": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "medium" },
 	"sonnet-high": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "high" },
+	"sonnet-xhigh": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "xhigh" },
 	opus: { provider: "anthropic", id: "claude-opus-4-8", reasoning: "medium" },
 	"opus-medium": { provider: "anthropic", id: "claude-opus-5", reasoning: "medium" },
 	"opus-high": { provider: "anthropic", id: "claude-opus-5", reasoning: "high" },
+	"opus-xhigh": { provider: "anthropic", id: "claude-opus-5", reasoning: "xhigh" },
 	"fable-medium": { provider: "anthropic", id: "claude-fable-5", reasoning: "medium" },
 	"fable-high": { provider: "anthropic", id: "claude-fable-5", reasoning: "high" },
 };
