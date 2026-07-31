@@ -52,3 +52,24 @@ cannot be assumed to transfer.
   *.failures.jsonl after every stage; require judgedComplete per cell.
 - Never append judgments to the medium screen's files (silent pooling).
 - Anthropic auth valid to ~03:47 local; producer reads it at startup.
+
+## Addendum — opus-high replication (pre-registered before any opus-high data)
+
+Same instrument, builders, judges, corpus (17 cases x 2 samples x 3 arms
+= 102 rows), config opus-high (claude-opus-5, reasoning high).
+
+- H1 (routing): F confirmed at opus-high iff deliveryBucketCorrect(F) >=
+  A0 + 8pp. Same for J (registered this time).
+- H2 (quality floor): an arm is refuted iff findingQuality (defined
+  PRECISELY as central AND target, unanimous judges, judgedComplete
+  required) < A0 - 5pp. Additionally REPORT support and target
+  separately; a floor breach carried entirely by `target` on
+  dev-security-user-only (the single case carrying the xhigh breach) is
+  a REPLICATION of the xhigh finding, not an independent one.
+- H3 (X5 metric, named): the cross-effort routing comparison uses
+  deliveryBucketCorrect; deliveryExact is reported alongside.
+- H4 (economy): the sweep's production-priced +15% (F vs A0 at
+  opus-high) stands as the cost basis; in-run cost is footnote.
+- Scope: with consistent opus-high results, envelope-arm refutation (or
+  survival) may be stated across the two primary configs; still never
+  "replicated" beyond opus.
