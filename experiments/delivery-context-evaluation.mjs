@@ -76,7 +76,11 @@ export const SCREEN_STEER_CLAUSE =
 export const SCREEN_DEDUP_CLAUSE =
 	"Semantically equivalent feedback counts as already delivered even while the underlying issue remains unresolved.";
 
-const SCREEN_ROUTING = `Route by who must act and when. ${SCREEN_STEER_CLAUSE} ${SCREEN_DEDUP_CLAUSE}`;
+export const SCREEN_ROUTING = `Route by who must act and when. ${SCREEN_STEER_CLAUSE} ${SCREEN_DEDUP_CLAUSE}`;
+
+export function screenDiscipline(head) {
+	return `Every claim must be supported by the visible trajectory. Keep any finding to at most two sentences and never prefix it with [${head}].`;
+}
 
 /** J: A's three-field shape and vocabulary verbatim, no rename. */
 export const SCREEN_JSON_GRAMMAR = `Reply with one JSON object, nothing else:
@@ -89,13 +93,7 @@ export const SCREEN_FOOTER_GRAMMAR =
 
 /** The provider-invariant part of the unified envelope. */
 export function screenProtocolBlock(head, grammar) {
-	return [
-		SCREEN_TOOL_DENIAL,
-		SCREEN_COMPLETION_CARDINALITY,
-		grammar,
-		SCREEN_ROUTING,
-		`Every claim must be supported by the visible trajectory. Keep any finding to at most two sentences and never prefix it with [${head}].`,
-	].join("\n\n");
+	return [SCREEN_TOOL_DENIAL, SCREEN_COMPLETION_CARDINALITY, grammar, SCREEN_ROUTING, screenDiscipline(head)].join("\n\n");
 }
 
 function buildScreenObservationEnvelope(head, grammar) {
@@ -122,6 +120,55 @@ export function buildScreenFooterObservationPrompt(head, instruction) {
 	return buildScreenObservationPrompt(head, instruction, SCREEN_FOOTER_GRAMMAR);
 }
 
+/**
+ * The acting half of the same envelope. Only the first two units change: an
+ * acting head has tools, so the denial is false, and it works across turns, so
+ * "exactly one turn" is false too — `wave2-simplicity §4` scopes the head kind
+ * to a paragraph, not a contract. Routing and discipline stay byte-identical
+ * to the judge surface, which is the unification claim the invariant check
+ * asserts; the completion grammar is the arm.
+ */
+export const SCREEN_ACTING_CARDINALITY =
+	"Take as many turns as the lens needs to do the work, then complete the observation exactly once. Removing your own head successfully completes it; do not complete again afterward.";
+
+/**
+ * Head management is named by capability, never by schema key: the wide and
+ * management-only schemas spell the operation differently and the tool
+ * description already carries that difference, so this paragraph stays
+ * byte-identical across the three channel arms.
+ */
+function screenActingToolStatus(tools, activeHeads, afterChange) {
+	const snapshot =
+		tools.includes("hydra") && activeHeads !== undefined
+			? ` Hydra snapshot at observation start: active heads are ${activeHeads.join(", ") || "none"}; later hydra tool results supersede this snapshot.`
+			: "";
+	const postChange =
+		afterChange === "print"
+			? ' After a successful write or edit, deliver "print" with a note describing it; the runtime enforces this.'
+			: afterChange === "noop"
+				? ' After a successful write or edit, deliver "none" with an empty message because the changed file is the work product; the runtime enforces this.'
+				: "";
+	return `You may use only these tools: ${tools.join(", ")} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. Head management is available only when hydra is among your allowed work tools, and a successful change prints its own receipt automatically; do not repeat it.${snapshot}${postChange}`;
+}
+
+export function screenActingProtocolBlock(head, grammar, options) {
+	return [
+		screenActingToolStatus(options.tools, options.activeHeads, options.afterChange),
+		SCREEN_ACTING_CARDINALITY,
+		grammar,
+		SCREEN_ROUTING,
+		screenDiscipline(head),
+	].join("\n\n");
+}
+
+export function buildScreenActingObservationPrompt(head, instruction, grammar, options) {
+	return `<system-reminder>Side watcher with tool access. Review the visible trajectory through the lens below; follow it in full. The lens alone defines scope, intervention criteria, suppression, and deduplication.\n\nLENS: ${instruction}\n\n${screenActingProtocolBlock(head, grammar, options)}</system-reminder>`;
+}
+
+export function buildScreenActingObservationEnvelope(head, grammar, options) {
+	return `Side watcher with tool access. The preceding user message is the complete ${head} lens; follow it in full. The lens alone defines scope, intervention criteria, suppression, and deduplication. Review the visible trajectory.\n\n${screenActingProtocolBlock(head, grammar, options)}`;
+}
+
 const DRIVER_TOOL_STUBS = [
 	{ name: "read", description: "Read a file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
 	{ name: "bash", description: "Run a shell command", parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
@@ -131,7 +178,7 @@ const DRIVER_TOOL_STUBS = [
 
 // Management-only public schema: a tool-free completion contract must not make
 // every driver request pay for a completion action it never calls.
-const MANAGEMENT_ONLY_HYDRA_TOOL = {
+export const MANAGEMENT_ONLY_HYDRA_TOOL = {
 	name: "hydra",
 	description:
 		"Add or remove one active head idempotently. operation is add or remove, head is the head name, and message explains why the change fits the trajectory. A successful observer-originated change automatically prints that explanation.",

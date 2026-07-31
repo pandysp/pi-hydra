@@ -1,0 +1,17 @@
+4151fbb6dff7b195db7f026f9b139df70cd401f3717e4f4e013fac4798c425b6  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-anthropic-flat-brief-low.jsonl
+8b5f0d5fef1c6cdc6bca668ced1537a9276c65a2b8fb730988f0c4667f31c9db  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-anthropic-hybrid-low.jsonl
+57e02b611d0f67309883ea99538ec7874a8524aeca718bfa12b78f9c043cfb81  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-anthropic.jsonl
+925757c4a3e460c8e587fdf8dbbbc83653574836a557f898c5cf93b59935a0e9  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-control-v2.jsonl
+7e6ff712eaa9b0d74e0ad3880ad4bb86c65a3f80f7e7fe8d08b37c66e545fc74  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-full.jsonl
+6929a5e3b7d841eb9212de19c3c20e483b1c39fdee6bff864adf2a7dd4dc83ee  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-openai-final-paired-v2-high.jsonl
+a49180671244d7980b3c9b66ec6637a4f398b1dbb6bb66601edd30a5c0b65d79  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-openai-final-paired-v2-xhigh.jsonl
+e27de421255b4820e0ebd89f1645eca1e23f72d8e34b7e1a9199b88d525e248e  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-openai-final-paired-v2.jsonl
+b13036aa78d9def922734babb30a8970beb76f28f6d62f63d90312becc21539b  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-openai-final-paired.jsonl
+020d987dc6fffae9789eac65fd4140737df679f333d7fe513175058d5574b269  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-sample2.jsonl
+241705629bcc24b1d84b0d295b15cb95eafd59fc2765f4362df6790a23cab09e  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-self-control.jsonl
+ec05a98a68c4ce770e893d9650181659ac0e4acef4c6809b2c3f6b6f50613f40  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-smoke.jsonl
+7f6aa88709b62e59af0b7bc9ab2f9161425b9f82dbc7fe41d7ac8b6d8785b35d  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-treatment-flat-final.jsonl
+c41b34c7eee833b7f5bdd0d532d2a2c6692249c405d7b1d48146c32dc2f00411  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-treatment-flat-high.jsonl
+5710f36d5fec30fb3cc3818134375005252a6dcec3a3440788ca6e86ce20e77b  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-treatment-flat-xhigh.jsonl
+3077b1cc0b997987919dad237fa28036c7d3f8ca8eb5ada657a1bcd3465f499b  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-treatment-v2.jsonl
+1a5339f989fe2777a46650fb29225d244d48501125bbc499ef3c379974be766c  /Users/spannagel/scratch/2026-07-24-hydra-completion-benchmark/acting-treatment-v3.jsonl
