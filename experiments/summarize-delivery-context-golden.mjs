@@ -9,6 +9,12 @@ const inputPaths = argOf(args, "--input", "").split(",").filter(Boolean);
 const judgePaths = argOf(args, "--judges", "").split(",").filter(Boolean);
 const requiredJudges = argOf(args, "--required-judges", "opus,sol").split(",").map((name) => name.trim()).filter(Boolean);
 const baselineArm = argOf(args, "--baseline", "A0");
+// Pre-registered for the opus-xhigh redo: on Anthropic the arm contract bills
+// as cacheWrite (input reads ~2) and output includes thinking, so the R3 token
+// sum is blind on one side and effort-sensitive on the other. With this flag
+// R3 reports its numbers but carries no verdict; R1/R2 carry the gate rollup
+// and economy is priced separately from token columns.
+const r3Informational = args.includes("--r3-informational");
 const gateMode = args.includes("--gates");
 const jsonOutput = args.includes("--json");
 if (inputPaths.length === 0) throw new Error("--input is required");
@@ -274,6 +280,11 @@ function summarizeGroup(group) {
 		latencyP95Ms: quantile(group.flatMap((row) => Number.isFinite(row.ms) ? [row.ms] : []), 0.95),
 		observerCostMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.cost) ? [row.usage.cost] : [])), 6),
 		outputTokenMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.output) ? [row.usage.output] : [])), 1),
+		reasoningTokenMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.reasoning) ? [row.usage.reasoning] : [])), 1),
+		// Provider-neutral billed-token basis: on Anthropic the arm contract
+		// bills as cacheWrite while usage.input reads ~2, so input alone is
+		// blind to the envelope. Paired across arms the driver prefix cancels.
+		billedTokenMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.output) ? [(row.usage.input ?? 0) + (row.usage.cacheRead ?? 0) + (row.usage.cacheWrite ?? 0) + row.usage.output] : [])), 1),
 		uncachedInputMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.input) ? [row.usage.input] : [])), 1),
 		cacheHitMean: round(mean(group.flatMap((row) => Number.isFinite(row.hitRatio) ? [row.hitRatio] : [])), 2),
 		zeroCacheReads: group.filter((row) => row.usage?.cacheRead === 0).length,
@@ -329,16 +340,18 @@ function gatesFor(config, baseline, candidate) {
 		// uncached input (the contract/envelope the arm adds to every observation)
 		// plus generated output. A cost ratio is dominated by the synthetic driver
 		// prefix the harness happens to use, so it is reported but carries no verdict.
-		compare(
-			"R3 design tokens",
-			candidate.uncachedInputMean === null || candidate.outputTokenMean === null
-				? null
-				: round(candidate.uncachedInputMean + candidate.outputTokenMean, 1),
-			baseline.uncachedInputMean === null || baseline.outputTokenMean === null
-				? null
-				: round((baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1, 1),
-			candidate.uncachedInputMean + candidate.outputTokenMean <= (baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1,
-			"uncached input + output tokens <= baseline + 10% (production-relevant economics; prefix-independent)",
+		((designTokens) => (r3Informational ? { ...designTokens, verdict: "informational", detail: `${designTokens.detail}; --r3-informational: no verdict carried` } : designTokens))(
+			compare(
+				"R3 design tokens",
+				candidate.uncachedInputMean === null || candidate.outputTokenMean === null
+					? null
+					: round(candidate.uncachedInputMean + candidate.outputTokenMean, 1),
+				baseline.uncachedInputMean === null || baseline.outputTokenMean === null
+					? null
+					: round((baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1, 1),
+				candidate.uncachedInputMean + candidate.outputTokenMean <= (baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1,
+				"uncached input + output tokens <= baseline + 10% (production-relevant economics; prefix-independent)",
+			),
 		),
 		{
 			rule: "R3 cost (informational)",

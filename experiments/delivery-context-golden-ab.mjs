@@ -210,11 +210,12 @@ function usageOf(messages) {
 			(sum, message) => ({
 				input: sum.input + (message.usage?.input ?? 0),
 				output: sum.output + (message.usage?.output ?? 0),
+				reasoning: sum.reasoning + (message.usage?.reasoning ?? 0),
 				cacheRead: sum.cacheRead + (message.usage?.cacheRead ?? 0),
 				cacheWrite: sum.cacheWrite + (message.usage?.cacheWrite ?? 0),
 				cost: sum.cost + (message.usage?.cost?.total ?? 0),
 			}),
-			{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+			{ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
 		);
 }
 
