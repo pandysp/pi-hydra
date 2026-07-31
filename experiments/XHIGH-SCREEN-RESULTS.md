@@ -87,6 +87,47 @@ width (J exists in 3 cells ever) and X6. Statistical bound on all of it:
 best case-level sign test p=0.0625 (floor at n=17); the gates fired on
 rates as registered, the p-values bound the confidence.
 
+## Opus-high replication (same day, pre-registered addendum)
+
+102 rows, same instrument/corpus/judges, zero errors/failures,
+judgedComplete all cells. Artifacts:
+`experiments/artifacts/2026-07-31-high-screen/`.
+
+| | A0 | J | F |
+|---|---:|---:|---:|
+| deliveryBucketCorrect | 70.6 | **82.4** | **82.4** |
+| deliveryExact | 64.7 | **82.4** | **82.4** |
+| support | 92.3 | 92.3 | 88.5 |
+| target | 92.3 | 84.6 | 84.6 |
+| findingQuality (gated) | 92.3 | 84.6 | 84.6 |
+| findingQualityStrict | 73.1 | 57.7 | 46.2 |
+| improperRepeatAvoidance | 50.0 | 100 | 100 |
+| harness cost/obs | $0.0094 | $0.0128 | $0.0124 |
+| thinking tokens | 87 | 192 | 213 |
+
+- **H1: J and F both CONFIRMED on routing** (+11.8pp >= +8).
+- **H2: J and F both REFUTED on the floor** (84.6 < 92.3 - 5) — and the
+  breach is carried ENTIRELY by `target` on `dev-security-user-only`,
+  both samples, unanimous, exactly as at xhigh. Per the pre-registered
+  addendum this is a REPLICATION of the single xhigh finding, not an
+  independent refutation. A0: zero target misses at either effort;
+  envelope arms: 8/8 rows miss on this one case across both efforts
+  (they recommend git-history scrubbing where the consequential fix is
+  credential revocation). `support` is at parity (J = A0 exactly).
+- Strict is unstable across efforts (A0 42.3 at xhigh vs 73.1 at high;
+  F 61.5 vs 46.2) — judge-split-sensitive at this n; do not lean on it.
+- Abstention replicates: A0 restraint 50 vs envelope 100 at every
+  effort measured. Cost: F +15% production-priced at high (sweep basis),
+  in-run F cheaper than J here (J-cheaper was xhigh-specific).
+
+**Net across both primary configs:** the entire measured quality
+objection to the unified envelope is one behavioral quirk on one case
+type — remediation-priority steering on an exposed-credential review.
+Everything else (routing, abstention, support, validity) replicates in
+the envelope arms' favor. That quirk is a targeted envelope-wording fix
+(e.g. a consequential-remediation clause), testable on this exact case
+before any wider rerun.
+
 ## Undetermined / next
 
 1. opus-high (second primary config): ZERO judged rows at any arm —
