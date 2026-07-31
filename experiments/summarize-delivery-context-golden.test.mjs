@@ -38,18 +38,22 @@ function producerRow(overrides = {}) {
 	};
 }
 
-function summarize(judgments, rows = [producerRow()]) {
+function run(judgments, rows, extraArgs = []) {
 	const directory = mkdtempSync(join(tmpdir(), "hydra-summary-"));
 	scratch.push(directory);
 	const input = join(directory, "producer.jsonl");
 	const judges = join(directory, "judges.jsonl");
 	writeJsonl(input, rows);
 	writeJsonl(judges, judgments);
-	const result = spawnSync(
+	return spawnSync(
 		process.execPath,
-		["experiments/summarize-delivery-context-golden.mjs", "--input", input, "--judges", judges, "--json"],
+		["experiments/summarize-delivery-context-golden.mjs", "--input", input, "--judges", judges, "--json", ...extraArgs],
 		{ cwd: process.cwd(), encoding: "utf8" },
 	);
+}
+
+function summarize(judgments, rows = [producerRow()], extraArgs = []) {
+	const result = run(judgments, rows, extraArgs);
 	expect(result.status, result.stderr).toBe(0);
 	return JSON.parse(result.stdout);
 }
@@ -129,7 +133,7 @@ describe("delivery-context summary judge gate", () => {
 				deliveryExact: true,
 				expectedDelivery: "none",
 				category: "pending-equivalent",
-				error: "provider refusal",
+				error: "provider stream error",
 			}),
 		]);
 		const group = result.groups["openai-codex/terra-medium/C"];
@@ -160,6 +164,192 @@ describe("delivery-context summary judge gate", () => {
 		expect(group.waitingRepeatAvoidance).toBe(1);
 	});
 
+	it("computes metrics for a single judge when that judge is the required set", () => {
+		const result = summarize(
+			[judgment("sol", "support"), judgment("sol", "target")],
+			[producerRow()],
+			["--required-judges", "sol"],
+		);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(result.requiredJudges).toEqual(["sol"]);
+		expect(result.requiredJudgeSetComplete).toBe(true);
+		expect(group.findingQuality).toBe(1);
+		expect(group.judgeCoverage).toBe(1);
+		expect(group.judgeAgreement).toBeNull();
+	});
+
+	it("declares the latency basis", () => {
+		const result = summarize([]);
+		expect(result.latencyBasis).toContain("excludes the unmeasured warm call");
+	});
+});
+
+function supportJudgment(judge, overrides = {}) {
+	return {
+		judge,
+		metric: "support",
+		sourceKey: "terra-medium/webhook-security-fresh/1/C",
+		centralSupported: true,
+		unsupportedExtra: false,
+		...overrides,
+	};
+}
+
+describe("split support judgments", () => {
+	it("separates the central finding from unsupported additions", () => {
+		const result = summarize([
+			supportJudgment("sol", { unsupportedExtra: true }),
+			supportJudgment("opus", { unsupportedExtra: true }),
+			judgment("sol", "target"),
+			judgment("opus", "target"),
+		]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.strictSupportAvailable).toBe(true);
+		expect(group.support).toBe(1);
+		expect(group.supportStrict).toBe(0);
+		expect(group.findingQuality).toBe(1);
+		expect(group.findingQualityStrict).toBe(0);
+	});
+
+	it("summarizes legacy single-boolean support as the central finding with strict unavailable", () => {
+		const result = summarize([
+			judgment("sol", "support"),
+			judgment("opus", "support"),
+			judgment("sol", "target"),
+			judgment("opus", "target"),
+		]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.strictSupportAvailable).toBe(false);
+		expect(group.support).toBe(1);
+		expect(group.supportStrict).toBeNull();
+		expect(group.findingQuality).toBe(1);
+		expect(group.findingQualityStrict).toBeNull();
+	});
+
+	it("measures agreement on the split support field rather than a missing answer", () => {
+		const result = summarize([
+			supportJudgment("sol", { centralSupported: false }),
+			supportJudgment("opus"),
+		]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.judgeAgreement).toBe(0);
+		expect(group.support).toBe(0);
+	});
+});
+
+describe("provider policy refusals", () => {
+	const refused = producerRow({
+		sample: 2,
+		completionValid: false,
+		formatValid: false,
+		delivery: null,
+		message: "",
+		deliveryCorrect: false,
+		deliveryExact: false,
+		error: "Output blocked by the provider content policy",
+	});
+
+	it("excludes refusals from quality and routing denominators and reports the rate", () => {
+		const result = summarize(
+			[
+				supportJudgment("sol"),
+				supportJudgment("opus"),
+				judgment("sol", "target"),
+				judgment("opus", "target"),
+			],
+			[producerRow(), refused],
+		);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.n).toBe(2);
+		expect(group.scored).toBe(1);
+		expect(group.refused).toBe(1);
+		expect(group.refusedRate).toBe(0.5);
+		expect(group.refusedKeys).toEqual(["terra-medium/webhook-security-fresh/2/C"]);
+		expect(group.findingQuality).toBe(1);
+		expect(group.deliveryBucketCorrect).toBe(1);
+		expect(group.valid).toBe(0.5);
+	});
+
+	it("keeps ordinary provider failures inside the denominators", () => {
+		const result = summarize([], [producerRow(), { ...refused, error: "provider stream error" }]);
+		const group = result.groups["openai-codex/terra-medium/C"];
+		expect(group.refused).toBe(0);
+		expect(group.deliveryBucketCorrect).toBe(0.5);
+	});
+});
+
+describe("gate emitter", () => {
+	const baselineRow = (overrides = {}) => producerRow({ arm: "A0", ...overrides });
+	const candidateRow = (overrides = {}) => producerRow({ arm: "J", ...overrides });
+
+	it("fails a candidate that does not clear the routing and cost thresholds", () => {
+		const result = summarize(
+			[],
+			[
+				baselineRow({ usage: { cost: 0.01, output: 100, cacheRead: 100 } }),
+				candidateRow({ usage: { cost: 0.02, output: 100, cacheRead: 100 } }),
+			],
+			["--gates"],
+		);
+		const checks = Object.fromEntries(
+			result.gates.perConfig[0].checks.map((check) => [check.rule, check]),
+		);
+		expect(result.gates.baseline).toBe("A0");
+		expect(checks["R1 bucket"].verdict).toBe("fail");
+		expect(checks["R3 cost"].verdict).toBe("fail");
+		expect(checks["R3 output tokens"].verdict).toBe("not applicable");
+		expect(checks["R4 one-call"].verdict).toBe("pass");
+		expect(checks["R2 quality"].verdict).toBe("not evaluable");
+		expect(checks["R4 judge excursion"].verdict).toBe("pass");
+		expect(checks["R4 judge excursion"].actual).toBe(0);
+		expect(result.gates.armVerdicts.J.verdict).toBe("refuted");
+	});
+
+	it("passes a candidate that beats the baseline bucket by eight points at equal cost", () => {
+		const rows = [
+			baselineRow({ case: "a", deliveryCorrect: true }),
+			baselineRow({ case: "b", sample: 2, deliveryCorrect: false }),
+			candidateRow({ case: "a", deliveryCorrect: true }),
+			candidateRow({ case: "b", sample: 2, deliveryCorrect: true }),
+		];
+		const judgments = rows
+			.filter((row) => row.arm !== undefined)
+			.flatMap((row) => [
+				supportJudgment("sol", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
+				supportJudgment("opus", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
+				judgment("sol", "target", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
+				judgment("opus", "target", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
+			]);
+		const result = summarize(judgments, rows, ["--gates"]);
+		const checks = Object.fromEntries(result.gates.perConfig[0].checks.map((check) => [check.rule, check]));
+		expect(checks["R1 bucket"].verdict).toBe("pass");
+		expect(checks["R2 quality"].verdict).toBe("pass");
+		expect(checks["R3 cost"].verdict).toBe("pass");
+		expect(result.gates.armVerdicts.J.verdict).toBe("survives");
+	});
+
+	it("checks output tokens on the Anthropic config", () => {
+		const result = summarize(
+			[],
+			[
+				baselineRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, output: 100, cacheRead: 100 } }),
+				candidateRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, output: 200, cacheRead: 100 } }),
+			],
+			["--gates"],
+		);
+		const checks = Object.fromEntries(result.gates.perConfig[0].checks.map((check) => [check.rule, check]));
+		expect(checks["R3 output tokens"].verdict).toBe("fail");
+		expect(checks["R3 output tokens"].actual).toBe(200);
+	});
+
+	it("refuses to emit gates when a configuration has no baseline arm", () => {
+		const result = run([], [producerRow({ arm: "J" })], ["--gates"]);
+		expect(result.status).not.toBe(0);
+		expect(result.stderr).toContain("baseline arm A0 missing");
+	});
+});
+
+describe("delivery-context summary reporting", () => {
 	it("reports explicit-rejection finding quality separately", () => {
 		const sourceKey = "terra-medium/webhook-security-rejected/1/C";
 		const result = summarize(

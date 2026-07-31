@@ -31,6 +31,7 @@ import {
 } from "./tool-free-protocol.mjs";
 import { GOLDEN_CASES, GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
+import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
 import {
 	buildCandidate2ObservationEnvelope,
 	buildCandidate2ObservationPrompt,
@@ -51,9 +52,16 @@ import {
 } from "./delivery-context-candidate.mjs";
 import { argOf } from "./lib.mjs";
 import {
+	buildScreenFooterObservationEnvelope,
+	buildScreenFooterObservationPrompt,
+	buildScreenJsonObservationEnvelope,
+	buildScreenJsonObservationPrompt,
+	buildShippedMainObservationEnvelope,
+	buildShippedMainObservationPrompt,
 	implementationArm,
 	isDeliveryBucketCorrect,
 	sameHeadDeliveryContext,
+	visibleDriverTools,
 } from "./delivery-context-evaluation.mjs";
 import { resolveModel } from "./model-catalog.mjs";
 
@@ -112,6 +120,12 @@ const knownArms = new Set([
 	"candidate4",
 	"structured",
 	"structured2",
+	"A0",
+	"J",
+	"F",
+	"screen-a0",
+	"screen-json",
+	"screen-footer",
 ]);
 for (const name of requestedModels) {
 	if (!(name in modelSpecs)) throw new Error(`unknown model: ${name}`);
@@ -120,7 +134,14 @@ for (const arm of requestedArms) {
 	if (!knownArms.has(arm)) throw new Error(`unknown arm: ${arm}`);
 }
 
-const corpus = corpusName === "golden" ? GOLDEN_CASES : corpusName === "development" ? DEVELOPMENT_CASES : null;
+const corpus =
+	corpusName === "golden"
+		? GOLDEN_CASES
+		: corpusName === "development"
+			? DEVELOPMENT_CASES
+			: corpusName === "screen"
+				? SCREEN_CASES
+				: null;
 if (!corpus) throw new Error(`unknown corpus: ${corpusName}`);
 const cases = corpus.filter(
 	(item) =>
@@ -200,19 +221,6 @@ function hitRatio(usage) {
 	return readable > 0 ? (usage.cacheRead / readable) * 100 : 0;
 }
 
-const SHIPPED_MAIN_DECISION_SHAPE =
-	'{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
-
-/** Exact judge-only observation prompt shipped on origin/main at b51c157. */
-function buildShippedMainObservationPrompt(head, instruction) {
-	return `<system-reminder>Side watcher. Reply with one JSON object, nothing else:
-${SHIPPED_MAIN_DECISION_SHAPE}
-
-LENS: ${instruction}
-
-Noop unless something warrants feedback. Print a note the user sees but the agent does not. Queue if useful but waitable. Steer to correct the agent between turns. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${head}].</system-reminder>`;
-}
-
 function promptFor(arm, provider, testCase) {
 	const head = testCase.head;
 	const lens = GOLDEN_HEADS[head];
@@ -229,6 +237,24 @@ function promptFor(arm, provider, testCase) {
 			: testCase.state;
 	if (arm === "main-json") {
 		return { prompt: buildShippedMainObservationPrompt(head, lens) };
+	}
+	// The screen arms hold the placement residue constant: combined user
+	// <system-reminder> on Anthropic, raw lens plus developer envelope on
+	// OpenAI. main-json keeps its combined-on-both placement for history.
+	if (arm === "screen-a0") {
+		return provider === "anthropic"
+			? { prompt: buildShippedMainObservationPrompt(head, lens) }
+			: { prompt: lens, envelope: buildShippedMainObservationEnvelope(head) };
+	}
+	if (arm === "screen-json") {
+		return provider === "anthropic"
+			? { prompt: buildScreenJsonObservationPrompt(head, lens) }
+			: { prompt: lens, envelope: buildScreenJsonObservationEnvelope(head) };
+	}
+	if (arm === "screen-footer") {
+		return provider === "anthropic"
+			? { prompt: buildScreenFooterObservationPrompt(head, lens) }
+			: { prompt: lens, envelope: buildScreenFooterObservationEnvelope(head) };
 	}
 	if (arm === "control") {
 		return provider === "anthropic"
@@ -275,33 +301,7 @@ function promptFor(arm, provider, testCase) {
 		: { prompt: lens, envelope: buildJudgeObservationEnvelope(head, deliveryState) };
 }
 
-const DRIVER_TOOL_STUBS = [
-	{ name: "read", description: "Read a file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
-	{ name: "bash", description: "Run a shell command", parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
-	{ name: "edit", description: "Edit a file", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } },
-	{ name: "write", description: "Write a file", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
-];
-
-function visibleDriverTools(provider, serializedObservationTools) {
-	const stubs = DRIVER_TOOL_STUBS.map((tool) =>
-		provider === "anthropic"
-			? {
-					name: tool.name,
-					description: tool.description,
-					input_schema: tool.parameters,
-				}
-			: {
-					type: "function",
-					name: tool.name,
-					description: tool.description,
-					parameters: tool.parameters,
-					strict: false,
-				},
-	);
-	return [...stubs, ...(serializedObservationTools ?? [])];
-}
-
-function payloadTransform(spec, promptText, envelope, roles) {
+function payloadTransform(spec, arm, promptText, envelope, roles) {
 	return (body) => {
 		if (spec.provider === "anthropic") {
 			const messages = structuredClone(body.messages);
@@ -311,7 +311,7 @@ function payloadTransform(spec, promptText, envelope, roles) {
 				messages.splice(index + 1, 0, { role: "system", content: [{ type: "text", text: envelope }] });
 			}
 			roles.value = messages.slice(-5).map((message) => message.role).join(",");
-			return { ...body, messages, tools: visibleDriverTools(spec.provider, body.tools) };
+			return { ...body, messages, tools: visibleDriverTools(spec.provider, arm, body.tools) };
 		}
 		const input = structuredClone(body.input);
 		const index = input.findIndex((item) => item?.role === "user" && inputText(item) === promptText);
@@ -324,7 +324,7 @@ function payloadTransform(spec, promptText, envelope, roles) {
 			});
 		}
 		roles.value = input.slice(-5).map((item) => item?.role ?? item?.type ?? "?").join(",");
-		return { ...body, input, tools: visibleDriverTools(spec.provider, body.tools) };
+		return { ...body, input, tools: visibleDriverTools(spec.provider, arm, body.tools) };
 	};
 }
 
@@ -375,6 +375,22 @@ function applyControlRuntimeDedup(testCase, decision) {
 	return priorExactDeliveries(testCase).has(key)
 		? { delivery: "none", suppressed: true }
 		: { delivery: decision.action, suppressed: false };
+}
+
+/**
+ * A's lenient parse with A's failure policy: an unparseable reply is a warned
+ * noop, never a recovery turn. The non-null decision is what keeps the recovery
+ * branch below unreachable, so these arms spend exactly one provider call.
+ */
+function failOpenJsonDecision(text, error) {
+	const legacy = parseDecision(text);
+	return {
+		decision: legacy ?? { action: "noop", reason: "unparseable response", message: "" },
+		candidate: null,
+		relation: null,
+		error: legacy ? null : error,
+		formatValid: legacy !== null,
+	};
 }
 
 async function measuredObservation({ model, spec, testCase, arm, context, prompt, options, state }) {
@@ -428,14 +444,15 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 		allMessages = [response];
 		const parseResponse = (message) => {
 			if (arm === "main-json") {
-				const legacy = parseDecision(textOf(message));
-				return {
-					decision: legacy ?? { action: "noop", reason: "unparseable response", message: "" },
-					candidate: null,
-					relation: null,
-					error: legacy ? null : "unparseable JSON; shipped main falls back to noop",
-					formatValid: legacy !== null,
-				};
+				return failOpenJsonDecision(textOf(message), "unparseable JSON; shipped main falls back to noop");
+			}
+			if (arm === "screen-a0" || arm === "screen-json") {
+				return failOpenJsonDecision(textOf(message), "unparseable JSON; A's contract falls back to noop");
+			}
+			// F is the only screen arm with a recovery budget, and a tool call is
+			// never a completion here: the advertised schema has no completion action.
+			if (arm === "screen-footer") {
+				return { ...parseFooterDecision(textOf(message)), candidate: null, relation: null };
 			}
 			if (arm === "structured") return parseStructuredContextDecision(textOf(message));
 			if (arm === "structured2") return parseStructuredCandidateDecision(textOf(message));
@@ -517,7 +534,7 @@ async function runOne(modelName, testCase, sample, arm) {
 	};
 	const sessionId = spec.provider === "openai-codex" ? uuidv7() : undefined;
 	const roles = { value: "" };
-	const onPayload = payloadTransform(spec, handoff.prompt, handoff.envelope, roles);
+	const onPayload = payloadTransform(spec, resolvedArm, handoff.prompt, handoff.envelope, roles);
 	const options = {
 		model,
 		apiKey: auth[spec.provider].access,
