@@ -1,94 +1,124 @@
-# Unified-API screen — A0 / J / F results (2026-07-31)
+# Unified-API screen — A0 / J / F results (2026-07-31, v2)
 
-One-factor screen deciding the unified judge-completion channel across
-Anthropic and OpenAI. Pre-committed refutation rules were frozen before any
-row was produced (this commit's parent, `cfe47f2`). Raw artifacts:
-`~/scratch/2026-07-31-hydra-unified-screen/` (producer.jsonl 204 rows,
-judgments-{sol,opus}.jsonl 342 each, zero judge failures).
+v2 supersedes v1 (commit `4c61ceb`), which was written from the two-config
+state and claimed "better AND cheaper than the incumbent on both providers."
+That cost claim did not replicate on the two additional families and v1's
+Anthropic cost basis underpriced arm envelopes; the corrected story is below.
+Nothing in v1's channel verdict changes.
 
-## Verdict
+Artifacts: `experiments/artifacts/2026-07-31-unified-screen/` (gzipped rows +
+`verdict.json` + SHA256SUMS; also mirrored with the live files in
+`~/dev/personal/pi-hydra-frozen-artifacts/`). 340 producer rows (17 cases × 2
+samples × {3 arms × sonnet/terra-medium, 2 arms × opus/luna-medium}), 1,094
+blind judgments, all 10 config/arm cells fully judged (`judgedComplete: true`),
+zero judge failures, zero refusals, zero excursions, zero truncations. The
+instrument was hardened mid-screen (commit `ba636ad`, from the wave-5 audit)
+before any verdict was read from the added families.
 
-**F — natural-language finding + strict `DELIVERY:` footer, identical text on
-both providers, inside the terse single-statement envelope — survives every
-pre-committed gate in both configurations and is better AND cheaper than the
-incumbent on both providers.**
+## Verdict, in three layers
 
-**J — A's three-field JSON inside the same envelope — is refuted** (failed R1
-bucket on sonnet: routing stayed exactly at A0's 64.7%).
+### 1. CHANNEL — settled. The footer replaces JSON.
 
-This resolves the central tension in the corpus (`TOOL-FREE-COMPLETION-AB.md`
-footer wins at small scale vs `DELIVERY-CONTEXT-ABC-RESULTS.md` C-fails at
-matrix scale) in favor of scope: **C's cost/quality failure came from its
-envelope+ledger bundle, not from the footer channel.** De-bundled, the footer
-is the cheapest arm, not the most expensive.
+With the envelope held byte-identical (F−J isolation), the natural-text +
+`DELIVERY:` footer beats the three-field JSON channel on every axis that
+distinguishes them:
 
-## The ladder (one factor per step)
+- Routing: bucket +11.8pp on sonnet (the only thing that moved sonnet's
+  routing at all — the envelope alone left it at exactly A0's 64.7%), +8.8pp
+  on terra.
+- Economics: F is cheaper than J everywhere measured (terra $0.003038 vs
+  $0.003759; sonnet output 118.8 vs 145.8 tokens — the `reason` field is ~30
+  tokens of overhead the footer never pays).
+- Quality: flat on sonnet (96.2 = 96.2), −3.9pp central / −3.9pp strict on
+  terra (n≈26, inside noise).
 
-| Step | Isolates | Sonnet-medium | Terra-medium |
-|---|---|---|---|
-| A0→J | terse envelope + 2 causal clauses (channel held = JSON) | quality 84.6→96.2 (+11.6pp); bucket **unchanged** 64.7→64.7; repeat restraint 50→50 | quality 73.1→80.8; bucket 58.8→70.6 (+11.8pp); repeat restraint **25→75** |
-| J→F | completion channel (envelope held byte-identical) | bucket 64.7→**76.5** (+11.8pp); quality flat (96.2); cost **−15%**; output −18.5% | bucket 70.6→**79.4**; quality 80.8→76.9 (−3.9pp, n≈26, within noise); cost **−19%**; output **−36%** |
+J is refuted on its own pre-committed rule (R1: sonnet routing never moved).
+This also resolves the corpus's central tension by scope: C's matrix-scale
+failure was its envelope+ledger bundle, not the footer channel.
 
-Readings:
-1. **The envelope clauses carry quality and (on OpenAI) repeat restraint.**
-   Terra's repeat restraint tripled from the dedup clause alone (25→75, same
-   channel). They do NOT fix Sonnet's routing.
-2. **The channel carries Sonnet's routing.** Only switching JSON→footer moved
-   Sonnet's bucket (+11.8pp). This is why J is refuted: its Anthropic routing
-   is indistinguishable from A0.
-3. **The footer is the terse channel, not the expensive one.** Natural text +
-   footer emits fewer output tokens than JSON-with-reason (85–119 vs 133–146).
-   The `reason` field is ~30 tokens of overhead the footer never pays.
-   Cost follows output volume, as the frozen corpus predicted.
+### 2. ROUTING vs A0 — real, pooled; not a per-family guarantee.
 
-## Full table (n=34 per cell; 17 cases × 2 samples; judges opus+sol unanimous)
+F beats A0 on delivery-bucket routing in all four families (+11.8, +20.6,
++11.8, +14.7pp), but case-level paired sign tests put honest error bars on it:
+terra p=0.016 alone; sonnet rides on 2 discordant cases (p=0.50), opus 3/1,
+luna 5/3. **Pooled across families: 17 gain-cases vs 4 loss-cases, p=0.007.**
+Claim it as a cross-family effect, never as "proven on model X" except terra.
 
-| Config/arm | quality | strict | bucket | exact | repeat | cost/obs | out tok | median ms | one-call |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| sonnet A0 | 84.6% | 65.4% | 64.7% | 47.1% | 50% | $0.001715 | 141.9 | 3402 | 100% |
-| sonnet J | 96.2% | 76.9% | 64.7% | 55.9% | 50% | $0.001799 | 145.8 | 3034 | 100% |
-| sonnet F | 96.2% | 61.5% | 76.5% | 67.6% | 50% | $0.001527 | 118.8 | 2895 | 100% |
-| terra A0 | 73.1% | 61.5% | 58.8% | 38.2% | 25% | $0.003566 | 141.9 | 3565 | 100% |
-| terra J | 80.8% | 73.1% | 70.6% | 67.6% | 75% | $0.003759 | 132.6 | 3866 | 100% |
-| terra F | 76.9% | 69.2% | 79.4% | 67.6% | 75% | $0.003038 | 85.3 | 2364 | 100% |
+### 3. ECONOMICS vs A0 — model-dependent trade: envelope tax vs output savings.
 
-Mechanics, all arms, all 204 rows: zero errors, zero refusals, zero recovery
-turns, zero tool excursions, no observation above 1 provider call, judge
-agreement 92.9–100%. Numbers hand-verified against raw rows.
+The unified envelope is ~+130 uncached input tokens/obs vs A0's minimal
+prompt (measured directly on OpenAI: 704 vs 575). The channel then saves
+output on some models (terra −57, sonnet −23 tokens) and not others (opus
++10, luna +2). Three accountings, all reported because none is alone
+sufficient:
 
-## Caveats — read before generalizing
+| Accounting | sonnet | terra | opus | luna |
+|---|---:|---:|---:|---:|
+| Measured harness cost (OpenAI clean; Anthropic prefix-subsidized pre-`ba636ad`) | −11.0% | **−14.8%** | +6.5% | +9.8% |
+| Design tokens, equal-weight (uncached in + out; the hardened R3) | −16% | +10.0% (fail by 0.2 tok) | +5.1% | +18.2% (fail) |
+| Production-priced (input at input rate, output at output rate) | ≈+8% | **≈−15%** | ≈+10–20% | ≈+10% |
 
-1. **Strict quality on sonnet: F 61.5% < A0 65.4%.** The footer's natural text
-   adds unsupported extra claims more often on Sonnet (C's known failure mode,
-   here mild and only on strict). On Terra F beats A0 on strict (69.2 vs
-   61.5). Not gated (R2 uses central-supported quality, pre-committed);
-   flagged as the first targeted follow-up.
-2. **Scale**: one fresh corpus (12 screen + 5 empty-state dev cases), two
-   models, medium only, 2 samples. Family reversals are common in this
-   project's history (system envelope helped Opus, hurt Sonnet). Cheap
-   robustness spot-check on opus-medium + luna-medium: next step, A0+F only.
-3. **Not comparable to the frozen ABC table**: this screen holds placement
-   constant (OpenAI split+developer for all arms — benchmark-A ran the
-   entitlement-unsafe combined-user), uses a management-only public schema for
-   all arms, and disables runtime dedup everywhere (benchmark A/B had a
-   product-illegal suppressor).
-4. **OpenAI auth ran on a borrowed codex-CLI access token** (fake-HOME
-   overlay, refresh-disabled; real `~/.pi` store untouched). Anthropic
-   refreshed natively. A proper `pi login` for openai-codex is still needed.
-5. **Deferred by design**: acting-head channel+schema (needs the acting
-   harness smoke), same-head ledger/state (next one-factor step per
-   `DELIVERY-CONTEXT-ABC-RESULTS.md` §next-hypothesis), delivery/none
-   vocabulary rename, absolute gate attainment (quality gates were never this
-   screen's claim — though F's sonnet quality 96.2% is, notably, above the
-   85% bar that no ABC arm ever met on this metric definition).
+Reading: the equal-weight token gate misfires on terra (output costs 6× input
+there; F's trade is dollar-positive). The dollar-honest summary is: **F wins
+terra outright, is single-digit-% more expensive on sonnet/luna, and costs the
+most on opus (+10–20%)** — bounded, and small in absolute terms (all cells are
+fractions of a cent per observation). The cost driver is the *envelope*, not
+the channel (F < J everywhere); a envelope-trim pass is the identified lever
+if opus/luna economy matters.
 
-## What feeds the next wave
+## Quality vs A0 (all cells fully judged, opus+sol unanimous)
 
-- Winner-so-far: **F** = unified footer channel for judge heads on both
-  providers + terse envelope + management-only schema.
-- Next cheap validations before any big matrix: (a) opus-medium + luna-medium
-  A0-vs-F spot check (family robustness), (b) acting-head smoke (typed tool vs
-  JSON vs footer under management-only vs wide schema — completes the API),
-  (c) strict-quality follow-up on sonnet (wording, not schema).
-- Then: F+state as the isolated ledger step, fresh validation corpus, and only
-  after that a full model matrix.
+| Family | central quality A0→F | strict quality A0→F |
+|---|---|---|
+| sonnet | 84.6 → **96.2** | 65.4 → 61.5 (the one strict regression) |
+| terra | 73.1 → 76.9 | 61.5 → **69.2** |
+| opus | 88.5 → 84.6 (−3.9pp, inside R2) | 46.2 → **65.4** (+19.2pp) |
+| luna | 76.9 → 73.1 (−3.8pp, inside R2) | 61.5 → 57.7 |
+
+No family breaches the pre-committed −5pp floor. Strict quality *improves*
+where it was worst (opus +19pp, terra +8pp); sonnet's mild strict dip
+(unsupported side-claims in natural text) is the targeted wording follow-up.
+
+## Recommendation
+
+Adopt **F as the unified judge-completion surface**: natural finding + strict
+`DELIVERY:` footer, byte-identical contract text on both providers, terse
+single-statement envelope carrying the two causally-proven clauses,
+management-only public schema, provider-specific packaging only where the
+evidence forces it (combined-user on Anthropic; user-lens + developer envelope
+on OpenAI — entitlement-safe). The channel choice is unambiguous; the envelope
+cost/quality trade is favorable on balance (routing +12–21pp everywhere,
+central quality within noise or better, strict quality up on 2 families, cost
+bounded at ≈±15%) — but cost vs A0 on opus/luna is a genuine judgment call
+for Andreas, with envelope-trimming as the follow-up lever.
+
+## Instrument changes applied mid-screen (`ba636ad`)
+
+Gates hard-stop on incomplete judgments (previously a half-judged config
+scored quality 0 and PASSED R2); judgment dedupe; R3 verdict moved off the
+synthetic-prefix cost ratio; one-call reported as by-construction for
+fail-open contracts (it is an invariant, not a measurement, for A0/J); refusal
+scan extended to fail-open arms; warm call now warms the driver context only,
+so future Anthropic rows price the observation prompt as uncached input
+exactly as production does (rows in THIS screen predate that fix — their
+Anthropic input column reads ~2 and their cost subsidizes the envelope).
+
+## Known limits
+
+1. One corpus (12 fresh screen cases + 5 empty-state dev cases), medium
+   reasoning only, samples=2. Golden-41 untouched. Not comparable to the
+   frozen ABC table (placement, schema, dedup all deliberately different).
+2. Sonnet routing evidence = 2 cases; the pooled claim is the defensible one.
+3. Production-priced Anthropic figures are arithmetic corrections, not
+   measurements; the next screen (post-`ba636ad`) measures them directly.
+4. Deferred: acting-head channel+schema smoke (the remaining open piece of
+   the API surface), F+state ledger isolation, delivery/none rename,
+   envelope-trim pass, sonnet strict-quality wording.
+
+## Next wave inputs
+
+- Acting smoke: typed tool vs JSON vs footer for acting heads under
+  management-only vs wide schema, real agent loop, both providers.
+- Envelope-trim: one factor (envelope length), holding channel F constant —
+  targets the opus/luna cost cells and the sonnet strict dip together.
+- F+state: the bounded same-head ledger as the isolated second factor.
