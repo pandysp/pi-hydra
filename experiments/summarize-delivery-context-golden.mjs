@@ -66,13 +66,28 @@ const REFUSAL_PATTERNS = [
 ];
 
 function isRefusal(row) {
-	const failed = row.completionValid !== true || Boolean(row.error);
+	// Fail-open arms parse a refusal into a legitimate-looking noop, so
+	// completionValid alone is blind there; the first-attempt strict signal and
+	// formatValid make the scan fire on the same rows for every contract.
+	const failed =
+		row.completionValid !== true ||
+		Boolean(row.error) ||
+		row.formatValid !== true ||
+		(row.initialCompletionError ?? null) !== null;
 	const haystack = [row.error, failed ? row.response : null, failed ? row.initialResponse : null];
 	return haystack.some((text) => typeof text === "string" && REFUSAL_PATTERNS.some((pattern) => pattern.test(text)));
 }
 
-const judgmentIndex = new Map();
+// One judgment per (judge, metric, source) — a duplicated --judges argument or a
+// re-appended file must not zero the unanimity metrics; last judgment wins and
+// the collapse is reported instead of silently changing every rate.
+const dedupedJudgments = new Map();
 for (const judgment of judgments) {
+	dedupedJudgments.set(`${judgment.judge}/${judgment.metric}/${judgment.sourceKey}`, judgment);
+}
+const duplicateJudgments = judgments.length - dedupedJudgments.size;
+const judgmentIndex = new Map();
+for (const judgment of dedupedJudgments.values()) {
 	const key = `${judgment.sourceKey}/${judgment.metric}`;
 	const list = judgmentIndex.get(key) ?? [];
 	list.push(judgment);
@@ -179,6 +194,15 @@ function summarizeGroup(group) {
 	const targetItems = feedbackRows.flatMap((row) => metricJudgments(row, "target"));
 	const repeatRows = noFeedbackRows.filter(hasRoutedMessage);
 	const repeatItems = repeatRows.flatMap((row) => metricJudgments(row, "repeat"));
+	// "Judged FALSE" and "not judged" must never blend: a group with any judgeable
+	// row missing a complete judgment set reports null for every judged metric
+	// instead of silently scoring the gap as a quality failure.
+	const requiredMetricsFor = (row) => (row.expectedDelivery === "none" ? ["repeat"] : ["support", "target"]);
+	const judgeableRows = [...feedbackRows.filter(hasRoutedMessage), ...repeatRows];
+	const unjudgedRows = judgeableRows.filter((row) =>
+		requiredMetricsFor(row).some((metric) => !judgmentSetComplete(metricJudgments(row, metric))),
+	).length;
+	const judgedComplete = requiredJudgeSetComplete && unjudgedRows === 0;
 	const expectedJudgments = requiredJudges.length * (feedbackRows.filter(hasRoutedMessage).length * 2 + repeatRows.length);
 	const actualJudgments = supportItems.length + targetItems.length + repeatItems.length;
 	const agreementSets = [...supportItems, ...targetItems, ...repeatItems].reduce((map, item) => {
@@ -195,38 +219,54 @@ function summarizeGroup(group) {
 	// carries the split schema; a file mixing legacy and split rows reports null
 	// instead of a blend of two different rules.
 	const strictAvailable =
-		requiredJudgeSetComplete &&
+		judgedComplete &&
 		supportItems.length > 0 &&
 		supportItems.every((item) => judgmentField(item, "extra") !== null);
+	// One call is an invariant, not a measurement, for fail-open contracts: their
+	// parser cannot fail, so the recovery branch is unreachable by construction.
+	const failOpenImplementations = new Set(["screen-a0", "screen-json", "main-json", "A0", "J", "A"]);
+	const oneCallByConstruction =
+		group.length > 0 && group.every((row) => failOpenImplementations.has(row.implementationArm ?? row.arm));
 
 	return {
 		n: group.length,
+		nCases: new Set(group.map((row) => row.case)).size,
+		nFeedbackJudged: feedbackRows.filter(hasRoutedMessage).length,
+		nRepeatRows: repeatRows.length,
+		unjudgedRows,
+		judgedComplete,
 		refused: refusedRows.length,
 		refusedRate: round(rate(group.map(isRefusal))),
 		refusedKeys: refusedRows.map(sourceKey),
 		scored: scored.length,
 		valid: round(rate(group.map(observationSucceeded))),
 		formatValid: round(rate(group.map((row) => row.formatValid))),
-		oneCall: round(rate(group.map((row) => row.providerCalls === 1))),
+		oneCall: oneCallByConstruction ? null : round(rate(group.map((row) => row.providerCalls === 1))),
+		oneCallByConstruction,
 		providerCallsMax: group.length === 0 ? null : Math.max(...group.map((row) => row.providerCalls ?? 0)),
-		recovery: round(rate(group.map((row) => row.recoveryAttempted))),
+		recovery: oneCallByConstruction ? null : round(rate(group.map((row) => row.recoveryAttempted))),
 		toolExcursions: group.filter((row) => row.initialStop === "toolUse").length,
-		strictFirstAttempt: round(rate(group.map((row) => (row.initialCompletionError ?? null) === null))),
-		findingQuality: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map(findingQuality))),
+		truncated: group.filter((row) => row.initialStop === "length" || row.stop === "length").length,
+		strictFirstAttempt: group.some((row) => row.initialCompletionError === undefined)
+			? null
+			: round(rate(group.map((row) => row.initialCompletionError === null))),
+		promptVariants: new Set(group.map((row) => row.promptHash)).size,
+		heads: new Set(group.map((row) => row.head)).size,
+		findingQuality: !judgedComplete ? null : round(rate(feedbackRows.map(findingQuality))),
 		findingQualityStrict: !strictAvailable ? null : round(rate(feedbackRows.map(findingQualityStrict))),
-		support: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map(centralSupported))),
+		support: !judgedComplete ? null : round(rate(feedbackRows.map(centralSupported))),
 		supportStrict: !strictAvailable ? null : round(rate(feedbackRows.map(strictlySupported))),
 		strictSupportAvailable: strictAvailable,
-		target: !requiredJudgeSetComplete ? null : round(rate(feedbackRows.map((row) => routedRow(row) && unanimous(row, "target", "answer", true)))),
-		improperRepeatAvoidance: !requiredJudgeSetComplete ? null : round(rate(noFeedbackRows.map(avoidsImproperRepeat))),
-		waitingRepeatAvoidance: !requiredJudgeSetComplete ? null : round(rate(waitingRows.map(avoidsImproperRepeat))),
+		target: !judgedComplete ? null : round(rate(feedbackRows.map((row) => routedRow(row) && unanimous(row, "target", "answer", true)))),
+		improperRepeatAvoidance: !judgedComplete ? null : round(rate(noFeedbackRows.map(avoidsImproperRepeat))),
+		waitingRepeatAvoidance: !judgedComplete ? null : round(rate(waitingRows.map(avoidsImproperRepeat))),
 		deliveryBucketCorrect: round(rate(scored.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
 		deliveryExact: round(rate(scored.map((row) => observationSucceeded(row) && (row.deliveryExact ?? row.delivery === row.expectedDelivery)))),
 		feedbackBucketCorrect: round(rate(feedbackRows.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
 		waitingBucketCorrect: round(rate(waitingRows.map((row) => observationSucceeded(row) && row.deliveryCorrect))),
-		followupQuality: !requiredJudgeSetComplete ? null : round(rate(followupRows.map(findingQuality))),
-		rejectionQuality: !requiredJudgeSetComplete ? null : round(rate(rejectionRows.map(findingQuality))),
-		unrelatedPendingQuality: !requiredJudgeSetComplete ? null : round(rate(unrelatedRows.map(findingQuality))),
+		followupQuality: !judgedComplete ? null : round(rate(followupRows.map(findingQuality))),
+		rejectionQuality: !judgedComplete ? null : round(rate(rejectionRows.map(findingQuality))),
+		unrelatedPendingQuality: !judgedComplete ? null : round(rate(unrelatedRows.map(findingQuality))),
 		falseInterrupts: group.filter((row) => observationSucceeded(row) && row.delivery === "interrupt" && row.expectedDelivery !== "interrupt").length,
 		genuineInterruptExact: round(rate(group.filter((row) => row.expectedDelivery === "interrupt").map((row) => observationSucceeded(row) && row.delivery === "interrupt"))),
 		runtimeSuppressed: group.filter((row) => row.runtimeSuppressed).length,
@@ -234,6 +274,7 @@ function summarizeGroup(group) {
 		latencyP95Ms: quantile(group.flatMap((row) => Number.isFinite(row.ms) ? [row.ms] : []), 0.95),
 		observerCostMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.cost) ? [row.usage.cost] : [])), 6),
 		outputTokenMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.output) ? [row.usage.output] : [])), 1),
+		uncachedInputMean: round(mean(group.flatMap((row) => Number.isFinite(row.usage?.input) ? [row.usage.input] : [])), 1),
 		cacheHitMean: round(mean(group.flatMap((row) => Number.isFinite(row.hitRatio) ? [row.hitRatio] : [])), 2),
 		zeroCacheReads: group.filter((row) => row.usage?.cacheRead === 0).length,
 		judgeCoverage: expectedJudgments === 0 ? null : round(actualJudgments / expectedJudgments),
@@ -284,24 +325,40 @@ function gatesFor(config, baseline, candidate) {
 			candidate.findingQuality >= baseline.findingQuality - 0.05,
 			"findingQuality >= baseline - 5pp",
 		),
+		// The verdict-carrying economy check is on the tokens the design controls:
+		// uncached input (the contract/envelope the arm adds to every observation)
+		// plus generated output. A cost ratio is dominated by the synthetic driver
+		// prefix the harness happens to use, so it is reported but carries no verdict.
 		compare(
-			"R3 cost",
-			candidate.observerCostMean,
-			baseline.observerCostMean === null ? null : baseline.observerCostMean * 1.1,
-			candidate.observerCostMean <= baseline.observerCostMean * 1.1,
-			"observerCostMean <= baseline + 10%",
+			"R3 design tokens",
+			candidate.uncachedInputMean === null || candidate.outputTokenMean === null
+				? null
+				: round(candidate.uncachedInputMean + candidate.outputTokenMean, 1),
+			baseline.uncachedInputMean === null || baseline.outputTokenMean === null
+				? null
+				: round((baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1, 1),
+			candidate.uncachedInputMean + candidate.outputTokenMean <= (baseline.uncachedInputMean + baseline.outputTokenMean) * 1.1,
+			"uncached input + output tokens <= baseline + 10% (production-relevant economics; prefix-independent)",
 		),
-		anthropic
-			? compare(
-					"R3 output tokens",
-					candidate.outputTokenMean,
-					baseline.outputTokenMean === null ? null : baseline.outputTokenMean * 1.1,
-					candidate.outputTokenMean <= baseline.outputTokenMean * 1.1,
-					"mean output tokens <= baseline + 10%",
-				)
-			: { rule: "R3 output tokens", verdict: "not applicable", actual: candidate.outputTokenMean, threshold: null, detail: "spec scopes the output-token check to the Anthropic config" },
-		compare("R4 one-call", candidate.oneCall, 0.95, candidate.oneCall >= 0.95, "oneCall >= 95%"),
+		{
+			rule: "R3 cost (informational)",
+			verdict: "informational",
+			actual: candidate.observerCostMean,
+			threshold: baseline.observerCostMean === null ? null : round(baseline.observerCostMean * 1.1, 6),
+			detail: "harness cost basis: synthetic prefix at cache-read rates; do not carry a verdict on this ratio",
+		},
+		candidate.oneCallByConstruction
+			? { rule: "R4 one-call", verdict: "not applicable", actual: null, threshold: 0.95, detail: "fail-open contract: one call by construction, not a measurement" }
+			: compare("R4 one-call", candidate.oneCall, 0.95, candidate.oneCall >= 0.95, "oneCall >= 95%"),
 		compare("R4 call ceiling", candidate.providerCallsMax, 2, candidate.providerCallsMax <= 2, "no observation above 2 provider calls"),
+		compare("R4 truncation", candidate.truncated, 0, candidate.truncated === 0, "no length-truncated response (silent quality credit for fail-open arms)"),
+		compare(
+			"provenance",
+			candidate.promptVariants,
+			candidate.heads,
+			candidate.promptVariants === candidate.heads,
+			"distinct promptHash count equals head count — catches prompt edits appended into one artifact",
+		),
 		compare(
 			"R4 judge excursion",
 			candidate.toolExcursions,
@@ -309,13 +366,15 @@ function gatesFor(config, baseline, candidate) {
 			candidate.toolExcursions === 0,
 			"no observation whose first attempt stopped on a tool call (initialStop === \"toolUse\")",
 		),
-		compare(
-			"validity guard",
-			candidate.strictFirstAttempt,
-			baseline.strictFirstAttempt === null ? null : baseline.strictFirstAttempt - 0.03,
-			candidate.strictFirstAttempt >= baseline.strictFirstAttempt - 0.03,
-			"first-attempt strict validity (initialCompletionError === null) >= baseline - 3pp; informational, triggers investigation not refutation",
-		),
+		candidate.strictFirstAttempt === null || baseline.strictFirstAttempt === null
+			? { rule: "validity guard", verdict: "not applicable", actual: candidate.strictFirstAttempt, threshold: null, detail: "initialCompletionError absent on some rows (pre-screen artifact vintage)" }
+			: compare(
+					"validity guard",
+					candidate.strictFirstAttempt,
+					baseline.strictFirstAttempt - 0.03,
+					candidate.strictFirstAttempt >= baseline.strictFirstAttempt - 0.03,
+					"first-attempt strict validity (initialCompletionError === null) >= baseline - 3pp; investigation trigger, not refutation",
+				),
 	];
 	return checks;
 }
@@ -333,7 +392,17 @@ function buildGates() {
 			.filter((arm) => arm !== baselineArm)
 			.sort();
 		for (const arm of arms) {
-			perConfig.push({ config, arm, checks: gatesFor(config, baseline, groups[`${config}/${arm}`]) });
+			const candidate = groups[`${config}/${arm}`];
+			// Gates certify a verdict; certifying over missing judgments is how a
+			// half-judged run reads as "survives". Hard-stop instead.
+			for (const [label, g] of [[baselineArm, baseline], [arm, candidate]]) {
+				if (!g.judgedComplete) {
+					throw new Error(
+						`${config} ${label}: ${g.unjudgedRows} judgeable row(s) lack a complete judgment set — gates require judgedComplete; finish judging or narrow --input`,
+					);
+				}
+			}
+			perConfig.push({ config, arm, checks: gatesFor(config, baseline, candidate) });
 		}
 	}
 	const armVerdicts = {};
@@ -359,12 +428,15 @@ function buildGates() {
 
 const gates = gateMode ? buildGates() : null;
 
+const unknownProviderRows = rows.filter((row) => !row.provider).length;
 const result = {
 	inputs: inputPaths,
 	judges: judgePaths,
 	judgeNames,
 	requiredJudges,
 	requiredJudgeSetComplete,
+	duplicateJudgments,
+	unknownProviderRows,
 	latencyBasis: LATENCY_BASIS,
 	rows: rows.length,
 	judgments: judgments.length,
@@ -372,6 +444,12 @@ const result = {
 	byProviderArm,
 	...(gates ? { gates } : {}),
 };
+if (unknownProviderRows > 0) {
+	console.error(`WARNING: ${unknownProviderRows} row(s) carry no provider (likely error rows) — they form phantom "unknown/" groups and are missing from real denominators`);
+}
+if (duplicateJudgments > 0) {
+	console.error(`WARNING: ${duplicateJudgments} duplicate judgment(s) collapsed (same judge/metric/source) — check the --judges list for a doubled file`);
+}
 
 if (jsonOutput) {
 	console.log(JSON.stringify(result, null, 2));

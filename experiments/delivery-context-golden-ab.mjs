@@ -548,7 +548,13 @@ async function runOne(modelName, testCase, sample, arm) {
 		let warmMs = null;
 		if (!skipWarm) {
 			const warmStarted = performance.now();
-			await streamSimple(model, { ...context, messages: [...context.messages, prompt] }, options).result();
+			// Warm the DRIVER context only. Production replays the driver's cached
+			// prefix and pays the observation prompt/envelope as uncached input on
+			// every observation (mergeObservationPayload moves no marker for a plain
+			// [prompt] tail). Warming prompt-inclusive would price arm-specific
+			// prompt length at cache-read rates — ~10x under production — and make
+			// longer contracts look nearly free on Anthropic.
+			await streamSimple(model, { ...context }, options).result();
 			warmMs = Math.round(performance.now() - warmStarted);
 		}
 		state.completion = null;

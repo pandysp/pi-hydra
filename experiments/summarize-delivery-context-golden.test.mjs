@@ -233,7 +233,11 @@ describe("split support judgments", () => {
 		]);
 		const group = result.groups["openai-codex/terra-medium/C"];
 		expect(group.judgeAgreement).toBe(0);
-		expect(group.support).toBe(0);
+		// The row's target judgments are absent, so the judged metrics report
+		// null (unjudged) rather than blending "not judged" into a failure rate.
+		expect(group.support).toBeNull();
+		expect(group.judgedComplete).toBe(false);
+		expect(group.unjudgedRows).toBe(1);
 	});
 });
 
@@ -282,64 +286,68 @@ describe("gate emitter", () => {
 	const baselineRow = (overrides = {}) => producerRow({ arm: "A0", ...overrides });
 	const candidateRow = (overrides = {}) => producerRow({ arm: "J", ...overrides });
 
-	it("fails a candidate that does not clear the routing and cost thresholds", () => {
-		const result = summarize(
-			[],
-			[
-				baselineRow({ usage: { cost: 0.01, output: 100, cacheRead: 100 } }),
-				candidateRow({ usage: { cost: 0.02, output: 100, cacheRead: 100 } }),
-			],
-			["--gates"],
-		);
+	const fullJudgmentsFor = (rows) =>
+		rows.flatMap((row) => {
+			const sourceKey = `${row.model}/${row.case}/${row.sample}/${row.arm}`;
+			return [
+				supportJudgment("sol", { sourceKey }),
+				supportJudgment("opus", { sourceKey }),
+				judgment("sol", "target", { sourceKey }),
+				judgment("opus", "target", { sourceKey }),
+			];
+		});
+
+	it("fails a candidate that does not clear the routing and design-token thresholds", () => {
+		const rows = [
+			baselineRow({ usage: { cost: 0.01, input: 100, output: 100, cacheRead: 100 } }),
+			candidateRow({ usage: { cost: 0.02, input: 100, output: 200, cacheRead: 100 } }),
+		];
+		const result = summarize(fullJudgmentsFor(rows), rows, ["--gates"]);
 		const checks = Object.fromEntries(
 			result.gates.perConfig[0].checks.map((check) => [check.rule, check]),
 		);
 		expect(result.gates.baseline).toBe("A0");
 		expect(checks["R1 bucket"].verdict).toBe("fail");
-		expect(checks["R3 cost"].verdict).toBe("fail");
-		expect(checks["R3 output tokens"].verdict).toBe("not applicable");
-		expect(checks["R4 one-call"].verdict).toBe("pass");
-		expect(checks["R2 quality"].verdict).toBe("not evaluable");
+		expect(checks["R3 design tokens"].verdict).toBe("fail");
+		expect(checks["R3 cost (informational)"].verdict).toBe("informational");
+		expect(checks["R4 one-call"].verdict).toBe("not applicable");
+		expect(checks["R2 quality"].verdict).toBe("pass");
 		expect(checks["R4 judge excursion"].verdict).toBe("pass");
 		expect(checks["R4 judge excursion"].actual).toBe(0);
 		expect(result.gates.armVerdicts.J.verdict).toBe("refuted");
 	});
 
-	it("passes a candidate that beats the baseline bucket by eight points at equal cost", () => {
+	it("passes a candidate that beats the baseline bucket by eight points at equal design tokens", () => {
+		const usage = { cost: 0.01, input: 100, output: 100, cacheRead: 100 };
 		const rows = [
-			baselineRow({ case: "a", deliveryCorrect: true }),
-			baselineRow({ case: "b", sample: 2, deliveryCorrect: false }),
-			candidateRow({ case: "a", deliveryCorrect: true }),
-			candidateRow({ case: "b", sample: 2, deliveryCorrect: true }),
+			baselineRow({ case: "a", deliveryCorrect: true, usage }),
+			baselineRow({ case: "b", sample: 2, deliveryCorrect: false, usage }),
+			candidateRow({ case: "a", deliveryCorrect: true, usage }),
+			candidateRow({ case: "b", sample: 2, deliveryCorrect: true, usage }),
 		];
-		const judgments = rows
-			.filter((row) => row.arm !== undefined)
-			.flatMap((row) => [
-				supportJudgment("sol", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
-				supportJudgment("opus", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
-				judgment("sol", "target", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
-				judgment("opus", "target", { sourceKey: `${row.model}/${row.case}/${row.sample}/${row.arm}` }),
-			]);
-		const result = summarize(judgments, rows, ["--gates"]);
+		const result = summarize(fullJudgmentsFor(rows), rows, ["--gates"]);
 		const checks = Object.fromEntries(result.gates.perConfig[0].checks.map((check) => [check.rule, check]));
 		expect(checks["R1 bucket"].verdict).toBe("pass");
 		expect(checks["R2 quality"].verdict).toBe("pass");
-		expect(checks["R3 cost"].verdict).toBe("pass");
+		expect(checks["R3 design tokens"].verdict).toBe("pass");
 		expect(result.gates.armVerdicts.J.verdict).toBe("survives");
 	});
 
-	it("checks output tokens on the Anthropic config", () => {
+	it("fails the design-token check when the candidate generates more", () => {
 		const result = summarize(
-			[],
+			fullJudgmentsFor([
+				baselineRow({ provider: "anthropic", model: "sonnet-medium" }),
+				candidateRow({ provider: "anthropic", model: "sonnet-medium" }),
+			]),
 			[
-				baselineRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, output: 100, cacheRead: 100 } }),
-				candidateRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, output: 200, cacheRead: 100 } }),
+				baselineRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, input: 50, output: 100, cacheRead: 100 } }),
+				candidateRow({ provider: "anthropic", model: "sonnet-medium", usage: { cost: 0.01, input: 50, output: 200, cacheRead: 100 } }),
 			],
 			["--gates"],
 		);
 		const checks = Object.fromEntries(result.gates.perConfig[0].checks.map((check) => [check.rule, check]));
-		expect(checks["R3 output tokens"].verdict).toBe("fail");
-		expect(checks["R3 output tokens"].actual).toBe(200);
+		expect(checks["R3 design tokens"].verdict).toBe("fail");
+		expect(checks["R3 design tokens"].actual).toBe(250);
 	});
 
 	it("refuses to emit gates when a configuration has no baseline arm", () => {
