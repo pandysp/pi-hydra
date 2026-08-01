@@ -1,5 +1,10 @@
 # Hardened gold set — design (2026-08-01, Andreas)
 
+> **SUPERSEDED by [`GOLDEN-DATASET-DESIGN.md`](GOLDEN-DATASET-DESIGN.md)**, which is
+> the design of record and carries the two ruled conventions (reachability,
+> individuation). This file is the earlier sketch, kept for its reasoning.
+
+
 ## The correction
 
 v1/v2/v3 all try to make LLM judges PRODUCE the severity ordering.

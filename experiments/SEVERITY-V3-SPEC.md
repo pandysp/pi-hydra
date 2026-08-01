@@ -1,5 +1,12 @@
 # Severity v3 — pairwise ranking + reference review (2026-08-01, pre-data)
 
+> **SUPERSEDED — never run.** Pairwise ranking exists to rescue unreliable
+> absolute grading; [`SEVERITY-V4-BLOCKING-TIER.md`](SEVERITY-V4-BLOCKING-TIER.md)
+> showed absolute grading is already 90.5% reliable at the resolution that
+> matters (blocking vs rest), so the fine-grained ordering this would buy is
+> not needed. Do not restart it unless intra-tier ordering becomes necessary.
+
+
 ## Why a third design, not a third tweak
 
 v1 and v2 both ask judges for an ABSOLUTE grade ("how severe is this

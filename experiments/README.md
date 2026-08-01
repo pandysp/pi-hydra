@@ -1,5 +1,10 @@
 # Cache experiments
 
+> **This file documents the ORIGINAL cache probes only (June/July 2026) and
+> predates almost everything in this directory. For the 44-document map —
+> decision table, specs, results, retractions — see
+> [`INDEX.md`](INDEX.md).**
+
 Empirical verification of prompt-cache behavior on the two providers hydra
 supports. The Anthropic scripts (June 2026, `claude-haiku-4-5` via OAuth,
 non-streaming Messages API) probe the "latest assistant message" question
