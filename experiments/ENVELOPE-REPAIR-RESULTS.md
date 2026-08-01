@@ -131,3 +131,43 @@ better, but the cost SHAPE still does not meet the bar at opus-high.
 The remaining lever is decidability (F3, pre-registered 9db1114); if it
 does not close the gap, G1 is a genuine judgment call with the premium
 and the quality delta both on the table.
+
+## F3 — decidability REFUTED (pre-registered D1, 9db1114)
+
+F3 = F2's semantics at maximum decidability (explicit test per rule,
+precedence for every colliding pair, tie-breaks, evidence rule), 3407
+chars vs F2's 2102 (+62%).
+
+Thinking, 19 recorded payloads, opus-high, paired re-measure:
+
+| Arm | thinking | vs F2 |
+|---|---:|---:|
+| F2 | 487 | — |
+| F3 | **524** | **+7.6%** |
+
+Frozen-corpus thinking is flat too: opus-high 292 vs 295, sol-high 228 vs
+253, sol-xhigh 361 vs 344.
+
+**D1 fires: F3 >= F2, so the ambiguity hypothesis is refuted as a further
+lever.** What survives is the narrower F2-vs-F0 result, which held
+semantics constant and changed STRUCTURE AT EQUAL LENGTH (-23%). F3
+changed structure AND added 62% length; the design cannot separate a
+decidability benefit that is cancelled by a length cost from no benefit
+at all. Named as a confound, not explained away.
+
+D2 (safety) PASSES: F3 routing 13/16 vs F2 12/16 (user-actor, opus-high),
+15/16 vs 14/16 (guard) — inside noise, no regression. So F3 is safe but
+pointless: +62% contract text for no cost or quality gain. **F2 remains
+the lead; simplicity breaks the tie.**
+
+### The open structural gap
+
+MAIN thinks 59 tokens where every envelope arm thinks ~500 on the same
+prefixes. Neither framing nor decidability closes it, and MAIN's
+240-char cap is already present in F2, so caps are not the explanation
+either. Remaining untested hypothesis: it is the presence of an explicit
+RULE SURFACE at all — MAIN never tells the model how to choose, so there
+are no rules to check against evidence. Testing that means removing the
+routing rules, which removes the abstention win with them; it is a real
+question with an expensive answer, and it is left open rather than
+guessed at.
