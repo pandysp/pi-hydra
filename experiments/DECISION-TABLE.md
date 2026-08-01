@@ -193,3 +193,40 @@ Consequence: the trajectory benchmark's planted-defect coverage (built,
 S1 judging unfunded) is the metric that matches what observers are FOR.
 Funding it is the highest-value next measurement in this program, ahead
 of any further contract iteration.
+
+## No-steer probe (2026-08-01) — the cost mechanisms DISSOCIATE
+
+Removing `steer` from the vocabulary (runtime would promote queue->steer),
+10 samples, mid prefix L=20,165, opus-high:
+
+| variant | skips | mean thinking | planted defects named/sample |
+|---|---:|---:|---:|
+| MAIN | 5/10 | 569 | 1.4 |
+| **MAIN-NS** | **8/10** | **132 (-77%)** | **2.5** |
+| F2 | 0/10 | 933 | 1.6 |
+| F2-NS | 0/10 | 838 (unchanged) | 1.4 |
+
+**The label is MAIN's cost driver; it is NOT the envelope's.** F2 is
+unmoved by removing steer — its cost is the RULE SURFACE, which is why
+framing (-23%) and decidability (+7.6%) both failed on it. Two distinct
+cost mechanisms, previously conflated.
+
+The MAIN win is not blindness: coverage ROSE (1.4 -> 2.5 planted defects
+per sample) and deliveries rose (10/10 vs 2 noops). One zero-thinking
+sample named three planted defects; MAIN's most expensive sample (1295
+tokens) named one.
+
+NOT YET A RESULT TO ACT ON:
+- Fisher p=0.175 at n=10 — directionally clear, NOT significant. n=20
+  reaches p=0.048 if the effect holds.
+- One prefix, one task moment, and that moment is a DOC-WRITING task
+  where enumeration is the natural response. Transfer to a code-writing
+  moment is untested.
+- Driver-side cost of promoting every queue to steer is an untested
+  hypothesis (open-loop harness cannot see it).
+
+Hypothesis it raises, bigger than the label: the expensive act is
+SELECTION (pick the one most urgent thing AND justify interrupting),
+not FINDING. Enumeration is cheaper and more complete. If that holds,
+the cheap high-coverage design lets observers enumerate and lets the
+runtime triage — a product direction, not a wording tweak.
