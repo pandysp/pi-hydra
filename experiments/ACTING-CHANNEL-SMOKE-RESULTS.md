@@ -17,7 +17,7 @@ byte-identical across arms and to the judge surface (asserted offline,
 | Pre-committed rule | Result |
 |---|---|
 | S3 self-removal = 1.00 calls in every arm/config | **PASS 12/12 cells** — `index.ts:1741` terminality is channel-independent *in practice*; the typed channel's headline 2→1-call advantage was never the channel's |
-| S2 calls ≤ T+1 | **PASS with sign reversed**: J *beats* T on calls (3.67 vs 3.75 sonnet; 3.08 vs 3.58 terra) and cost ($0.177 vs $0.197; $0.153 vs $0.187). The historical "+7 calls, cost erased" for tool-free acting does not reproduce under the unified envelope |
+| S2 calls ≤ T+1 | **PASS with sign reversed**: J *beats* T on calls (3.67 vs 3.75 sonnet; 3.08 vs 3.58 terra) and cost. **Cost corrected 2026-08-01 to per-observation** (the figures previously printed here — $0.177 vs $0.197; $0.153 vs $0.187 — were 12-row CELL TOTALS, not per-task costs, and were misread as per-observation against the judge-head docs): per task J $0.0148 vs T $0.0164 (sonnet), J $0.0128 vs T $0.0156 (terra). The historical "+7 calls, cost erased" for tool-free acting does not reproduce under the unified envelope |
 | S4 naming defect on two-field JSON | **Does not reproduce**: J 20/20 valid non-self-removal completions (the 12/36 defect belonged to the retired `"action":"complete_observation"` discriminator shape) |
 | S1 F correctness/excursions vs T | correctness flat (sonnet 10=10=10; terra 9/9/8). Scalar excursion rule **fires against F** on sonnet (20 vs 17); by class the delta is errored-`read` noise present in every arm (hydra-class excursions ≈ equal, T included). F also spent 2 recovery turns (terra) where J spent 0 |
 

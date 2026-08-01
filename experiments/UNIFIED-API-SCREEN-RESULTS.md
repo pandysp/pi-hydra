@@ -9,8 +9,12 @@ Nothing in v1's channel verdict changes.
 Artifacts: `experiments/artifacts/2026-07-31-unified-screen/` (gzipped rows +
 `verdict.json` + SHA256SUMS; also mirrored with the live files in
 `~/dev/personal/pi-hydra-frozen-artifacts/`). 340 producer rows (17 cases × 2
-samples × {3 arms × sonnet/terra-medium, 2 arms × opus/luna-medium}), 1,094
-blind judgments, all 10 config/arm cells fully judged (`judgedComplete: true`),
+samples × {3 arms × sonnet/terra-medium, 2 arms × opus/luna-medium}), 1,116
+blind judgments (corrected 2026-08-01 from "1,094" — the frozen files and
+`verdict.json.judgments` both hold 1116; 558 per judge, zero duplicate
+(judge, metric, sourceKey) keys, zero orphans. No rate changes: the error
+was in the doc's evidence-volume sentence only), all 10 config/arm cells
+fully judged (`judgedComplete: true`),
 zero judge failures, zero refusals, zero excursions, zero truncations. The
 instrument was hardened mid-screen (commit `ba636ad`, from the wave-5 audit)
 before any verdict was read from the added families.

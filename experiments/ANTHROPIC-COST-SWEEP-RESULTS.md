@@ -31,6 +31,19 @@ Production-priced, per observation:
 
 ## Mechanism: thinking, not answers, not retries.
 
+**Provenance caveat (added 2026-08-01, from the phase-0.5 provenance
+audit): the thinking columns below are NOT re-derivable from the frozen
+rows.** The producer only began capturing `usage.reasoning` at commit
+f6bc73b, 28 minutes after this sweep froze; all 399 rows carry
+`{input, output, cacheRead, cacheWrite, cost}` only. The thinking figures
+were computed at analysis time as output minus visible-response tokens
+(the raw thinking text does survive inside `initialContent`). Treat this
+section's mechanism claim as ANALYST-DERIVED, not artifact-backed. It is
+independently corroborated by the trajectory pilot (2026-08-01), which
+measured `usage.reasoning` directly and found the same effect an order of
+magnitude larger on realistic prefixes (TRAJECTORY-PILOT-RESULTS.md).
+The cost table itself IS artifact-backed and reproduces from the rows.
+
 Zero recoveries, zero multi-call rows in all 16 cells. F's *visible* output
 is consistently under half of A0's (42–66 vs 92–107 tokens — the footer
 answer is terser than the JSON). The entire gap is thinking tokens, billed
