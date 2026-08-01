@@ -294,3 +294,42 @@ not universal. Any statement that "F2 is cheaper" must name the context.
 Net at the primary config: quality and routing gains replicate; the
 abstention gate fails; the cost win does not transfer to short prefixes.
 F2 is NOT clear to ship at opus-xhigh on this evidence.
+
+## RETRACTION (2026-08-01): the planted-defect coverage numbers
+
+Everything in the "planted-defect coverage" block above came from a
+keyword match and is WITHDRAWN. Reading all 28 delivered messages against
+the four planted targets:
+
+| Arm | precisely named | which |
+|---|---:|---|
+| MAIN | **2 of 4** | TOCTOU race + stranded-claim |
+| F0 | 1 of 4 | stranded-claim |
+| F2 | 1 of 4 | stranded-claim |
+
+MAIN is the BEST arm on planted-defect recall here — it alone named the
+concurrency race ("claimNext has a check-then-await race (two workers can
+claim the same job)"). The envelope arms found stranded-claim and then
+spent 5-6 observations re-describing stats() NaN-lease bucketing: real
+bugs, not planted ones.
+
+The matcher failed both ways — crediting the envelope with the lease
+defect for saying "renewLease" while describing something else, and
+crediting MAIN with the requeue defect for the word "requeues" in a
+sentence about the sweep.
+
+Consequences, stated plainly:
+1. "The envelope catches the defect MAIN misses" is WITHDRAWN.
+2. "F2 alone is 4/4" is WITHDRAWN.
+3. The instrument-limitation section (screens measure precision on one
+   pre-localised finding; trajectories measure recall) STANDS — it is a
+   verified property of the corpus and the judge protocol, independent of
+   this scoring error. But the evidence I offered FOR it was bad, and the
+   direction it appeared to point (envelope better at recall) is not
+   supported. Whether recall separates the arms at all is now OPEN.
+4. Judged S1 coverage is a PRECONDITION for any recall claim, not an
+   optional refinement.
+
+Process note for the next wave: I published this number three times
+before reading the messages it was derived from. A derived metric gets
+read against its raw text ONCE before it is quoted, not after.
