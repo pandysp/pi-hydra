@@ -25,9 +25,9 @@ import {
 	buildScreenJsonObservationPrompt,
 	buildShippedMainObservationEnvelope,
 	buildShippedMainObservationPrompt,
-	implementationArm,
 	visibleDriverTools,
 } from "./delivery-context-evaluation.mjs";
+import { GOLDEN_ARMS, armSpec, armVisibleDriverTools, implementationArm } from "./arm-registry.mjs";
 
 const HEAD = "security";
 const LENS = GOLDEN_HEADS[HEAD];
@@ -224,4 +224,27 @@ test("the screen arms advertise a management-only hydra schema", () => {
 
 	// The existing arms keep the wide schema they were measured with.
 	assert.ok(JSON.stringify(visibleDriverTools("openai-codex", "main-json", wide)).includes("complete_observation"));
+});
+
+test("the registry's tool surface agrees with the frozen SCREEN_ARMS record", () => {
+	const managementOnly = Object.values(GOLDEN_ARMS)
+		.filter((entry) => entry.toolSurface === "management-only")
+		.map((entry) => entry.id)
+		.sort();
+	assert.deepEqual(managementOnly, [...SCREEN_ARMS].sort());
+
+	// The producer reaches the serializer through the registry; the arm-keyed
+	// shim must stay equivalent for every arm on both providers, or the surface
+	// a row was measured with and the surface its label implies diverge.
+	const wide = [{ type: "function", name: "hydra", description: "wide", parameters: WIDE_HYDRA_SCHEMA, strict: false }];
+	for (const id of Object.keys(GOLDEN_ARMS)) {
+		for (const provider of ["anthropic", "openai-codex"]) {
+			assert.deepEqual(
+				armVisibleDriverTools(id, provider, wide),
+				visibleDriverTools(provider, id, wide),
+				`${id}/${provider}: registry and shim disagree on the tool surface`,
+			);
+			assert.equal(armSpec(id).toolSurface, SCREEN_ARMS.has(id) ? "management-only" : "wide");
+		}
+	}
 });

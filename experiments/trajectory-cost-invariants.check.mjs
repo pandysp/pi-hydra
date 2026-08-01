@@ -27,9 +27,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { mergeObservationPayload } from "../utils.ts";
+import { armHandoff, armSpec } from "./arm-registry.mjs";
 import {
 	ARMS,
 	ARM_PROMPTS,
+	OBSERVER_HEAD,
 	OBSERVER_LENS,
 	checkObservationRow,
 	composeObservationCost,
@@ -43,10 +45,13 @@ import {
 	rawCost,
 	sumUsage,
 } from "./trajectory-cost-ab.mjs";
+import { FIXTURE_PRICES } from "./costing.mjs";
 import { deriveGroundTruth, defectStateInPayload, payloadChunks } from "./trajectory-ground-truth.mjs";
 import { TRAJECTORY_TASKS, setupTask, taskById } from "./trajectory-cost-tasks.mjs";
 
-const PRICES = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, cacheWrite1h: 10 };
+// opus-5 prices as a frozen literal (`costing.mjs`), never the live catalog:
+// an offline check must not depend on ~/.pi/agent/models-store.json.
+const PRICES = FIXTURE_PRICES;
 
 // ---------------------------------------------------------------------------
 // 1. Merge byte-identity against a captured payload.
@@ -223,6 +228,31 @@ test("the arms share one lens and differ only in the contract region", () => {
 		assert.ok(!OBSERVER_LENS.includes(defect.identifier), `the frozen lens names ${defect.identifier}`);
 	}
 	assert.ok(/QUALITY lens/.test(OBSERVER_LENS));
+});
+
+test("this harness's arms are the screen registry's arms under other names", () => {
+	// `ARM_PROMPTS` is pre-rendered against the frozen generic lens and stays
+	// that way: importing the screen producer would run its matrix. What must
+	// not drift is the CONTRACT — "F" in this benchmark's report.json and "F" in
+	// the screen's verdict.json have to be the same contract text, or the two
+	// harnesses report one letter for two experiments.
+	const equivalent = { MAIN: "screen-a0", J: "screen-json", F: "screen-footer" };
+	assert.deepEqual(Object.keys(equivalent), [...ARMS]);
+	for (const [local, registryArm] of Object.entries(equivalent)) {
+		const handoff = armHandoff(registryArm, "anthropic", {
+			head: OBSERVER_HEAD,
+			lens: OBSERVER_LENS,
+			testCase: undefined,
+		});
+		assert.equal(ARM_PROMPTS[local], handoff.prompt, `${local} has drifted from the registry's ${registryArm}`);
+		assert.equal(handoff.envelope, undefined, "Anthropic carries the whole handoff in one combined message");
+	}
+	// The surface differs deliberately and is recorded, not assumed: the screen
+	// measures the management-only hydra schema, this benchmark replays the
+	// driver's wide one for all three arms (TRAJECTORY-COST-SPEC.md).
+	for (const registryArm of Object.values(equivalent)) {
+		assert.equal(armSpec(registryArm).toolSurface, "management-only");
+	}
 });
 
 // ---------------------------------------------------------------------------

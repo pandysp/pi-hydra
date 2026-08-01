@@ -9,60 +9,38 @@ import { createHash } from "node:crypto";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import { closeOpenAICodexWebSocketSessions } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import {
-	buildAnthropicObservationPrompt,
-	buildJudgeObservationEnvelope,
-	buildJudgeObservationPrompt,
-	buildObservationEnvelope,
-	decisionFromCompletion,
-	footerFormatCorrection,
-	parseDecision,
-	parseFooterDecision,
-} from "../utils.ts";
-import {
-	completionFromHydraToolCalls,
-	hydraToolDescription,
-	hydraToolParameters,
-	validateHydraToolParams,
-} from "../protocol.ts";
-import {
-	buildUnifiedFooterToolFreeObservationEnvelope,
-	buildUnifiedFooterToolFreeObservationPrompt,
-} from "./tool-free-protocol.mjs";
-import { GOLDEN_CASES, GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
+import { decisionFromCompletion, parseDecision } from "../utils.ts";
+import { hydraToolDescription, hydraToolParameters, validateHydraToolParams } from "../protocol.ts";
+import { GOLDEN_CASES } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
-import {
-	buildCandidate2ObservationEnvelope,
-	buildCandidate2ObservationPrompt,
-	buildCandidate3ObservationEnvelope,
-	buildCandidate3ObservationPrompt,
-	buildCandidate4ObservationEnvelope,
-	buildCandidate4ObservationPrompt,
-	buildCandidateObservationEnvelope,
-	buildCandidateObservationPrompt,
-	buildStructuredContextObservationEnvelope,
-	buildStructuredContextObservationPrompt,
-	buildStructuredCandidateObservationEnvelope,
-	buildStructuredCandidateObservationPrompt,
-	parseStructuredCandidateDecision,
-	parseStructuredContextDecision,
-	structuredCandidateFormatCorrection,
-	structuredContextFormatCorrection,
-} from "./delivery-context-candidate.mjs";
 import { argOf } from "./lib.mjs";
 import {
-	buildScreenFooterObservationEnvelope,
-	buildScreenFooterObservationPrompt,
-	buildScreenJsonObservationEnvelope,
-	buildScreenJsonObservationPrompt,
-	buildShippedMainObservationEnvelope,
-	buildShippedMainObservationPrompt,
+	armContractHash,
+	armSpec,
+	armVisibleDriverTools,
+	assertDistinctImplementations,
+	goldenHandoff,
+	headLens,
 	implementationArm,
-	isDeliveryBucketCorrect,
-	sameHeadDeliveryContext,
-	visibleDriverTools,
-} from "./delivery-context-evaluation.mjs";
+	isKnownArm,
+} from "./arm-registry.mjs";
+import { isDeliveryBucketCorrect } from "./delivery-context-evaluation.mjs";
+import {
+	assertCaseMembership,
+	buildRunHeader,
+	caseHash,
+	caseHashes,
+	corpusHash,
+	describeDrift,
+	gitProvenance,
+	headerDrift,
+	lensHash,
+	PRICE_DRIFT_FIELD,
+	readRunHeader,
+	RUN_HEADER_KIND,
+} from "./fingerprints.mjs";
+import { priceTable, pricesHash } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
 
 const args = process.argv.slice(2);
@@ -102,39 +80,16 @@ const modelSpecs = {
 	"fable-medium": { provider: "anthropic", id: "claude-fable-5", reasoning: "medium" },
 	"fable-high": { provider: "anthropic", id: "claude-fable-5", reasoning: "high" },
 };
-// C must mirror DeliveryLedger.contextFor(): the observing head sees its own
-// last successful delivery and its own live pending queue/steer deliveries.
-// The ledger tracks sibling heads internally, but intentionally does not use
-// them to coordinate otherwise-MECE reviews.
-const knownArms = new Set([
-	"A",
-	"B",
-	"C",
-	"control",
-	"main-json",
-	"base",
-	"treatment",
-	"samehead",
-	"unseenonly",
-	"candidate",
-	"candidate2",
-	"candidate3",
-	"candidate4",
-	"structured",
-	"structured2",
-	"A0",
-	"J",
-	"F",
-	"screen-a0",
-	"screen-json",
-	"screen-footer",
-]);
 for (const name of requestedModels) {
 	if (!(name in modelSpecs)) throw new Error(`unknown model: ${name}`);
 }
+// Arm identity comes from one table (`arm-registry.mjs`); an arm it does not
+// know has no contract, no parser and no fail-open policy, so it is a hard stop
+// rather than a fallthrough to whatever the last if-chain branch happened to be.
 for (const arm of requestedArms) {
-	if (!knownArms.has(arm)) throw new Error(`unknown arm: ${arm}`);
+	if (!isKnownArm(arm)) throw new Error(`unknown arm: ${arm}`);
 }
+assertDistinctImplementations(requestedArms);
 
 const corpus =
 	corpusName === "golden"
@@ -224,86 +179,6 @@ function hitRatio(usage) {
 	return readable > 0 ? (usage.cacheRead / readable) * 100 : 0;
 }
 
-function promptFor(arm, provider, testCase) {
-	const head = testCase.head;
-	const lens = GOLDEN_HEADS[head];
-	if (!lens) throw new Error(`missing frozen head: ${head}`);
-	const deliveryState =
-		arm === "unseenonly"
-			? {
-					lastByThisHead:
-						testCase.category === "newly-delivered-no-response" ? testCase.state.lastByThisHead : null,
-					pending: testCase.state.pending.filter((item) => item.head === head),
-				}
-			: arm === "samehead"
-				? sameHeadDeliveryContext(testCase.state, head)
-			: testCase.state;
-	if (arm === "main-json") {
-		return { prompt: buildShippedMainObservationPrompt(head, lens) };
-	}
-	// The screen arms hold the placement residue constant: combined user
-	// <system-reminder> on Anthropic, raw lens plus developer envelope on
-	// OpenAI. main-json keeps its combined-on-both placement for history.
-	if (arm === "screen-a0") {
-		return provider === "anthropic"
-			? { prompt: buildShippedMainObservationPrompt(head, lens) }
-			: { prompt: lens, envelope: buildShippedMainObservationEnvelope(head) };
-	}
-	if (arm === "screen-json") {
-		return provider === "anthropic"
-			? { prompt: buildScreenJsonObservationPrompt(head, lens) }
-			: { prompt: lens, envelope: buildScreenJsonObservationEnvelope(head) };
-	}
-	if (arm === "screen-footer") {
-		return provider === "anthropic"
-			? { prompt: buildScreenFooterObservationPrompt(head, lens) }
-			: { prompt: lens, envelope: buildScreenFooterObservationEnvelope(head) };
-	}
-	if (arm === "control") {
-		return provider === "anthropic"
-			? { prompt: buildAnthropicObservationPrompt(head, lens, []) }
-			: { prompt: lens, envelope: buildObservationEnvelope(head, []) };
-	}
-	if (arm === "base") {
-		return provider === "anthropic"
-			? { prompt: buildUnifiedFooterToolFreeObservationPrompt(head, lens, []) }
-			: { prompt: lens, envelope: buildUnifiedFooterToolFreeObservationEnvelope(head, []) };
-	}
-	if (arm === "candidate") {
-		return provider === "anthropic"
-			? { prompt: buildCandidateObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildCandidateObservationEnvelope(head, testCase.state) };
-	}
-	if (arm === "candidate2") {
-		return provider === "anthropic"
-			? { prompt: buildCandidate2ObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildCandidate2ObservationEnvelope(head, testCase.state) };
-	}
-	if (arm === "candidate3") {
-		return provider === "anthropic"
-			? { prompt: buildCandidate3ObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildCandidate3ObservationEnvelope(head, testCase.state) };
-	}
-	if (arm === "candidate4") {
-		return provider === "anthropic"
-			? { prompt: buildCandidate4ObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildCandidate4ObservationEnvelope(head, testCase.state) };
-	}
-	if (arm === "structured") {
-		return provider === "anthropic"
-			? { prompt: buildStructuredContextObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildStructuredContextObservationEnvelope(head, testCase.state) };
-	}
-	if (arm === "structured2") {
-		return provider === "anthropic"
-			? { prompt: buildStructuredCandidateObservationPrompt(head, lens, testCase.state) }
-			: { prompt: lens, envelope: buildStructuredCandidateObservationEnvelope(head, testCase.state) };
-	}
-	return provider === "anthropic"
-		? { prompt: buildJudgeObservationPrompt(head, lens, deliveryState) }
-		: { prompt: lens, envelope: buildJudgeObservationEnvelope(head, deliveryState) };
-}
-
 function payloadTransform(spec, arm, promptText, envelope, roles) {
 	return (body) => {
 		if (spec.provider === "anthropic") {
@@ -314,7 +189,7 @@ function payloadTransform(spec, arm, promptText, envelope, roles) {
 				messages.splice(index + 1, 0, { role: "system", content: [{ type: "text", text: envelope }] });
 			}
 			roles.value = messages.slice(-5).map((message) => message.role).join(",");
-			return { ...body, messages, tools: visibleDriverTools(spec.provider, arm, body.tools) };
+			return { ...body, messages, tools: armVisibleDriverTools(arm, spec.provider, body.tools) };
 		}
 		const input = structuredClone(body.input);
 		const index = input.findIndex((item) => item?.role === "user" && inputText(item) === promptText);
@@ -327,7 +202,7 @@ function payloadTransform(spec, arm, promptText, envelope, roles) {
 			});
 		}
 		roles.value = input.slice(-5).map((item) => item?.role ?? item?.type ?? "?").join(",");
-		return { ...body, input, tools: visibleDriverTools(spec.provider, arm, body.tools) };
+		return { ...body, input, tools: armVisibleDriverTools(arm, spec.provider, body.tools) };
 	};
 }
 
@@ -380,23 +255,8 @@ function applyControlRuntimeDedup(testCase, decision) {
 		: { delivery: decision.action, suppressed: false };
 }
 
-/**
- * A's lenient parse with A's failure policy: an unparseable reply is a warned
- * noop, never a recovery turn. The non-null decision is what keeps the recovery
- * branch below unreachable, so these arms spend exactly one provider call.
- */
-function failOpenJsonDecision(text, error) {
-	const legacy = parseDecision(text);
-	return {
-		decision: legacy ?? { action: "noop", reason: "unparseable response", message: "" },
-		candidate: null,
-		relation: null,
-		error: legacy ? null : error,
-		formatValid: legacy !== null,
-	};
-}
-
 async function measuredObservation({ model, spec, testCase, arm, context, prompt, options, state }) {
+	const armDefinition = armSpec(arm);
 	let providerCalls = 0;
 	let recoveryAttempted = false;
 	let initialCompletionError = null;
@@ -410,7 +270,7 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 	let contextCandidate = null;
 	let completionFormatValid = null;
 
-	if (arm === "control") {
+	if (armDefinition.runsAgentLoop) {
 		allMessages = await runAgentLoop(
 			[prompt],
 			context,
@@ -445,25 +305,7 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 		initialStopReason = response.stopReason ?? null;
 		initialContent = response.content;
 		allMessages = [response];
-		const parseResponse = (message) => {
-			if (arm === "main-json") {
-				return failOpenJsonDecision(textOf(message), "unparseable JSON; shipped main falls back to noop");
-			}
-			if (arm === "screen-a0" || arm === "screen-json") {
-				return failOpenJsonDecision(textOf(message), "unparseable JSON; A's contract falls back to noop");
-			}
-			// F is the only screen arm with a recovery budget, and a tool call is
-			// never a completion here: the advertised schema has no completion action.
-			if (arm === "screen-footer") {
-				return { ...parseFooterDecision(textOf(message)), candidate: null, relation: null };
-			}
-			if (arm === "structured") return parseStructuredContextDecision(textOf(message));
-			if (arm === "structured2") return parseStructuredCandidateDecision(textOf(message));
-			const typed = completionFromHydraToolCalls(message.content);
-			return typed
-				? { decision: decisionFromCompletion(typed.delivery, typed.message), candidate: null, relation: null, error: null }
-				: { ...parseFooterDecision(textOf(message)), candidate: null, relation: null };
-		};
+		const parseResponse = armDefinition.parse;
 		let parsed = parseResponse(response);
 		completionFormatValid = parsed.formatValid ?? parsed.decision !== null;
 		relation = parsed.relation;
@@ -473,15 +315,7 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 			recoveryAttempted = true;
 			const correction = {
 				role: "user",
-				content: [{
-					type: "text",
-					text:
-						arm === "structured2"
-							? structuredCandidateFormatCorrection(parsed.error ?? "invalid completion")
-							: arm === "structured"
-							? structuredContextFormatCorrection(parsed.error ?? "invalid completion")
-							: footerFormatCorrection(parsed.error ?? "invalid completion"),
-				}],
+				content: [{ type: "text", text: armDefinition.correction(parsed.error ?? "invalid completion") }],
 				timestamp: Date.now(),
 			};
 			const recovered = await streamSimple(
@@ -521,12 +355,51 @@ async function measuredObservation({ model, spec, testCase, arm, context, prompt
 	};
 }
 
+/**
+ * Every field that says WHICH cell a row belongs to, resolved without a
+ * provider call so the error path can carry the same identity as the success
+ * path. An error row used to be `{model, case, sample, arm, error}` only: with
+ * no `provider` it grouped under a phantom `unknown/` configuration, and with
+ * no `expectedDelivery` it scored `expectedDelivery !== "none"` as true and
+ * `deliveryBucketCorrect` as false, so a single harness throw could read as a
+ * refuted arm. `--gates` now hard-stops on such rows, but only because they are
+ * identifiable at all.
+ */
+function rowIdentity(modelName, testCase, sample, arm) {
+	const spec = modelSpecs[modelName];
+	const resolvedArm = implementationArm(arm);
+	return {
+		model: modelName,
+		modelId: spec.id,
+		provider: spec.provider,
+		thinking: spec.reasoning,
+		case: testCase.id,
+		trajectory: testCase.trajectory,
+		head: testCase.head,
+		category: testCase.category,
+		counterfactual: testCase.counterfactual,
+		critical: testCase.critical,
+		sample,
+		arm,
+		implementationArm: resolvedArm,
+		toolSurface: armSpec(resolvedArm).toolSurface,
+		// S5 fingerprints, on the error path as well as the success path: a row
+		// with no case identity is a permanent hole in the membership check.
+		// `promptHash` (contract + this case's lens/state) stays the frozen
+		// 64-hex definition and is stamped at the call site.
+		caseHash: caseHash(testCase),
+		contractHash: armContractHash(arm, spec.provider),
+		expectedDelivery: testCase.expectedDelivery,
+		expectedFinding: testCase.expectedFinding,
+	};
+}
+
 async function runOne(modelName, testCase, sample, arm) {
 	const spec = modelSpecs[modelName];
 	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unknown model ${spec.provider}/${spec.id}`);
 	const resolvedArm = implementationArm(arm);
-	const handoff = promptFor(resolvedArm, spec.provider, testCase);
+	const handoff = goldenHandoff(resolvedArm, spec.provider, testCase);
 	const prompt = { role: "user", content: [{ type: "text", text: handoff.prompt }], timestamp: Date.now() };
 	const state = { completion: null };
 	const tools = [controlHydraTool(state)];
@@ -566,28 +439,14 @@ async function runOne(modelName, testCase, sample, arm) {
 		const ms = Math.round(performance.now() - started);
 		const responseText = textOf(measured.response);
 		const usage = usageOf(measured.allMessages);
-		const routed = resolvedArm === "control" || resolvedArm === "main-json"
+		const routed = armSpec(resolvedArm).runtimeDedup
 			? applyControlRuntimeDedup(testCase, measured.decision)
 			: {
 					delivery: measured.decision?.action === "noop" ? "none" : (measured.decision?.action ?? null),
 					suppressed: false,
 				};
 		return {
-			model: modelName,
-			modelId: model.id,
-			provider: spec.provider,
-			thinking: spec.reasoning,
-			case: testCase.id,
-			trajectory: testCase.trajectory,
-			head: testCase.head,
-			category: testCase.category,
-			counterfactual: testCase.counterfactual,
-			critical: testCase.critical,
-			sample,
-			arm,
-			implementationArm: resolvedArm,
-			expectedDelivery: testCase.expectedDelivery,
-			expectedFinding: testCase.expectedFinding,
+			...rowIdentity(modelName, testCase, sample, arm),
 			promptHash: createHash("sha256").update(`${handoff.prompt}\n${handoff.envelope ?? ""}`).digest("hex"),
 			roles: roles.value,
 			warmMs,
@@ -619,11 +478,116 @@ async function runOne(modelName, testCase, sample, arm) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Run header and resume-drift refusal (S5).
+// ---------------------------------------------------------------------------
+
+/**
+ * The first line of the file records WHAT THIS RUN IS: the code, the corpus and
+ * every case in it, each arm's contract, the lenses, and the price table the
+ * dollar figures will be computed against. On resume the header is re-derived
+ * and compared, and a run that would append different work into the same file
+ * ABORTS.
+ *
+ * This is the check that was missing when the bd97f3e repair reached 36 of 492
+ * arm-C cells: the frozen matrix carries 456 rows of one implementation and 36
+ * of another under one arm label, and nothing on disk noticed. `--force-mixed`
+ * exists for the case where mixing is deliberate, and it demands `--note` so
+ * the reason lands in the artifact rather than in someone's memory.
+ */
+const forceMixed = args.includes("--force-mixed");
+const mixedNote = argOf(args, "--note", "");
+if (forceMixed && !mixedNote) throw new Error("--force-mixed requires --note \"<why mixing is deliberate>\"");
+// Scoped escape for the one drift field backed by mutable user state. A `pi`
+// catalog refresh mid-sweep moves `pricesHash` without the operator touching
+// anything; clearing that must not also waive codeCommit, corpusHash and the
+// per-case membership pre-flight, which is what `--force-mixed` does.
+const forcePrices = args.includes("--force-prices");
+
+const providersInRun = [...new Set(requestedModels.map((name) => modelSpecs[name].provider))].sort();
+const prices = priceTable(
+	requestedModels.map((name) => modelSpecs[name]),
+	resolveModel,
+);
+const runHeader = buildRunHeader({
+	script: "delivery-context-golden-ab.mjs",
+	argv: args,
+	...gitProvenance(),
+	corpusName,
+	corpusHash: corpusHash(corpusName, corpus),
+	caseCount: corpus.length,
+	caseHashes: caseHashes(corpus),
+	selectedCases: cases.map((item) => item.id),
+	models: requestedModels,
+	providers: providersInRun,
+	samples,
+	arms: requestedArms,
+	armImplementations: Object.fromEntries(requestedArms.map((arm) => [arm, implementationArm(arm)])),
+	armContractHashes: Object.fromEntries(
+		providersInRun.flatMap((provider) => requestedArms.map((arm) => [`${provider}/${arm}`, armContractHash(arm, provider)])),
+	),
+	lensHashes: Object.fromEntries([...new Set(corpus.map((item) => item.head))].sort().map((head) => [head, lensHash(headLens(head))])),
+	prices,
+	pricesHash: pricesHash(prices),
+	forceMixed,
+	note: mixedNote || null,
+});
+
+const previousHeader = readRunHeader(outputPath);
+if (previousHeader) {
+	const allDrift = headerDrift(previousHeader, runHeader);
+	// Price drift is waivable on its own; everything else needs --force-mixed.
+	const priceDrift = allDrift.filter((entry) => entry.field === PRICE_DRIFT_FIELD);
+	const drift = forcePrices ? allDrift.filter((entry) => entry.field !== PRICE_DRIFT_FIELD) : allDrift;
+	if (forcePrices && priceDrift.length > 0) {
+		console.error(`WARNING: ${outputPath} was produced under a different price table — ${describeDrift(priceDrift)}; continuing because --force-prices (cost columns pool two price tables)`);
+	}
+	if (drift.length > 0) {
+		const message = `${outputPath} was produced under a different environment — ${describeDrift(drift)}`;
+		if (!forceMixed) {
+			const priceOnly = drift.every((entry) => entry.field === PRICE_DRIFT_FIELD);
+			throw new Error(
+				`${message}. Write to a fresh --output, ${priceOnly ? "pass --force-prices to accept a catalog refresh, " : ""}or pass --force-mixed --note "<why>" to pool deliberately.`,
+			);
+		}
+		console.error(`WARNING: ${message}; pooling anyway because --force-mixed (${mixedNote})`);
+	}
+} else if (existsSync(outputPath)) {
+	// Absent fingerprint is unverified, not invalid: every artifact frozen before
+	// this scheme has no header, and refusing here would make them unresumable.
+	console.error(`NOTE: ${outputPath} has no run header (pre-S5 artifact) — appending without a provenance check`);
+} else {
+	appendFileSync(outputPath, `${JSON.stringify(runHeader)}\n`);
+}
+
+// Membership is checked for every selected case BEFORE the first call, not only
+// when a worker reaches the offending one. Measured while verifying this guard:
+// checking per row alone let 11 rows be produced before the drifted case came up
+// in the shuffled order — on a real run that is 11 observations of spend against
+// a corpus the file's header does not describe.
+function checkMembership(testCase) {
+	const result = assertCaseMembership(previousHeader ?? runHeader, testCase, { force: forceMixed });
+	if (result.reason && forceMixed) console.error(`WARNING: ${result.reason}; producing anyway because --force-mixed (${mixedNote})`);
+}
+for (const testCase of cases) checkMembership(testCase);
+
 const completed = new Set();
 if (existsSync(outputPath)) {
+	// The file is append-only, so a --retry-errors pass leaves the superseded
+	// error row in place and appends the retry beside it. Readers resolve that
+	// last-wins; the count is reported here because this is where it is created.
+	const seen = new Set();
+	let duplicates = 0;
 	for (const line of readFileSync(outputPath, "utf8").trim().split("\n").filter(Boolean)) {
 		const row = JSON.parse(line);
-		if (!retryErrors || !row.error) completed.add(`${row.model}/${row.case}/${row.sample}/${row.arm}`);
+		if (row.kind === RUN_HEADER_KIND) continue;
+		const key = `${row.model}/${row.case}/${row.sample}/${row.arm}`;
+		if (seen.has(key)) duplicates++;
+		seen.add(key);
+		if (!retryErrors || !row.error) completed.add(key);
+	}
+	if (duplicates > 0) {
+		console.error(`NOTE: ${outputPath} already holds ${duplicates} superseded row(s); readers must dedup last-wins`);
 	}
 }
 
@@ -647,15 +611,16 @@ async function worker() {
 		for (const arm of arms) {
 			const key = `${task.model}/${task.testCase.id}/${task.sample}/${arm}`;
 			if (completed.has(key)) continue;
+			// Refuse to write a row for a case this file's corpus does not
+			// contain at the content its header recorded — the drift a resumed
+			// run against an edited corpus would otherwise pool silently.
+			checkMembership(task.testCase);
 			let row;
 			try {
 				row = await runOne(task.model, task.testCase, task.sample, arm);
 			} catch (error) {
 				row = {
-					model: task.model,
-					case: task.testCase.id,
-					sample: task.sample,
-					arm,
+					...rowIdentity(task.model, task.testCase, task.sample, arm),
 					error: error instanceof Error ? error.message : String(error),
 				};
 			}

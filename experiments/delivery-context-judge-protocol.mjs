@@ -1,3 +1,5 @@
+import { sha16 } from "./fingerprints.mjs";
+
 const METRICS = new Set(["support", "target", "repeat"]);
 
 export function assertJudgeMetric(metric) {
@@ -76,6 +78,31 @@ ${rendered.join("\n\n---\n\n")}
 
 Return exactly one JSON object and no markdown:
 ${schemaFor(metric)}`;
+}
+
+/**
+ * Identity of the judge's rules (S5, judge axis). Everything the judge is asked
+ * to apply: the calibrated evidence policy plus the source of every function
+ * that shapes what it sees. `Function.prototype.toString()` is exact for these —
+ * they are pure, top-level, and close over nothing but `SUPPORT_POLICY`.
+ *
+ * This lives here rather than in `fingerprints.mjs` so the sources stay private:
+ * hashing them elsewhere would mean exporting the judge's internals, and the one
+ * thing that must never drift is what the judge actually ran.
+ *
+ * Stamped on every judgment row. Edit the policy or a question and the judge
+ * refuses to append into a file judged under the old rules
+ * (`delivery-context-golden-judge.mjs`) — the check `XHIGH-SCREEN-SPEC.md:52`
+ * previously wrote as a prose warning to a human.
+ */
+export function judgeBuilderSource() {
+	return [SUPPORT_POLICY, renderTrajectory.toString(), questionFor.toString(), schemaFor.toString(), buildJudgePrompt.toString()].join(
+		"\n<<<>>>\n",
+	);
+}
+
+export function judgeBuilderHash() {
+	return sha16(judgeBuilderSource());
 }
 
 function parseCases(text, expectedCount) {

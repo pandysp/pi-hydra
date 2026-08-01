@@ -80,6 +80,7 @@ import {
 	buildShippedMainObservationPrompt,
 } from "./delivery-context-evaluation.mjs";
 import { argOf } from "./lib.mjs";
+import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
 import { selectTrajectories, setupTask, taskSeedHash } from "./trajectory-cost-tasks.mjs";
 
@@ -141,39 +142,19 @@ export function promptHash(arm) {
 // ---------------------------------------------------------------------------
 
 /**
- * µ$ per token, from the resolved model's own cost table (opus-5: 5 / 25 / 0.5
- * / 6.25 per Mtok, no `cost.tiers`, so flat). `cacheWrite1h` is not in the
- * table: Anthropic prices a 1h write at 2x input where the 5m write is 1.25x,
- * and `usage.cacheWrite1h` is a SUBSET of `usage.cacheWrite`
- * (`pi-ai/dist/types.d.ts:256`). The merge preserves whatever TTL the driver's
- * marker carried (`utils.ts:826`), so a 1h driver marker would bill the run-end
- * M write at the higher rate; splitting the term here keeps that from silently
- * corrupting every dollar figure.
+ * Prices, usage flattening and the raw price of a usage now live in
+ * `costing.mjs` — one implementation of each for the whole program, with the
+ * harness and production bases named. They are re-exported here because this
+ * module is the trajectory study's public surface: `summarize-trajectory-cost.mjs`
+ * and `trajectory-cost-invariants.check.mjs` import them from here.
+ *
+ * The reason `cacheWrite1h` is derived rather than read: Anthropic prices a 1h
+ * write at 2x input where the 5m write is 1.25x, and `usage.cacheWrite1h` is a
+ * SUBSET of `usage.cacheWrite` (`pi-ai/dist/types.d.ts:256`). The merge
+ * preserves whatever TTL the driver's marker carried (`utils.ts:826`), so a 1h
+ * driver marker would bill the run-end M write at the higher rate.
  */
-export function pricesFor(model) {
-	const cost = model?.cost;
-	if (!cost || typeof cost.input !== "number") throw new Error("model has no cost table");
-	return {
-		input: cost.input,
-		output: cost.output,
-		cacheRead: cost.cacheRead,
-		cacheWrite: cost.cacheWrite,
-		cacheWrite1h: cost.input * 2,
-	};
-}
-
-/** Flatten a pi-ai usage object to the fields this study prices and asserts on. */
-export function flatUsage(usage) {
-	return {
-		input: usage?.input ?? 0,
-		output: usage?.output ?? 0,
-		reasoning: usage?.reasoning ?? 0,
-		cacheRead: usage?.cacheRead ?? 0,
-		cacheWrite: usage?.cacheWrite ?? 0,
-		cacheWrite1h: usage?.cacheWrite1h ?? 0,
-		cost: usage?.cost?.total ?? 0,
-	};
-}
+export { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 
 export function sumUsage(usages) {
 	return usages.reduce(
@@ -187,19 +168,6 @@ export function sumUsage(usages) {
 			cost: total.cost + usage.cost,
 		}),
 		{ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0, cost: 0 },
-	);
-}
-
-/** Straight price of a measured usage, in dollars. */
-export function rawCost(usage, prices) {
-	const write5m = Math.max(0, usage.cacheWrite - usage.cacheWrite1h);
-	return (
-		(usage.cacheRead * prices.cacheRead +
-			write5m * prices.cacheWrite +
-			usage.cacheWrite1h * prices.cacheWrite1h +
-			usage.input * prices.input +
-			usage.output * prices.output) /
-		1e6
 	);
 }
 

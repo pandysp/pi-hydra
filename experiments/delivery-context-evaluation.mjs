@@ -1,26 +1,19 @@
 export const DRIVER_INVISIBLE = "driver-invisible";
 export const DRIVER_AWARE = "driver-aware";
 
-export const GOLDEN_ARM_IMPLEMENTATIONS = Object.freeze({
-	A: "main-json",
-	B: "control",
-	C: "samehead",
-	A0: "screen-a0",
-	J: "screen-json",
-	F: "screen-footer",
-});
-
 /**
  * The unified-API screen arms. Their prompt contracts, tool surface, and
  * parser share this module rather than the runner so the invariant test can
  * import them: the runner is a script that parses argv and runs the matrix on
  * import, and the byte-equality assertions must hold before any provider spend.
+ *
+ * Arm identity itself — which letter is which implementation, and which
+ * implementation advertises which surface — lives in `arm-registry.mjs`. This
+ * set is the frozen record of what the screen arms were, kept so the invariant
+ * check can assert the registry still agrees with it; the live producer path
+ * reaches the serializer through the registry's `toolSurface` field.
  */
 export const SCREEN_ARMS = Object.freeze(new Set(["screen-a0", "screen-json", "screen-footer"]));
-
-export function implementationArm(arm) {
-	return GOLDEN_ARM_IMPLEMENTATIONS[arm] ?? arm;
-}
 
 export function sameHeadDeliveryContext(state, head) {
 	return {
@@ -206,11 +199,16 @@ function serializeTool(provider, tool) {
  * schema the driver advertises. The screen arms replace the wide schema pi-ai
  * serialized for the observation with the management-only one.
  */
-export function visibleDriverTools(provider, arm, serializedObservationTools) {
+export function serializeDriverTools(provider, toolSurface, serializedObservationTools) {
 	const stubs = DRIVER_TOOL_STUBS.map((tool) => serializeTool(provider, tool));
-	return SCREEN_ARMS.has(arm)
+	return toolSurface === "management-only"
 		? [...stubs, serializeTool(provider, MANAGEMENT_ONLY_HYDRA_TOOL)]
 		: [...stubs, ...(serializedObservationTools ?? [])];
+}
+
+/** Arm-keyed shim over the frozen `SCREEN_ARMS` record; the registry is the live path. */
+export function visibleDriverTools(provider, arm, serializedObservationTools) {
+	return serializeDriverTools(provider, SCREEN_ARMS.has(arm) ? "management-only" : "wide", serializedObservationTools);
 }
 
 const buckets = new Map([
@@ -225,6 +223,52 @@ export function deliveryBucket(delivery) {
 	const bucket = buckets.get(delivery);
 	if (!bucket) throw new Error(`unknown delivery: ${delivery}`);
 	return bucket;
+}
+
+/**
+ * The corpus category vocabulary, declared once, with every category assigned a
+ * class. The summarizer derives two category metrics — restraint on the
+ * waiting families, quality on the follow-up families — and used to spell their
+ * membership as two literal string sets. A category in neither vanished from
+ * both metrics silently, which is how a freshly authored family would be
+ * measured by nothing at all.
+ *
+ * `unmetered` is the explicit third class: those categories are covered by the
+ * corpus-wide metrics and deliberately carry no category-specific one. Anything
+ * outside all three is `unclassified`, counted by the summarizer and fatal in
+ * gate mode.
+ */
+export const WAITING_CATEGORIES = Object.freeze([
+	"pending-equivalent",
+	"newly-delivered-no-response",
+	"visible-no-response",
+	"full-resolution",
+]);
+
+export const FOLLOWUP_CATEGORIES = Object.freeze([
+	"explicit-rejection",
+	"material-change",
+	"older-visible-rejection",
+	"partial-resolution",
+]);
+
+export const UNMETERED_CATEGORIES = Object.freeze([
+	"fresh",
+	"pending-unrelated",
+	"deferrable-follow-up",
+	"user-only",
+	"emergency",
+]);
+
+export const KNOWN_CATEGORIES = Object.freeze(
+	[...WAITING_CATEGORIES, ...FOLLOWUP_CATEGORIES, ...UNMETERED_CATEGORIES].sort(),
+);
+
+export function categoryClass(category) {
+	if (WAITING_CATEGORIES.includes(category)) return "waiting";
+	if (FOLLOWUP_CATEGORIES.includes(category)) return "followup";
+	if (UNMETERED_CATEGORIES.includes(category)) return "unmetered";
+	return "unclassified";
 }
 
 export function sameDeliveryBucket(actual, expected) {

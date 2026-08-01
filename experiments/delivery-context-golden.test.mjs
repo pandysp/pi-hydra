@@ -6,10 +6,10 @@ import {
 	DRIVER_AWARE,
 	DRIVER_INVISIBLE,
 	deliveryBucket,
-	implementationArm,
 	isDeliveryBucketCorrect,
 	sameHeadDeliveryContext,
 } from "./delivery-context-evaluation.mjs";
+import { implementationArm } from "./arm-registry.mjs";
 import { buildJudgePrompt, parseBinaryJudgments } from "./delivery-context-judge-protocol.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");

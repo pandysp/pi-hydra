@@ -7,7 +7,9 @@ import { argOf } from "./lib.mjs";
 import { GOLDEN_CASES } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
-import { assertJudgeMetric, buildJudgePrompt, parseJudgments } from "./delivery-context-judge-protocol.mjs";
+import { assertJudgeMetric, buildJudgePrompt, judgeBuilderHash, parseJudgments } from "./delivery-context-judge-protocol.mjs";
+import { assertNoSnapshotDrift, isJudgeable } from "./delivery-context-judgeable.mjs";
+import { builderHashConflict, caseHash, staleCaseRows } from "./fingerprints.mjs";
 
 const args = process.argv.slice(2);
 const inputPath = argOf(args, "--input", "");
@@ -139,17 +141,36 @@ function sourceKey(row) {
 	return `${row.model}/${row.case}/${row.sample}/${row.arm}`;
 }
 
-function eligible(row) {
-	const testCase = caseById.get(row.case);
-	if (!testCase || row.delivery === "none" || !row.message?.trim()) return false;
-	return metric === "repeat" ? testCase.expectedDelivery === "none" : testCase.expectedDelivery !== "none";
-}
+/**
+ * The rules this judge is about to apply, hashed (S5). Stamped on every
+ * judgment, and compared against whatever is already in the output file: two
+ * rulesets pooled under one metric name are indistinguishable afterwards,
+ * because judgment identity is `(judge, metric, sourceKey)` and nothing in that
+ * key mentions the policy. `XHIGH-SCREEN-SPEC.md:52` said this in prose to a
+ * human; here it is a check.
+ */
+const builderHash = judgeBuilderHash();
 
 const completed = new Set();
 if (existsSync(outputPath)) {
-	for (const line of readFileSync(outputPath, "utf8").trim().split("\n").filter(Boolean)) {
-		const row = JSON.parse(line);
-		completed.add(`${row.judge}/${row.metric}/${row.sourceKey}`);
+	const prior = readFileSync(outputPath, "utf8")
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line));
+	for (const row of prior) completed.add(`${row.judge}/${row.metric}/${row.sourceKey}`);
+	const conflict = builderHashConflict(prior, builderHash);
+	if (conflict.foreign.length > 0) {
+		throw new Error(
+			`${outputPath} holds judgments made under different judge rules (${conflict.foreign.join(", ")}; this build is ${builderHash}) — appending would pool two rulesets under one metric name. Judge into a fresh --output.`,
+		);
+	}
+	// Absent fingerprint is unverified, not invalid: every frozen judgment
+	// predates this scheme, and refusing here would strand the evidence bank.
+	if (conflict.unfingerprinted > 0) {
+		console.error(
+			`NOTE: ${conflict.unfingerprinted} existing judgment(s) carry no judgeBuilderHash (pre-S5) — they cannot be checked against this build's rules`,
+		);
 	}
 }
 
@@ -157,9 +178,32 @@ const unknownCases = [...new Set(rows.filter((row) => !caseById.has(row.case)).m
 if (unknownCases.length > 0) {
 	throw new Error(`input rows reference cases this judge cannot load: ${unknownCases.join(", ")}`);
 }
+// Which rows owe which metric is decided by `delivery-context-judgeable.mjs`
+// from the ROW SNAPSHOT, the same module and the same snapshot the summarizer
+// reads. Judging from the live corpus instead is what let a case edited between
+// producing and judging split one metric family across two definitions, leaving
+// `judgedComplete` permanently false with no recoverable path.
+assertNoSnapshotDrift(rows, caseById);
+
+/**
+ * The complement to the snapshot check above: that one compares the fields the
+ * summarizer scores on, this one compares EVERYTHING the judge will read — the
+ * trajectory messages, the delivery state, the finding target — against the
+ * content hash the producer stamped. A row whose case has been edited since it
+ * was produced would otherwise be judged against material the model never saw.
+ */
+const contentDrift = staleCaseRows(rows, (id) => caseById.get(id));
+if (contentDrift.stale.length > 0) {
+	throw new Error(
+		`${contentDrift.stale.join("; ")} — the corpus changed after these rows were produced; re-produce them or judge the artifact the corpus matches`,
+	);
+}
+if (contentDrift.unfingerprinted > 0) {
+	console.error(`NOTE: ${contentDrift.unfingerprinted} producer row(s) carry no caseHash (pre-S5) — judged without a content check`);
+}
 
 const pendingRows = rows.filter(
-	(row) => eligible(row) && !completed.has(`${judgeName}/${metric}/${sourceKey(row)}`),
+	(row) => isJudgeable(row, metric) && !completed.has(`${judgeName}/${metric}/${sourceKey(row)}`),
 );
 for (let index = pendingRows.length - 1; index > 0; index--) {
 	const other = Math.floor(Math.random() * (index + 1));
@@ -212,6 +256,11 @@ async function judgeBatch(batch) {
 			metric,
 			sourceKey: sourceKey(source),
 			case: source.case,
+			// What was judged (case content) and under which rules (S5). The
+			// summarizer refuses the join when this disagrees with the producer
+			// row, and refuses to pool judgments made under two builder hashes.
+			caseHash: source.caseHash ?? caseHash(caseById.get(source.case)),
+			judgeBuilderHash: builderHash,
 			model: source.model,
 			sample: source.sample,
 			arm: source.arm,
