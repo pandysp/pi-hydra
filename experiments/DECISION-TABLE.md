@@ -14,7 +14,7 @@ within a measurement basis; bases are named per block.
 | F0 | natural finding + DELIVERY footer + the unified envelope | incumbent challenger; carries the user-actor defect |
 | F1 | F0 + the semantic repair (selection, print, dedup scope, re-liveness) | quality fixed, thinking-neutral |
 | F2 | F1's semantics as an ordered first-match checklist + "do not deliberate" | current lead |
-| F3 | F2's semantics at maximum decidability (62% longer than F2, on purpose) | testing Andreas's ambiguity hypothesis |
+| F3 | F2's semantics at maximum decidability (62% longer than F2, on purpose) | REFUTED as a cost lever (+7.6% thinking); safe but pointless |
 
 ## Quality — fresh user-actor corpus, judged (opus-high, n=12 judged rows/arm)
 
@@ -84,12 +84,13 @@ Anthropic: the envelope costs more, and the premium grows with effort.
 | MAIN | 59 | — | 708 |
 | F0 | 663 | — | 1468 |
 | F1 | 691 | +4% | 2115 |
-| F2 | **511** | **-23%** | 2102 |
-| F3 | pending | pending | 3407 |
+| F2 | **511** (487 in the paired re-measure) | **-23%** | 2102 |
+| F3 | 524 | +7.6% vs F2 | 3407 |
 
 Length is refuted as the cost driver: F2 is 43% longer than F0 and thinks
-23% less. F3 tests whether decidability drives it further while being 62%
-longer again.
+23% less. Decidability is refuted as a further lever: F3 is 62% longer
+again and thinks 7.6% MORE. The structural gap to MAIN (59 tokens) is
+closed by neither and stays open.
 
 ## Cost — trajectory ratio (the decision KPI; live-fork, opus-high)
 
