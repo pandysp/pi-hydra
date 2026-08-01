@@ -122,6 +122,30 @@ screening corpora is the only (weak) guard. Judge-only head; acting
 heads multiply the numerator. Additivity across heads is an assumption.
 n=3 trajectories: levels get ranges, contrasts get paired bootstrap.
 
+## Registered analyst operationalizations (amendment, still before data)
+
+- T1 verdict = at least 50% of PIGGYBACK points within +-15% of the
+  three-term prediction (run-end points reported separately; the
+  registered form has no write term, which is the piggyback shape).
+  T1's measured-vs-predicted comparison uses the same three-term
+  denominator on both sides; the user-facing R keeps full costTotal
+  (both printed, difference noted).
+- T3 is ONE-SIDED: breach only if F - MAIN > +5pp; F below MAIN is a
+  win, not a breach.
+- Q0a confirmations: per-cell requirement = the trajectory's derived
+  defect count (distinct defect ids); 10 = the study-wide roll-up.
+- --max-turns 5 (4 prompts x <=5 assistant messages <= 20 requests,
+  clearing the >=15 gate near the registered ~15-point design).
+- KPI note (Andreas, 2026-08-01): the decision KPI pivots to
+  PER-OBSERVATION cost + quality; the trajectory ratio decomposes as
+  (N_obs/T) x (per-obs cost / per-turn driver cost), so scheduling owns
+  the trajectory lever and the contract owns the per-observation
+  bracket. Consequence: only the PILOT cell is funded (formula
+  validation T1, baseline level T2, N_obs/T measurement, descriptive
+  repeat frequency, recorded timeline for offline schedule simulation);
+  the full 6-cell matrix and judge streams stay built but unfunded
+  unless the pilot surprises.
+
 ## Execution gates
 
 Pilot = 1 trajectory x opus-high x 3 arms; all live assertions + Q0a
