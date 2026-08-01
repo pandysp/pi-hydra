@@ -94,13 +94,19 @@ closed by neither and stays open.
 
 ## Cost — trajectory ratio (the decision KPI; live-fork, opus-high)
 
-| Arm | observer $ / driver $ | premium vs MAIN |
-|---|---:|---:|
-| MAIN | 32.1% (33.3% in the pilot) | — |
-| F0 | 67.2% (63.6%) | +35.2pp |
-| F2 | 58.6% | +26.5pp |
+| Arm | observer $ / driver $ | premium vs MAIN | planted defects found | deliveries |
+|---|---:|---:|---:|---:|
+| MAIN | 32.1% (33.3% in the pilot) | — | **3 of 4** | 10 |
+| F0 | 67.2% (63.6%) | +35.2pp | **4 of 4** | 9 |
+| F2 | 58.6% | +26.5pp | **4 of 4** | 9 |
 
-Both MAIN and F0 replicate across two independent driver runs.
+Both MAIN and F0 replicate across two independent driver runs. Coverage
+is a deterministic identifier match over delivered messages (first pass,
+not judge-scored). MAIN misses the lease-expiry defect; the envelope
+arms find all four AND interrupt the driver one time fewer.
+
+**This is the trade in one line:** +26.5pp of driver spend buys one more
+real defect of four, with one fewer interruption, on one trajectory.
 
 ## Reading it
 
