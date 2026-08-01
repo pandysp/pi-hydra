@@ -134,3 +134,33 @@ real defect of four, with one fewer interruption, on one trajectory.
 opus-xhigh confirmation of F1/F2/F3; judged quality for sol configs;
 fable (blocked on a refusal probe); F3 everywhere; acting-head arms
 under the repaired envelope.
+
+## Instrument limitation found 2026-08-01 — why the screens could not see this
+
+The frozen-case screens and the trajectory benchmark measure DIFFERENT
+things, and every quality verdict before today came from the former.
+
+Verified in code and corpus:
+1. **One expected finding per case.** All 35 judged cases carry exactly
+   one `findingTarget`; ZERO carry more (checked programmatically). The
+   judge asks "does the delivered message identify THIS issue?"
+   (`delivery-context-judge-protocol.mjs:40`). There is no way to express
+   "and it also found three other real defects".
+2. **Extra findings are penalised, not rewarded.** `findingQualityStrict`
+   fails a row on `unsupportedExtra` — the only sensitivity to finding
+   MORE points the wrong way for recall.
+3. **Cases are tiny and pre-localised.** Median case trajectory is 949
+   characters, max 2158. Real driver trajectories are 19-38k TOKENS. In a
+   949-char case the defect is legible in one pass — exactly the
+   condition under which MAIN answers correctly with ZERO thinking.
+
+So: screens measure PRECISION on a salient, pre-localised finding;
+the trajectory measures RECALL across a real haystack. MAIN is genuinely
+good at the first (91.7-96.2 findingQuality) and worse at the second
+(3/4 planted defects vs the envelope's 4/4). The screens are not wrong —
+they are scoped to a question that systematically favours snap judgment.
+
+Consequence: the trajectory benchmark's planted-defect coverage (built,
+S1 judging unfunded) is the metric that matches what observers are FOR.
+Funding it is the highest-value next measurement in this program, ahead
+of any further contract iteration.
