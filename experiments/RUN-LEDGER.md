@@ -37,8 +37,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 26 | 2026-08-01 | `2026-08-01-severity-probe-v2` | (recorded by hand) | e731a372e3c1ab00ad9a1c94b7b7604b30e3d14f (dirty) | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-01-severity-probe-v2` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-severity-probe-v2 | experiments/SEVERITY-PROBE-V2-RESULTS.md | measured |
 | 27 | 2026-08-01 | `2026-08-01-enum-plus` | (recorded by hand) | 5336c06cea50bf2e806c66f1b10ce00ad3e2a8a4 (dirty) | — | 96 | 0 | $1.5217 | `experiments/artifacts/2026-08-01-enum-plus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-enum-plus | experiments/ENUM-PLUS-RESULTS.md | measured |
 | 28 | 2026-08-01 | `2026-08-01-reference-review` | experiments/reference-review.mjs + reference-review-analyse.mjs | 6f582765bf08413f824edafd4f915a37c23dbe23 (dirty) | trajectory-task:scheduler | 93 | 2 | $0 | `experiments/artifacts/2026-08-01-reference-review/` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-reference-review | experiments/REFERENCE-REVIEW-RESULTS.md | measured |
+| 29 | 2026-08-01 | `2026-08-01-consensus` | experiments/severity-consensus.mjs | 5d6e62d5d0ca600d337a52437ed7f67176b4a7a0 (dirty) | severity-pool:c2-trajectory | 0 | 126 | $0 | `experiments/artifacts/2026-08-01-consensus/` | ~/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-consensus | experiments/CONSENSUS-RESULTS.md | measured |
 
-**Program totals: 10677 producer rows, 10273 judgments, $64.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $86.21.
+**Program totals: 10677 producer rows, 10399 judgments, $64.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $86.21.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -72,6 +73,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-01-severity-probe-v2`: severity pooling v2: V1 gate MARGINAL at 61.9% (v1 41.7%), zero two-step disagreements, inDeliverable quarantined at 38.1%; pool 21 issues vs 4 planted; TOCTOU now its own issue found by MAIN alone; MAIN highest recall 81.5% AND lowest precision 81.5%
 - `2026-08-01-enum-plus`: ENUM+ probe: enumeration is free and high-recall (0 thinking, 2/2 blocking, 7/8 any-harm); the support clause cuts no noise and costs 2.8x
 - `2026-08-01-reference-review`: Blind independent-discovery stage for the golden dataset. 40 of 44 distinct defects are in neither the planted list nor the observer pool. Reviewer missed planted sched-lease-caller-clock across all 3 passes (found the same line via omission->NaN, not the far-future trigger) — the reference review is not complete either.
+- `2026-08-01-consensus`: Three-participant deliberation to convergence. 42.9%->95.2%; zero authority-driven changes; s01 unresolved 2-1 on a reachability convention. Round-1 first attempt was invalidated by a prompt defect (seeded code instead of codeContext) and re-run.
 
 ## Reading the frozen evidence
 
