@@ -39,7 +39,7 @@
 
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import { mergeObservationPayload } from "../utils.ts";
+import { mergeObservationPayload, parseDecision, parseFooterDecision } from "../utils.ts";
 import { argOf } from "./lib.mjs";
 import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
@@ -96,9 +96,26 @@ export function loadPayload(point) {
 	return JSON.parse(readFileSync(point.capturedPayloadPath, "utf8"));
 }
 
+/**
+ * Q5 needs the routed delivery beside the reasoning count, and the variants
+ * deliberately mix grammars (MAIN-family answers in JSON, F2-family with a
+ * DELIVERY footer). Try both parsers and normalise: main's `noop` and the
+ * footer's `none` are the same routing decision under two names.
+ */
+export function deliveryOf(text) {
+	if (typeof text !== "string" || text.trim() === "") return null;
+	// The two parsers differ in shape: the footer one returns {decision, error},
+	// the JSON one returns the decision or null.
+	const footer = parseFooterDecision(text)?.decision ?? null;
+	const action = footer?.action ?? parseDecision(text)?.action ?? null;
+	if (!action) return null;
+	return action === "noop" ? "none" : action;
+}
+
 /** The row a probe call produces. Exported so the check can assert its shape. */
 export function buildRow({ header, point, variantId, prompt, sample, usage, response, error, ms, prices, nonce }) {
 	const reasoning = usage?.reasoning ?? 0;
+	const responseText = response ? textOf(response) : null;
 	return {
 		...header,
 		kind: "skip-probe",
@@ -118,9 +135,11 @@ export function buildRow({ header, point, variantId, prompt, sample, usage, resp
 		cacheRead: usage?.cacheRead ?? null,
 		cacheWrite: usage?.cacheWrite ?? null,
 		cost: usage ? rawCost(usage, prices) : null,
-		// The metric. `null` on an errored call so a failure never counts as a skip.
+		// `null` on an errored call so a failure never counts as a skip.
 		thinkingSkipped: usage ? reasoning === 0 : null,
-		responseText: response ? textOf(response) : null,
+		// Q5: the routed decision, so skipping can be cross-tabulated against it.
+		delivery: deliveryOf(responseText),
+		responseText,
 		stopReason: response?.stopReason ?? null,
 		error,
 		ms,
@@ -257,6 +276,47 @@ export function distributions(rows) {
 		.sort((a, b) => a.meanReasoning - b.meanReasoning);
 }
 
+/**
+ * Q5: skipping cross-tabulated against the routed delivery. A CONTINGENCY
+ * TABLE, deliberately — not a correlation coefficient. `by` selects the
+ * explanator being tested: delivery, prefix bucket, or variant.
+ */
+export function contingency(rows, { by = "delivery" } = {}) {
+	const key = (row) => {
+		if (by === "delivery") return row.delivery ?? "unparsed";
+		if (by === "prefix") return row.prefixTokens < 10000 ? "short(<10k)" : row.prefixTokens < 30000 ? "mid(10-30k)" : "long(>30k)";
+		return row[by] ?? "unknown";
+	};
+	const cells = new Map();
+	for (const row of rows) {
+		if (row.kind !== "skip-probe" || row.error) continue;
+		const bucket = key(row);
+		if (!cells.has(bucket)) cells.set(bucket, { bucket, skipped: 0, thought: 0, reasoning: [] });
+		const cell = cells.get(bucket);
+		if (row.reasoning === 0) cell.skipped += 1;
+		else cell.thought += 1;
+		cell.reasoning.push(row.reasoning);
+	}
+	return [...cells.values()]
+		.map((cell) => ({
+			...cell,
+			n: cell.skipped + cell.thought,
+			skipRate: cell.skipped / (cell.skipped + cell.thought),
+			meanReasoning: cell.reasoning.reduce((sum, value) => sum + value, 0) / cell.reasoning.length,
+		}))
+		.sort((a, b) => b.n - a.n);
+}
+
+function printContingency(rows, by, label) {
+	process.stdout.write(`\n${label}\n`);
+	process.stdout.write("  bucket".padEnd(20) + "n     skipped  thought  skipRate  meanThink\n");
+	for (const cell of contingency(rows, { by })) {
+		process.stdout.write(
+			`  ${cell.bucket.padEnd(18)}${String(cell.n).padEnd(6)}${String(cell.skipped).padEnd(9)}${String(cell.thought).padEnd(9)}${(cell.skipRate * 100).toFixed(0).padStart(6)}%  ${cell.meanReasoning.toFixed(0).padStart(9)}\n`,
+		);
+	}
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const args = process.argv.slice(2);
 	const rowsPath = argOf(args, "--rows", "");
@@ -294,5 +354,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	for (const item of distributions(collected)) {
 		process.stdout.write(`  ${item.variantId.padEnd(24)}${item.values.join(" ")}\n`);
 	}
+	// Q5: the three competing explanators, side by side.
+	printContingency(collected, "delivery", "Q5 contingency — skipping x routed delivery:");
+	printContingency(collected, "prefix", "Q5 contingency — skipping x prefix length:");
+	printContingency(collected, "variantId", "Q5 contingency — skipping x variant:");
 	process.stdout.write(`\ntotal spend: $${collected.reduce((sum, row) => sum + (row.cost ?? 0), 0).toFixed(4)} over ${collected.length} calls\n`);
 }

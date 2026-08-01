@@ -203,3 +203,47 @@ WHETHER it deliberates. The untested lever that follows from the
 mechanism is an explicit fast path: permission to answer immediately
 when nothing in the trajectory is contentious, rather than a better
 rulebook. Registered as the next candidate; not yet measured.
+
+## The caching hypothesis, tested — and the trade completed
+
+**Semantic caching is DISFAVORED by direct evidence.** The C1 replay
+re-sent near-identical requests to ones the pilot sent hours earlier.
+Result over the 15 shared points: decisions agreed **15/15** (every
+noop/queue/steer identical), but thinking DIFFERED (509 vs 680 at one
+point; 0 vs 210 at another). A cache returns the same response with the
+same or absent token accounting; this is a model recomputing and
+reliably reaching the same conclusion. The prompt cache (cacheRead/
+cacheWrite, explicit in usage) is a different, visible mechanism.
+
+**The steer-costs-thinking hypothesis is REFRAMED, not confirmed.** The
+same points are hard in both runs, and EVERY arm thinks hard at them
+(MAIN 680, F0 725, F2 704 at the same observation). So thinking and
+steering are both downstream of "this moment is contentious" — the
+trajectory sets the hard moments. The real anomaly is the inverse of the
+original framing: why does the envelope deliberate at the EASY moments
+MAIN answers instantly?
+
+**What the envelope buys with that thinking (raw rows, C1):** at points
+where MAIN thinks 0 and says noop/queue, F2 spends 550-760 tokens and
+produces the planted TOCTOU ("sweepExpired flips state to pending but
+leaves claimedBy set, while claimNext..."), the syntax-broken-files
+warning, and the never-executed-code warning. One clear waste case in
+the same set: 955 thinking tokens to conclude DELIVERY: none.
+
+**Planted-defect coverage on the C2 trajectory** (deterministic
+identifier match over delivered messages — a first pass, NOT judged
+coverage; the S1 judging is built but unfunded):
+
+| Arm | cost (% of driver) | planted defects named | deliveries |
+|---|---:|---:|---:|
+| MAIN | 32.1% | **3 of 4** | 10 |
+| F0 | 67.2% | **4 of 4** | 9 |
+| F2 | 58.6% | **4 of 4** | 9 |
+
+MAIN misses `sched-lease-caller-clock`. The envelope arms find every
+planted defect AND interrupt the driver less often.
+
+**The trade, complete on this trajectory:** the repaired envelope costs
++26.5pp of driver spend and catches one more real defect of four, with
+one fewer interruption. That is G1's decision with both sides measured.
+Limits: n=1 trajectory, identifier-match coverage not judge-scored.
