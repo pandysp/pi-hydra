@@ -80,6 +80,16 @@ effort moves cost 122-175%, contract moves it <= 32%.
 medium** > **(c) F everywhere** > **(a) A0 as shipped** > **(b) J at
 high-effort branches** > **(d) J everywhere**.
 
+**RETRACTED 2026-08-01 (Andreas):** options (e) and (a-medium) are
+infeasible — observer and driver MUST share the thinking level or the
+observer's replay of the driver's prefix stops hitting the prompt cache,
+and losing the cached driver transcript costs far more than any thinking
+savings. Observer effort is coupled to driver effort by design. The
+ranking collapses to (c) > (a) > (b) > (d); the remaining cost levers at
+xhigh are envelope-trim (targets input + the one-case quality defect,
+but only ~41% of the thinking premium) and channel thinking (J −26% vs
+F at xhigh; thin evidence, case-level tie).
+
 (e) sacrifices one measured routing row on one case vs F@xhigh and saves
 2.75x; the envelope prompt tax is effort-invariant (+220 tokens both
 efforts) — only the price tier moves. (b)/(d) are disfavored on evidence
