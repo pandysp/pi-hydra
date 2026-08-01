@@ -162,3 +162,18 @@ design — that is the point of the test.
   buys cost by flattening judgment must not flatten the findings.
 - Instrument: recorded-payload replay (thinking is cache-independent;
   cost from replay is NOT comparable to live-fork and is not reported).
+
+## Operational friction found while running (2026-08-01, for the next wave)
+
+1. COMMITTING DURING A LIVE RUN breaks its own retry pass: the resume guard
+   compares `codeCommit`, so a DOCS-ONLY commit between a run and its
+   `--retry-errors` pass aborts the retry. Correct-but-over-strict. Worked
+   around with `--force-mixed --note`; the real fix is to compare a
+   MEASUREMENT-RELEVANT fingerprint (arm contract hashes + corpus hash +
+   prices) and demote `codeCommit` to a recorded warning. Filed, not fixed
+   mid-wave.
+2. Two corpora into one --output is refused (correct); scripts must use one
+   output file per corpus. Cost me one guard run.
+3. Judge batches can fail individually; `judgedComplete` then refuses the
+   whole cell (correct). Always check `*.failures.jsonl` and re-run the
+   metric before reading any gate.
