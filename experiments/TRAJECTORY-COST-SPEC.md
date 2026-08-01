@@ -94,6 +94,24 @@ No composite quality score; false interrupts stay their own column;
 marginal-$-per-additional-issue printed with raw counts, never divided
 through zero.
 
+## Persistence exclusion (amendment, still before any data — Andreas)
+
+Open-loop replay cannot value re-nudging: a steer never lands, the
+driver never reacts, so re-raising an unactioned finding would score as
+waste while in the real closed loop it may be exactly right. Therefore:
+- S3 repeat metrics are DESCRIPTIVE ONLY; no verdict rule (Q1-Q5) may
+  reward or punish repeat behavior. Injection tax is reported both
+  including and excluding repeat deliveries.
+- Arms are stateless per point (no own-delivery history threaded); their
+  dedup/repeat semantics are explicitly NOT exercised here.
+- A CLOSED-LOOP persistence study (per-arm live drivers, deliveries
+  injected, driver reaction measured) is registered as a REQUIRED
+  follow-up before any contract decision that hinges on repeat
+  discipline. Note: the envelope's semantic-dedup clause and the frozen
+  corpus's visible-waiting cases encode never-re-nag; Andreas's stated
+  product expectation is re-nudge-after-non-action. That conflict is a
+  product decision, not a measurement, and is flagged open.
+
 ## Named biases and limits (registered)
 
 Fixed-driver shadow economics: driver reaction to deliveries is
