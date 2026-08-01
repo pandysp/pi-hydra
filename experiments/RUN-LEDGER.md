@@ -33,8 +33,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 22 | 2026-08-01 | `2026-08-01-adaptive-skip` | (recorded by hand) | 177a5ec5a19484ac8aa4700827b96b4c44a0dfba | — | 53 | 0 | $1.3586 | `experiments/artifacts/2026-08-01-adaptive-skip` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-adaptive-skip | experiments/ADAPTIVE-SKIP-RESULTS.md | measured |
 | 23 | 2026-08-01 | `2026-08-01-severity-probe` | (recorded by hand) | d1781119e17bb30565efab0c11f65388c228c006 | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-01-severity-probe` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-severity-probe | experiments/SEVERITY-PROBE-RESULTS.md | measured |
 | 24 | 2026-08-01 | `2026-08-01-no-steer` | (recorded by hand) | 42c06462bb652ac381afd6e42d04ba9c79aa5f0d (dirty) | — | 21 | 0 | $0.6741 | `experiments/artifacts/2026-08-01-no-steer` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-no-steer | experiments/NO-STEER-RESULTS.md | measured |
+| 25 | 2026-08-01 | `2026-08-01-no-steer-v2` | (recorded by hand) | 0dd0967ea54684f8c840c93f6c2770552fbce760 (dirty) | — | 62 | 0 | $1.4716 | `experiments/artifacts/2026-08-01-no-steer-v2` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-no-steer-v2 | experiments/NO-STEER-V2-RESULTS.md | measured |
 
-**Program totals: 10426 producer rows, 10271 judgments, $61.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $83.21.
+**Program totals: 10488 producer rows, 10271 judgments, $62.89 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $84.69.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -64,6 +65,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-01-hydra-dataset-audit`: Analysis scratch from the phase-0.5 dataset audit; contains no jsonl evidence of its own. Added 2026-08-01 by the wave-10 D6 repair.
 - `2026-08-01-severity-probe`: severity-pooling probe: P1 not viable (41.7% exact judge agreement); zero producer spend, judges only
 - `2026-08-01-no-steer`: no-steer causal probe: N1 confirmed on MAIN (8/10 skip, -77% thinking) but null on F2; N2 shows MORE planted defects, not fewer
+- `2026-08-01-no-steer-v2`: no-steer v2: M1 power CONFIRMED (pooled 28/30 vs 13/30 skips, Fisher p=2.7e-05, MAIN-NS 20/20 zero-thinking) with coverage UP 1.45->2.30 defects/sample; M2 transfer UNINFORMATIVE (both arms floor at 100% skip, MAIN routed zero steers)
 
 ## Reading the frozen evidence
 
