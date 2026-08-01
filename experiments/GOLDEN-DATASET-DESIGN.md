@@ -85,3 +85,31 @@ records were vetted how — hence `votes` and `promotedFrom` on the record.
 - How often to re-run the reference review as tasks accumulate runs.
 - Whether `harmful` needs splitting later; not now, the middle of the
   scale is where judges disagree.
+
+## Two conventions, RULED (analyst, 2026-08-01, reversible)
+
+Andreas delegated the severity work ("It is your and the two judges'
+job"), so these are settled here rather than referred up. Both blocked
+real work: the consensus stalled 2-1 on the first, and the reference
+review's planted-defect match turned on the second.
+
+**RULING 1 — REACHABILITY.** Rate `harmIfExecuted` as if the code path
+runs, and record reachability as a SEPARATE field. **Exported public API
+counts as reachable by definition**: a library's callers are not in its
+repository, so "nothing in this repo calls it" is not evidence of
+unreachability. This resolves the standing 2-1 dissent toward blocking
+for the caller-supplied lease expiry, and matches how a reviewer treats a
+published function.
+Consequence if wrong: we over-weight defects in unused exports. The
+separate `reachable` field keeps that visible and re-scorable.
+
+**RULING 2 — INDIVIDUATION.** One issue per DEFECTIVE EXPRESSION, not per
+trigger. Same line, same consequence, different input = ONE issue.
+(The lease defect described via "omitting `now` yields NaN" and via "a
+caller supplies a hostile far-future timestamp" is one defect, not two.)
+Consequence if wrong: we under-count when one line genuinely carries two
+independent failure modes. Reviewable per issue; the dedup mapping is
+printed so a bad merge is visible.
+
+Both rulings are written into the judging prompts, not applied
+post-hoc, so labels are produced under them rather than adjusted to them.
