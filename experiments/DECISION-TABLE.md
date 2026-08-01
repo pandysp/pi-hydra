@@ -54,12 +54,18 @@ F2 12/16 — the routing gain replicates at the primary config.
 | sonnet-medium | F0 | 76.5 | 96.2 | 61.5 |
 | terra-medium | MAIN(A0) | 58.8 | 73.1 | 61.5 |
 | terra-medium | F0 | 79.4 | 76.9 | 69.2 |
-| sol-high | MAIN(A0) | 67.6 | judging | — |
-| sol-high | J | 73.5 | judging | — |
-| sol-high | F0 | 73.5 | judging | — |
-| sol-xhigh | MAIN(A0) | 58.8 | judging | — |
-| sol-xhigh | J | **79.4** | judging | — |
-| sol-xhigh | F0 | 70.6 | judging | — |
+| sol-high | MAIN(A0) | 67.6 | 76.9 | — |
+| sol-high | J | 73.5 | **92.3** | — |
+| sol-high | F0 | 73.5 | 80.8 | — |
+| sol-xhigh | MAIN(A0) | 58.8 | 84.6 | — |
+| sol-xhigh | J | **79.4** | **92.3** | — |
+| sol-xhigh | F0 | 70.6 | 80.8 | — |
+
+**J IS NOT DEAD ON OPENAI (2026-08-01).** Judged at both sol configs it
+is the QUALITY winner (92.3 fq, 100 support at both) and matches or beats
+F0 on routing. Its refutation was Anthropic-medium-specific (sonnet
+routing never moved). My "J is dead" line below is withdrawn for OpenAI
+and stands only for Anthropic.
 
 The old envelope's quality deficit at opus was ONE case (user-actor
 targeting) — the case F1/F2 fix (100.0 target above).
@@ -155,8 +161,10 @@ is now a precondition for any recall claim in this program.
   quality — for +26.5pp of driver cost at session scale (was +35.2pp).
 - **The bar it misses** is the pre-registered <=15pp shape test. The open
   lever is decidability (F3).
-- **J is dead**: refuted at medium, never best anywhere since, and its
-  xhigh cost advantage did not survive realistic prefixes.
+- **J is dead ON ANTHROPIC ONLY**: refuted at sonnet-medium, and its
+  xhigh cost advantage did not survive realistic prefixes. On OPENAI it
+  is the judged quality winner at high and xhigh (92.3 fq vs F0's 80.8).
+  Withdrawn as a global verdict.
 
 ## Pending cells
 
@@ -230,3 +238,25 @@ SELECTION (pick the one most urgent thing AND justify interrupting),
 not FINDING. Enumeration is cheaper and more complete. If that holds,
 the cheap high-coverage design lets observers enumerate and lets the
 runtime triage — a product direction, not a wording tweak.
+
+
+## Judged quality on OpenAI — fresh user-actor corpus (n=12 judged/arm)
+
+| Config | metric | MAIN | F0 | F1 | F2 |
+|---|---|---:|---:|---:|---:|
+| sol-high | finding quality | **33.3** | 66.7 | **75.0** | 58.3 |
+| sol-high | routing | 31.3 | **25.0** | **81.3** | 75.0 |
+| sol-xhigh | finding quality | 41.7 | 58.3 | **66.7** | 58.3 |
+| sol-xhigh | routing | 43.8 | **18.8** | **81.3** | 68.8 |
+
+MAIN COLLAPSES on OpenAI user-actor cases (33-42 quality vs the repaired
+arms' 67-75). F0's routing is catastrophic there (18.8-25%); the repair
+lifts it to 81%.
+
+**Provider split, unexpected:** the framing arm F2 is best on Anthropic
+opus-high (91.7 fq) but WORSE than the unframed repair F1 on OpenAI
+(58.3 vs 75.0), consistently at both sol configs. Framing appears to help
+Claude and hurt GPT. Thin (2 rows at n=12) but consistent. Consequence:
+the contract FAMILY generalises across providers; WHICH repaired variant
+may not. That is an instruction-text choice, so it stays inside the
+branch-cost rule either way.
