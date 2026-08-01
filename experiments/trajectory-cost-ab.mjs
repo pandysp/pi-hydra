@@ -68,6 +68,7 @@ import { createEditTool, createGrepTool, createLsTool, createReadTool, createWri
 import {
 	footerFormatCorrection,
 	mergeObservationPayload,
+	mergeOpenAIObservationPayload,
 	parseDecision,
 	parseFooterDecision,
 	selectFinalAssistant,
@@ -87,6 +88,13 @@ import { argOf } from "./lib.mjs";
 import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
 import { selectTrajectories, setupTask, taskSeedHash } from "./trajectory-cost-tasks.mjs";
+import {
+	checkOpenAIObservationRow,
+	composeOpenAIObservationCost,
+	handoffFor,
+	isCodex,
+	providerOf,
+} from "./trajectory-openai.mjs";
 
 // ---------------------------------------------------------------------------
 // Arms, head, lens. Frozen for the whole study.
@@ -137,6 +145,11 @@ export const ARMS = Object.freeze(Object.keys(ARM_PROMPTS));
 export const CONFIGS = Object.freeze({
 	"opus-high": { provider: "anthropic", id: "claude-opus-5", reasoning: "high" },
 	"opus-xhigh": { provider: "anthropic", id: "claude-opus-5", reasoning: "xhigh" },
+	// OpenAI: driver AND observations share one session id so the observations
+	// ride the driver's prefix cache, exactly as production does when the
+	// transport allows it (`index.ts:827-844`).
+	"sol-high": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "high" },
+	"sol-xhigh": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "xhigh" },
 });
 
 const sha = (text) => createHash("sha256").update(text).digest("hex");
@@ -503,9 +516,18 @@ async function main() {
 	mkdirSync(payloadDir, { recursive: true });
 
 	const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
-	const credential = auth.anthropic;
-	if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
-		throw new Error("missing or expired anthropic login; run pi and log in first");
+	// Provider-aware: a codex cell needs the openai-codex credential. Passing the
+	// Anthropic token to a codex driver fails deep inside the client
+	// ("Failed to extract accountId from token") with every turn recorded as an
+	// error row, which reads like a model failure rather than a wiring one.
+	const neededProviders = new Set(requestedConfigs.map((name) => CONFIGS[name].provider));
+	const credentials = {};
+	for (const provider of neededProviders) {
+		const credential = auth[provider];
+		if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
+			throw new Error(`missing or expired ${provider} login; run pi and log in first`);
+		}
+		credentials[provider] = credential;
 	}
 
 	// Resume: only cells that reached their cell-end row are complete; anything
@@ -540,7 +562,15 @@ async function main() {
 		while (cursor < cells.length) {
 			const cell = cells[cursor++];
 			try {
-				await runCell({ ...cell, outputPath, payloadDir, requestedArms, maxTurnsPerRun, driverMaxTokens, apiKey: credential.access });
+				await runCell({
+					...cell,
+					outputPath,
+					payloadDir,
+					requestedArms,
+					maxTurnsPerRun,
+					driverMaxTokens,
+					apiKey: credentials[CONFIGS[cell.config].provider].access,
+				});
 			} catch (error) {
 				const row = {
 					kind: "cell-error",
@@ -574,6 +604,11 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unknown model ${spec.provider}/${spec.id}`);
 	const prices = pricesFor(model);
+	// One session id for the driver AND every observation, so observations ride
+	// the driver's prefix cache — production's behaviour when the transport
+	// allows sharing (`index.ts:827-844`). undefined on Anthropic, where cache
+	// sharing is carried by the replayed `cache_control` markers instead.
+	const codexSessionId = isCodex(spec) ? uuidv7() : undefined;
 
 	mkdirSync(payloadDir, { recursive: true });
 	const root = mkdtempSync(join(tmpdir(), `hydra-traj-${task.id}-${config}-`));
@@ -632,6 +667,8 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 		apiKey,
 		reasoning: spec.reasoning,
 		maxTokens: driverMaxTokens,
+		sessionId: codexSessionId,
+		transport: codexSessionId ? "websocket" : undefined,
 		onPayload: (body) => {
 			driver.captured = structuredClone(body);
 			const serialized = JSON.stringify(driver.captured);
@@ -658,7 +695,16 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 
 		for (const [armOrderIndex, arm] of order.entries()) {
 			const started = performance.now();
-			const prompt = { role: "user", content: [{ type: "text", text: ARM_PROMPTS[arm] }], timestamp: Date.now() };
+			// Provider-aware handoff: Anthropic keeps ARM_PROMPTS' combined user
+			// prompt; OpenAI splits into raw lens + developer envelope, which is
+			// what production does for `openai-codex-responses`
+			// (`utils.ts:361-365`, `index.ts:483-492`).
+			const handoff = handoffFor(arm, spec, {
+				head: OBSERVER_HEAD,
+				lens: OBSERVER_LENS,
+				anthropicPrompt: ARM_PROMPTS[arm],
+			});
+			const prompt = { role: "user", content: [{ type: "text", text: handoff.prompt }], timestamp: Date.now() };
 			const baseMessages = point.assistant ? [point.assistant] : [];
 			const usages = [];
 			let providerCalls = 0;
@@ -678,9 +724,15 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 					{
 						apiKey,
 						reasoning: spec.reasoning,
+						// The observation rides the driver's cache: same session id,
+						// same transport (`index.ts:827-844`, :1023).
+						sessionId: codexSessionId,
+						transport: codexSessionId ? "websocket" : undefined,
 						onPayload: (built) => {
 							providerCalls++;
-							return mergeObservationPayload(captured, built.messages, undefined);
+							return codexSessionId
+								? mergeOpenAIObservationPayload(captured, built.input, handoff.envelope)
+								: mergeObservationPayload(captured, built.messages, handoff.envelope);
 						},
 					},
 				).result();
@@ -716,6 +768,7 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 			measured.push({
 				arm,
 				armOrderIndex,
+				usedEnvelope: handoff.envelope !== undefined,
 				usages,
 				usage0: usages[0] ?? flatUsage(null),
 				extra: usages.length > 1 ? sumUsage(usages.slice(1)) : null,
@@ -755,6 +808,8 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 				arm: item.arm,
 				armOrderIndex: item.armOrderIndex,
 				lens: OBSERVER_HEAD,
+				provider: providerOf(spec),
+				splitHandoff: item.usedEnvelope,
 				promptHash: promptHash(item.arm),
 				contractHash: contractHash(item.arm),
 				capturedPayloadHash: capturedHash,
@@ -771,7 +826,9 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 				mTokens,
 				mDelta,
 				isMWriter: isWriter,
-				composedCost: composeObservationCost(usage, { mTokens, isWriter, m1hTokens }, prices, item.extra),
+				composedCost: codexSessionId
+					? composeOpenAIObservationCost(usage, prices, item.extra)
+					: composeObservationCost(usage, { mTokens, isWriter, m1hTokens }, prices, item.extra),
 				extraUsage: item.extra,
 				hitRatio: readable > 0 ? (usage.cacheRead / readable) * 100 : 0,
 				providerCalls: item.providerCalls,
@@ -787,7 +844,9 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 			};
 			row.assertionFailures = row.error
 				? ["arm call failed"]
-				: checkObservationRow(row, { driverPayloadHash: capturedHash, driverUsed1h: driver.used1h });
+				: codexSessionId
+					? checkOpenAIObservationRow(row, { driverPayloadHash: capturedHash })
+					: checkObservationRow(row, { driverPayloadHash: capturedHash, driverUsed1h: driver.used1h });
 			row.valid = row.assertionFailures.length === 0;
 			if (!row.valid) {
 				console.error(`!! ${pointId} ${item.arm}: ${row.assertionFailures.join("; ")}`);
