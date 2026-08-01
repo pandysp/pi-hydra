@@ -168,7 +168,11 @@ export function reconcile(rows, judgments) {
 export function harnessSpend(rows) {
 	let total = 0;
 	for (const row of rows) {
-		const cost = row.usage?.cost;
+		// Producer rows nest usage; replay-shaped rows (recorded-payload-cost,
+		// adaptive-skip-probe) spread usage flat and carry the priced figure at
+		// the top level. Reading only the nested shape silently ledgered a $1.36
+		// study as $0, which is exactly the drift the ledger exists to prevent.
+		const cost = row.usage?.cost ?? row.rawCost ?? row.cost;
 		if (typeof cost === "number") total += cost;
 	}
 	return Number(total.toFixed(4));

@@ -566,6 +566,17 @@ test("reconcile answers every count the audit had to reconstruct by hand", () =>
 	assert.equal(harnessSpend(rows), 1.75);
 });
 
+test("spend is summed from both row shapes, so a replay study is not ledgered as $0", () => {
+	// Producer rows nest usage; replay rows (recorded-payload-cost,
+	// adaptive-skip-probe) spread it flat. Reading only the nested shape
+	// recorded a real $1.36 study as $0 before this was fixed.
+	assert.equal(harnessSpend([{ usage: { cost: 0.5 } }, { usage: { cost: 0.25 } }]), 0.75);
+	assert.equal(harnessSpend([{ rawCost: 0.4, cost: 0.4 }, { rawCost: 0.1, cost: 0.1 }]), 0.5);
+	assert.equal(harnessSpend([{ cost: 0.2 }, { usage: { cost: 0.3 } }, { rawCost: 0.1 }]), 0.6);
+	// A row with no priced field contributes nothing rather than NaN.
+	assert.equal(harnessSpend([{ usage: {} }, { cost: null }, {}]), 0);
+});
+
 test("the seeded ledger loads, validates, and renders", () => {
 	const entries = readLedger();
 	assert.ok(entries.length >= 14, `expected the seeded waves, found ${entries.length}`);
