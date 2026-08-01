@@ -61,3 +61,33 @@ and check whether the 2 thinking points reproduce at the same points.
   The mean alone did hide the effect twice, so it never travels alone —
   but which metric carries the story is a finding, not an assumption.
 - Budget: ~$2. Anything larger needs a new pre-registration.
+
+## Q5 (added 2026-08-01, before study data): what happens WHEN it skips
+
+Andreas's question: quality does not degrade when the model skips — so
+what are the skipped observations? Preliminary read of the C1 rows,
+recorded here so the study either confirms or overturns it:
+
+- MAIN's 13 zero-thinking observations on the recorded payloads were NOT
+  all noops: 8 noop, **5 routed `queue` findings** — specific,
+  first-time findings ("stats() counts only in-store states; stranded
+  pending jobs invisible", "two files silently regressed by earlier
+  edits", "test added but never run"). Real findings declared with zero
+  visible deliberation.
+- Both of MAIN's thinking observations were `steer`. In that run the
+  separation is perfect: every steer had thinking, no skipped
+  observation was a steer.
+- Hypothesis it suggests: SEEING the defect is cheap (it is legible in
+  the visible trajectory); deciding to INTERRUPT is what costs
+  deliberation. noop/queue are low-stakes calls made immediately; steer
+  means stopping the driver mid-work.
+- Counter-evidence already in hand: at opus-xhigh on the SHORT frozen
+  user-actor cases there is a zero-think `steer`
+  (ua-security-held-batch), so the coupling is not absolute — strong on
+  long real prefixes, looser on short synthetic ones.
+
+Q5 test: for every cell, cross-tabulate reasoning === 0 against the
+routed delivery type. Report the contingency table, not a correlation
+claim. If steer-vs-rest explains the skip better than prefix length or
+effort, that is the mechanism; if it does not, retire the hypothesis
+explicitly.
