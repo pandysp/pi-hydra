@@ -1,5 +1,12 @@
 # Unified-API screen — A0 / J / F results (2026-07-31, v2)
 
+> **SUPERSEDED IN PART.** This document's quality verdicts use the OLD metric
+> (precision on ONE seeded finding per case), which cannot express recall. The
+> resolved metric is in [`SEVERITY-V4-BLOCKING-TIER.md`](SEVERITY-V4-BLOCKING-TIER.md)
+> and the deliberated reference set in [`CONSENSUS-RESULTS.md`](CONSENSUS-RESULTS.md).
+> The routing and cost numbers here stand; the quality ordering may not.
+
+
 v2 supersedes v1 (commit `4c61ceb`), which was written from the two-config
 state and claimed "better AND cheaper than the incumbent on both providers."
 That cost claim did not replicate on the two additional families and v1's

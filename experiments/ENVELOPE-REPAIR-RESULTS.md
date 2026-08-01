@@ -1,5 +1,12 @@
 # Envelope repair — phase 1 results (2026-08-01)
 
+> **CONTAINS A RETRACTION.** The planted-defect coverage numbers in this
+> document were produced by keyword matching and are WITHDRAWN — the matcher
+> failed in both directions. See the RETRACTION section below and
+> [`DECISION-TABLE.md`](DECISION-TABLE.md) for the corrected reading. Do not
+> quote the coverage figures without it.
+
+
 Pre-registered in ENVELOPE-REPAIR-SPEC.md (commits d9ae0de, 28601c3,
 9db1114 — all before data). Arms differ in instruction text only:
 MAIN (main's shipped contract) / F0 (current envelope) / F1 (semantic

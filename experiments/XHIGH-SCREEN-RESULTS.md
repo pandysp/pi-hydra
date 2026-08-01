@@ -1,5 +1,12 @@
 # Opus-xhigh screen — A0 / J / F with judging (2026-07-31)
 
+> **SUPERSEDED IN PART.** This document's quality verdicts use the OLD metric
+> (precision on ONE seeded finding per case), which cannot express recall. The
+> resolved metric is in [`SEVERITY-V4-BLOCKING-TIER.md`](SEVERITY-V4-BLOCKING-TIER.md)
+> and the deliberated reference set in [`CONSENSUS-RESULTS.md`](CONSENSUS-RESULTS.md).
+> The routing and cost numbers here stand; the quality ordering may not.
+
+
 Redo of the unified-API screen at the user's primary config (claude-opus-5,
 xhigh), motivated by the cost sweep (F +48% production-priced vs A0, all
 thinking). Rules pre-registered before data in `XHIGH-SCREEN-SPEC.md`
