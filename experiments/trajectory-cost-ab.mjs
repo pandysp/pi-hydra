@@ -82,6 +82,7 @@ import {
 	buildScreenJsonObservationPrompt,
 	buildShippedMainObservationPrompt,
 } from "./delivery-context-evaluation.mjs";
+import { MAIN_ENUM } from "./enumerate-variants.mjs";
 import { argOf } from "./lib.mjs";
 import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
@@ -114,7 +115,22 @@ export const ARM_PROMPTS = Object.freeze({
 	F2: buildFramedFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 	// F3 = F2's semantics at maximum decidability, longer on purpose.
 	F3: buildDecidableFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
+	// ENUM (ENUM-PLUS-SPEC): MAIN's contract with the grammar emitting EVERY
+	// finding as its own entry and the noop-unless sentence replaced by an
+	// explicit no-ranking instruction. Imported as the rendered string from
+	// `enumerate-variants.mjs` rather than re-derived, so a trajectory row and
+	// an ENUM+ probe row carry byte-identical contract text — those variants
+	// render against the same head and lens this harness uses (asserted below).
+	ENUM: MAIN_ENUM,
 });
+
+// ENUM arrives as a pre-rendered string, so the head/lens it was rendered
+// against must match this harness's or the arm would silently carry a different
+// lens than every other arm. Checked at module load, not in a test file, because
+// a mismatch would corrupt a paid run.
+if (!ARM_PROMPTS.ENUM.includes(OBSERVER_LENS)) {
+	throw new Error("ENUM was rendered against a different lens than this harness uses");
+}
 
 export const ARMS = Object.freeze(Object.keys(ARM_PROMPTS));
 
@@ -336,7 +352,58 @@ function failOpenJsonDecision(text, error) {
 	};
 }
 
+/**
+ * ENUM emits a LIST — `{"findings":[{action, reason, message}, ...]}` — where
+ * every other arm emits one decision. Two things follow.
+ *
+ * The row's single `delivery` field takes the MOST URGENT action in the list,
+ * because that is what the runtime would have to act on: a batch containing a
+ * steer interrupts the driver whether or not it also contains a queue. Ranking
+ * is the delivery-urgency order used throughout the program.
+ *
+ * Coverage is NOT read from this field. It is read from `responseText`, which
+ * carries every finding verbatim — collapsing a list into one action here and
+ * then scoring recall off it would throw away exactly what the arm exists to
+ * test.
+ *
+ * Fail-open like MAIN, since ENUM is MAIN's contract with one grammar edit: an
+ * unparseable reply is a warned noop, never a recovery turn.
+ */
+const ENUM_URGENCY = ["print", "queue", "steer", "interrupt"];
+
+export function parseEnumDecision(text) {
+	let parsed = null;
+	try {
+		const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+		parsed = JSON.parse((fenced ? fenced[1] : text).trim());
+	} catch {
+		parsed = null;
+	}
+	if (!parsed || !Array.isArray(parsed.findings)) return null;
+	const findings = parsed.findings.filter((item) => item && typeof item === "object");
+	if (findings.length === 0) return { action: "noop", reason: "no findings", message: "", findings: [] };
+	const ranked = [...findings].sort(
+		(a, b) => ENUM_URGENCY.indexOf(b.action) - ENUM_URGENCY.indexOf(a.action),
+	);
+	const top = ranked[0];
+	if (ENUM_URGENCY.indexOf(top.action) === -1) return null;
+	return {
+		action: top.action,
+		reason: typeof top.reason === "string" ? top.reason : "",
+		message: findings.map((item) => item.message).filter(Boolean).join(" | "),
+		findings,
+	};
+}
+
 function parseArmResponse(arm, text) {
+	if (arm === "ENUM") {
+		const decision = parseEnumDecision(text);
+		return {
+			decision: decision ?? { action: "noop", reason: "unparseable response", message: "" },
+			error: decision ? null : "unparseable findings list; the JSON contract falls back to noop",
+			formatValid: decision !== null,
+		};
+	}
 	if (arm === "MAIN" || arm === "J") {
 		return failOpenJsonDecision(text, "unparseable JSON; the JSON contract falls back to noop");
 	}

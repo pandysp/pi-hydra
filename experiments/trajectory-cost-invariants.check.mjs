@@ -41,6 +41,7 @@ import {
 	enumerateObservationPoints,
 	flatUsage,
 	lensHash,
+	parseEnumDecision,
 	promptHash,
 	rawCost,
 	sumUsage,
@@ -210,7 +211,7 @@ test("a run with no captured payload schedules nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("the arms share one lens and differ only in the contract region", () => {
-	assert.deepEqual(ARMS, ["MAIN", "J", "F", "F1", "F2", "F3"]);
+	assert.deepEqual(ARMS, ["MAIN", "J", "F", "F1", "F2", "F3", "ENUM"]);
 	const lens = lensHash();
 	for (const arm of ARMS) {
 		assert.equal(ARM_PROMPTS[arm].split(OBSERVER_LENS).length - 1, 1, `${arm}: the lens must appear exactly once`);
@@ -237,7 +238,27 @@ test("this harness's arms are the screen registry's arms under other names", () 
 	// the screen's verdict.json have to be the same contract text, or the two
 	// harnesses report one letter for two experiments.
 	const equivalent = { MAIN: "screen-a0", J: "screen-json", F: "screen-footer", F1: "F1", F2: "F2", F3: "F3" };
-	assert.deepEqual(Object.keys(equivalent), [...ARMS]);
+	// ENUM is deliberately NOT a registry arm: it is a throwaway diagnostic
+	// built by string surgery on MAIN (`enumerate-variants.mjs` header), and
+	// registering it would drag a dead contract through every invariant suite.
+	// So it is exempt from the registry-equivalence check and carries a
+	// PROVENANCE assertion instead — it must still be MAIN plus exactly the two
+	// documented edits, or it is a third unrelated contract wearing the name.
+	const exempt = new Set(["ENUM"]);
+	assert.deepEqual([...Object.keys(equivalent), ...exempt], [...ARMS]);
+	assert.notEqual(ARM_PROMPTS.ENUM, ARM_PROMPTS.MAIN, "ENUM is byte-identical to MAIN — the grammar edit did not land");
+	assert.ok(
+		ARM_PROMPTS.ENUM.includes('{"findings":['),
+		"ENUM lost its list grammar — it would no longer test enumeration",
+	);
+	assert.ok(
+		ARM_PROMPTS.ENUM.includes("Do not rank them or pick one."),
+		"ENUM lost its no-selection instruction",
+	);
+	assert.ok(
+		!ARM_PROMPTS.ENUM.includes("Noop unless something warrants feedback."),
+		"ENUM still carries MAIN's noop-unless routing — the routing edit did not land",
+	);
 	for (const [local, registryArm] of Object.entries(equivalent)) {
 		const handoff = armHandoff(registryArm, "anthropic", {
 			head: OBSERVER_HEAD,
@@ -253,6 +274,38 @@ test("this harness's arms are the screen registry's arms under other names", () 
 	for (const registryArm of Object.values(equivalent)) {
 		assert.equal(armSpec(registryArm).toolSurface, "management-only");
 	}
+});
+
+test("the ENUM parser takes the most urgent action and keeps every finding", () => {
+	// An empty list is a genuine noop, not a parse failure.
+	assert.deepEqual(parseEnumDecision('{"findings":[]}'), {
+		action: "noop",
+		reason: "no findings",
+		message: "",
+		findings: [],
+	});
+
+	// The row's single delivery must be the MOST URGENT action in the batch: a
+	// batch containing a steer interrupts the driver whatever else it carries.
+	const mixed = parseEnumDecision(
+		'{"findings":[{"action":"queue","reason":"r1","message":"m1"},{"action":"steer","reason":"r2","message":"m2"},{"action":"print","reason":"r3","message":"m3"}]}',
+	);
+	assert.equal(mixed.action, "steer");
+	assert.equal(mixed.reason, "r2");
+	// Every finding survives — coverage is read from the text, but the parsed
+	// list must not silently drop the non-urgent ones either.
+	assert.equal(mixed.findings.length, 3);
+	assert.equal(mixed.message, "m1 | m2 | m3");
+
+	// Fenced JSON is what a model actually emits often enough to matter.
+	const fenced = parseEnumDecision('```json\n{"findings":[{"action":"print","reason":"r","message":"m"}]}\n```');
+	assert.equal(fenced.action, "print");
+
+	// Unparseable and wrong-shape replies return null so the caller can fail
+	// open to a warned noop, exactly as MAIN's contract does.
+	assert.equal(parseEnumDecision("not json at all"), null);
+	assert.equal(parseEnumDecision('{"action":"steer","message":"m"}'), null, "MAIN's shape is not ENUM's shape");
+	assert.equal(parseEnumDecision('{"findings":[{"action":"shout","message":"m"}]}'), null, "an out-of-enum action is a parse failure");
 });
 
 // ---------------------------------------------------------------------------
