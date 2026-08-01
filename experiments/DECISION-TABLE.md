@@ -46,6 +46,12 @@ critical rows for any arm.
 | sonnet-medium | F0 | 76.5 | 96.2 | 61.5 |
 | terra-medium | MAIN(A0) | 58.8 | 73.1 | 61.5 |
 | terra-medium | F0 | 79.4 | 76.9 | 69.2 |
+| sol-high | MAIN(A0) | 67.6 | judging | — |
+| sol-high | J | 73.5 | judging | — |
+| sol-high | F0 | 73.5 | judging | — |
+| sol-xhigh | MAIN(A0) | 58.8 | judging | — |
+| sol-xhigh | J | **79.4** | judging | — |
+| sol-xhigh | F0 | 70.6 | judging | — |
 
 The old envelope's quality deficit at opus was ONE case (user-actor
 targeting) — the case F1/F2 fix (100.0 target above).
@@ -61,8 +67,12 @@ Frozen mini-prefix basis (~800 tokens; understates the envelope premium
 | opus-xhigh | $0.0119 | $0.0145 | $0.0158 | +48% production-priced |
 | sonnet-medium | $0.0030 | — | $0.0032 | +5.5% |
 | terra-medium | $0.0036 | $0.0038 | $0.0030 | **-15%, F0 cheapest** |
-| sol-high | $0.0100 | $0.0108 | **$0.0096** | **F0 cheapest** |
-| sol-xhigh | $0.0113 | $0.0124 | **$0.0103** | **F0 cheapest** |
+| sol-high | $0.00911 | $0.01010 | **$0.00896** | **-1.6%, F0 cheapest** |
+| sol-xhigh | $0.01016 | $0.01166 | **$0.00962** | **-5.3%, F0 cheapest** |
+
+(sol rows: full 17-case screen, 34 rows/cell, zero errors — the same
+corpus and cell shape as the opus screens, so they are directly
+comparable to the opus block above.)
 
 OpenAI: the envelope is better AND cheaper at every effort measured.
 Anthropic: the envelope costs more, and the premium grows with effort.
