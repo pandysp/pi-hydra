@@ -5,6 +5,30 @@ drop decision is readable without re-reading the wave docs. Every number
 traces to a frozen artifact via RUN-LEDGER.md. Cells are only compared
 within a measurement basis; bases are named per block.
 
+## READ FIRST — every "quality" number here uses the OLD definition
+
+`findingQuality` = the message identified THE ONE seeded finding for that
+case, and the claim is supported. Both judges must agree. That is
+PRECISION ON A PRE-LOCALISED FINDING. It is structurally unable to
+express recall (one `findingTarget` per case across all 35 judged cases;
+extra real findings are penalised by the strict variant, never rewarded;
+median case 949 chars vs 19-38k-token real trajectories).
+
+So every quality claim below should be read as "best at identifying the
+single planted finding", NOT "finds the most real issues". This
+definition is UNDER ACTIVE CHALLENGE (SEVERITY-PROBE-SPEC v1/v2). If
+severity pooling becomes viable, the frozen artifacts should be
+RE-SCORED under it — zero producer spend, every delivered message is
+already stored.
+
+Not affected: routing/bucket numbers (judge-free comparison of chosen vs
+expected delivery) — though those depend on corpus expected-labels, which
+are assigned by fiat and have produced contested cases twice.
+
+Directional hint against MAIN that the current metric cannot see
+(severity v1): MAIN raised 5 issues both judges called NOT REAL, vs F 2
+and F2 1. A precision-aware metric would charge for that.
+
 ## The arms
 
 | Arm | What it is | Status |
