@@ -175,3 +175,30 @@ zero spend, and is the natural next analysis.
   priced figure flat. Fixed in `run-ledger.mjs` with a regression test;
   the entry now reads the measured $1.3586. Every prior replay-shaped run
   (the C1 and F3 instruments) was ledgered under the same gap.
+
+## Derived-metric verification (the discipline 96eff06 demands)
+
+`delivery` is a DERIVED field, and this study's headline rests entirely
+on it, so it was read against its raw text BEFORE being quoted — not
+after.
+
+- **Independent re-derivation agrees on 50/50 rows.** The probe parses
+  with the production parsers (`parseFooterDecision`, `parseDecision`);
+  the check re-extracted the literal `DELIVERY: <x>` trailing match and
+  the literal `"action":"<x>"` field and compared. Zero disagreements.
+- The raw texts were read, not just counted. Representative rows:
+  - MAIN, **0 thinking**, parsed `queue`:
+    `{"action":"queue","reason":"Task 1's test claims verification but was
+    never run; MAX_ATTEMPTS/attempts/dead are unused in scheduler.js",
+    "message":"Two notes: (1) you added the pluralize test without
+    running node --test..."}` — a real, specific, two-part finding routed
+    with zero deliberation. This is the claim of the study, in the
+    model's own words.
+  - F2, **806 thinking**, parsed `steer`: a substantive stranded-claim
+    finding about `sweepExpired`/`claimNext`.
+  - MAIN, **0 thinking**, parsed `none`: `{"action":"noop",...,
+    "message":""}`.
+  - F2, **151 thinking**, parsed `none`: `DELIVERY: none` — thinking
+    without a finding does occur; it is the 3-of-22 minority in the
+    `none` row of the contingency, and it is why `none` is 86% and not
+    100%.
