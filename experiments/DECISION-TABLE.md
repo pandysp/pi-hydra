@@ -104,27 +104,46 @@ closed by neither and stays open.
 
 | Arm | observer $ / driver $ | premium vs MAIN | planted defects found | deliveries |
 |---|---:|---:|---:|---:|
-| MAIN | 32.1% (33.3% in the pilot) | — | **3 of 4** | 10 |
-| F0 | 67.2% (63.6%) | +35.2pp | **3 of 4** | 9 |
-| F2 | 58.6% | +26.5pp | **4 of 4** | 9 |
+| MAIN | 32.1% (33.3% in the pilot) | — | see below | 10 |
+| F0 | 67.2% (63.6%) | +35.2pp | see below | 9 |
+| F2 | 58.6% | +26.5pp | see below | 9 |
 
 Both MAIN and F0 replicate across two independent driver runs.
 
-Coverage is LIVENESS-AWARE (corrected 2026-08-01): a defect counts only
-if it is named while live — after `firstVisible` and before `firstFixed`,
-derived from payload bytes and manually confirmed 4/4 (Q0a passes). My
-earlier identifier-match gave F0 4/4; it drops to 3/4 because its requeue
-mention lands at point 16, the same point the driver fixed it. Correcting
-my own number.
+### COVERAGE: RETRACTED TWICE, NOW UNSCORED PENDING JUDGES
 
-Detection latency in points (0 = named the moment it became visible):
-MAIN 0/0/0 and one never · F0 0/0/5 · **F2 0/0/5/8**.
+I published planted-defect coverage from a KEYWORD MATCH (does the
+delivered message contain the defect's function name while the defect is
+live). Reading all 28 delivered messages shows the matcher fails in BOTH
+directions:
+- it credited the envelope arms with `sched-lease-caller-clock` because
+  their messages say "renewLease" while describing a DIFFERENT bug
+  (stats() dropping NaN leases);
+- it credited MAIN with `sched-requeue-resets-attempts` because the word
+  "requeues" appears inside a sentence about the sweep.
 
-**The trade in one line:** +26.5pp of driver spend buys the one defect
-MAIN never sees (a security defect: lease expiry computed from the
-caller's clock), with one fewer interruption, at a few points of latency,
-on one trajectory. MAIN is not slow — it is fast on what it sees and
-blind to one thing.
+Scored by READING the messages against each planted target:
+
+| Arm | precisely named | which |
+|---|---:|---|
+| **MAIN** | **2 of 4** | the TOCTOU race ("claimNext has a check-then-await race (two workers can claim the same job)") AND the stranded-claim bug |
+| F0 | 1 of 4 | the stranded-claim bug |
+| F2 | 1 of 4 | the stranded-claim bug |
+
+**MAIN is the BEST arm on planted-defect recall on this trajectory, not
+the worst.** It alone named the concurrency race precisely. The envelope
+arms found the stranded-claim defect and then spent 5-6 observations on
+stats() NaN-lease bucketing — real, well-described bugs, but not the
+planted ones, and repeatedly re-described across successive points.
+
+So the earlier claims "the envelope catches the defect MAIN misses" and
+"F2 alone is 4/4" are BOTH WITHDRAWN. They were artifacts of the keyword
+matcher, published three times before I read the underlying text.
+
+What stands: no coverage claim is defensible without JUDGED scoring. The
+S1 multi-label coverage judge ("which of these planted defects does this
+message identify?") makes neither error. It is built and unfunded, and it
+is now a precondition for any recall claim in this program.
 
 ## Reading it
 

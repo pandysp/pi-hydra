@@ -30,8 +30,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 19 | 2026-07-27 | `2026-07-27-hydra-real-pi` | real pi session capture | — | n/a (live session) | 202 | 0 | $0 | **none** | ~/dev/personal/pi-hydra-frozen-artifacts/2026-07-27-hydra-real-pi | — | reconstructed |
 | 20 | 2026-07-31 | `2026-07-31-hydra-screen-verify` | judge dry-run (wave-7a scout) | — | screen(12) | 4 | 5 | $0 | **none** | ~/dev/personal/pi-hydra-frozen-artifacts/2026-07-31-hydra-screen-verify | — | reconstructed |
 | 21 | 2026-08-01 | `2026-08-01-hydra-dataset-audit` | dataset audit scratch (analysis only) | — | all three corpora | 0 | 0 | $0 | **none** | ~/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-dataset-audit | — | reconstructed |
+| 22 | 2026-08-01 | `2026-08-01-adaptive-skip` | (recorded by hand) | f2c2cccbf03354ccf4be42dd94d14119fb947647 | — | 53 | 0 | $0 | `experiments/artifacts/2026-08-01-adaptive-skip` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-adaptive-skip | experiments/ADAPTIVE-SKIP-RESULTS.md | measured |
 
-**Program totals: 10352 producer rows, 10271 judgments, $59.38 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $81.18.
+**Program totals: 10405 producer rows, 10271 judgments, $59.38 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $81.18.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -59,3 +60,18 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-07-27-hydra-real-pi`: Live pi session records used for the production firing-model analysis (observations per driver turn). No cost recorded on these rows. Added 2026-08-01 by the wave-10 D6 repair.
 - `2026-07-31-hydra-screen-verify`: Six-invocation judge dry-run that gated the xhigh screen spend; 4 rows, 5 judgments, no metered cost. Added 2026-08-01 by the wave-10 D6 repair.
 - `2026-08-01-hydra-dataset-audit`: Analysis scratch from the phase-0.5 dataset audit; contains no jsonl evidence of its own. Added 2026-08-01 by the wave-10 D6 repair.
+
+## Reading the frozen evidence
+
+- **167 frozen rows across 14 mirror files no longer reproduce their `promptHash` under ANY
+  code version** (95 case-content drift + 72 naming case ids absent from all corpora), all in
+  the 2026-07-27/28 waves. Proven pre-existing by a HEAD-vs-new both-fail decomposition during
+  the wave-10 verification: it is corpus drift from before the fingerprint scheme existed, NOT
+  a code regression introduced by the arm registry. 10,352 of 10,519 rows do reproduce.
+- Spend is the HARNESS basis (provider-reported `usage.cost` against a synthetic prefix billed
+  at cache-write rates), not production pricing, and not what Andreas was billed: pi's Anthropic
+  OAuth rides Claude-Code identity headers, so Anthropic waves consumed plan quota rather than
+  metered API credit. Treat these as list-price equivalents.
+- `usage.cost` appears in two shapes across vintages — a number on producer rows, an object with
+  `.total` on judge rows of the 2026-07-27 waves. A scan handling only one shape understates
+  spend (it read $1.43 instead of $3.45 on `2026-07-27-hydra-feedback-judgment`).
