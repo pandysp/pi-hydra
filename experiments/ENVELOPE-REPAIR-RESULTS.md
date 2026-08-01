@@ -247,3 +247,50 @@ planted defect AND interrupt the driver less often.
 +26.5pp of driver spend and catches one more real defect of four, with
 one fewer interruption. That is G1's decision with both sides measured.
 Limits: n=1 trajectory, identifier-match coverage not judge-scored.
+
+## opus-xhigh confirmation — E2 FAILS for the repaired arms
+
+Fresh user-actor corpus, opus-xhigh (16 rows/arm):
+
+| Arm | routing | prints | think mean | zero-think rows |
+|---|---:|---:|---:|---:|
+| MAIN | 9/16 | 6 | 332 | 6/16 |
+| F0 | 7/16 | 1 | 713 | 0/16 |
+| F1 | **12/16** | 10 | 445 | 0/16 |
+| F2 | **12/16** | 10 | 424 | 0/16 |
+
+Routing replicates at the primary config: F0 is again the WORST arm, the
+repaired arms beat MAIN by 3 rows and F0 by 5.
+
+Regression guard, opus-xhigh:
+
+| Arm | quiet suppression | must-speak | think mean |
+|---|---:|---:|---:|
+| MAIN | 1/8 | 8/8 | 109 |
+| F0 | **7/8** | 8/8 | 389 |
+| F1 | 5/8 (-2) | 8/8 | 518 |
+| F2 | **4/8 (-3)** | 8/8 | 612 |
+
+**E2 FAILS at opus-xhigh for both repaired arms** (bar: >= F0 - 1 per
+category). At opus-high F2 matched F0 exactly (6/8); at xhigh it gives up
+three rows. Per the pre-registered rule an arm that breaks abstention is
+refuted REGARDLESS of its quality gains. Reported as registered; the gate
+is not rewritten.
+
+Anomaly pass — what F2 says on the rows it loses: it does NOT re-nag. It
+raises DIFFERENT, real, first-time findings (the in-process rate-limit
+fallback resets each key to zero during an outage; per-IP counters are
+defeated by an address pool on IPv6/cloud egress). Same contested-label
+pattern as the fresh corpus's none-guards, and the same never-re-nag vs
+surface-new-issues tension Andreas raised: the corpus answers it by
+fiat, the product has not decided it. Recorded as a product question,
+NOT used to excuse the gate failure.
+
+**Second finding, against my earlier claim:** at xhigh on SHORT frozen
+cases F2 thinks MORE than F0 (612 vs 389) — the opposite of the recorded
+real-payload result (-23%). The framing win is prefix-length dependent,
+not universal. Any statement that "F2 is cheaper" must name the context.
+
+Net at the primary config: quality and routing gains replicate; the
+abstention gate fails; the cost win does not transfer to short prefixes.
+F2 is NOT clear to ship at opus-xhigh on this evidence.
