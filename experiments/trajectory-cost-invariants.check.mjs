@@ -210,7 +210,7 @@ test("a run with no captured payload schedules nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("the arms share one lens and differ only in the contract region", () => {
-	assert.deepEqual(ARMS, ["MAIN", "J", "F"]);
+	assert.deepEqual(ARMS, ["MAIN", "J", "F", "F1", "F2"]);
 	const lens = lensHash();
 	for (const arm of ARMS) {
 		assert.equal(ARM_PROMPTS[arm].split(OBSERVER_LENS).length - 1, 1, `${arm}: the lens must appear exactly once`);
@@ -236,7 +236,7 @@ test("this harness's arms are the screen registry's arms under other names", () 
 	// not drift is the CONTRACT — "F" in this benchmark's report.json and "F" in
 	// the screen's verdict.json have to be the same contract text, or the two
 	// harnesses report one letter for two experiments.
-	const equivalent = { MAIN: "screen-a0", J: "screen-json", F: "screen-footer" };
+	const equivalent = { MAIN: "screen-a0", J: "screen-json", F: "screen-footer", F1: "F1", F2: "F2" };
 	assert.deepEqual(Object.keys(equivalent), [...ARMS]);
 	for (const [local, registryArm] of Object.entries(equivalent)) {
 		const handoff = armHandoff(registryArm, "anthropic", {

@@ -75,6 +75,8 @@ import {
 import { hydraToolDescription, hydraToolParameters } from "../protocol.ts";
 import { GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import {
+	buildFramedFooterObservationPrompt,
+	buildRepairedFooterObservationPrompt,
 	buildScreenFooterObservationPrompt,
 	buildScreenJsonObservationPrompt,
 	buildShippedMainObservationPrompt,
@@ -103,6 +105,12 @@ export const ARM_PROMPTS = Object.freeze({
 	MAIN: buildShippedMainObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 	J: buildScreenJsonObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 	F: buildScreenFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
+	// Phase 1/2 arms (ENVELOPE-REPAIR-SPEC): F1 = semantic repair, prose
+	// register; F2 = the same semantics as a first-match checklist plus the
+	// anti-deliberation sentence. Same builders the frozen-case producer uses,
+	// so a trajectory row and a screen row carry byte-identical contract text.
+	F1: buildRepairedFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
+	F2: buildFramedFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 });
 
 export const ARMS = Object.freeze(Object.keys(ARM_PROMPTS));

@@ -70,6 +70,7 @@ const modelSpecs = {
 	sol: { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "low" },
 	"sol-medium": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "medium" },
 	"sol-high": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "high" },
+	"sol-xhigh": { provider: "openai-codex", id: "gpt-5.6-sol", reasoning: "xhigh" },
 	sonnet: { provider: "anthropic", id: "claude-sonnet-5", reasoning: "low" },
 	"sonnet-medium": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "medium" },
 	"sonnet-high": { provider: "anthropic", id: "claude-sonnet-5", reasoning: "high" },
