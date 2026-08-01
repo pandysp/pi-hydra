@@ -36,8 +36,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 25 | 2026-08-01 | `2026-08-01-no-steer-v2` | (recorded by hand) | 0dd0967ea54684f8c840c93f6c2770552fbce760 (dirty) | — | 62 | 0 | $1.4716 | `experiments/artifacts/2026-08-01-no-steer-v2` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-no-steer-v2 | experiments/NO-STEER-V2-RESULTS.md | measured |
 | 26 | 2026-08-01 | `2026-08-01-severity-probe-v2` | (recorded by hand) | e731a372e3c1ab00ad9a1c94b7b7604b30e3d14f (dirty) | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-01-severity-probe-v2` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-severity-probe-v2 | experiments/SEVERITY-PROBE-V2-RESULTS.md | measured |
 | 27 | 2026-08-01 | `2026-08-01-enum-plus` | (recorded by hand) | 5336c06cea50bf2e806c66f1b10ce00ad3e2a8a4 (dirty) | — | 96 | 0 | $1.5217 | `experiments/artifacts/2026-08-01-enum-plus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-enum-plus | experiments/ENUM-PLUS-RESULTS.md | measured |
+| 28 | 2026-08-01 | `2026-08-01-reference-review` | experiments/reference-review.mjs + reference-review-analyse.mjs | 6f582765bf08413f824edafd4f915a37c23dbe23 (dirty) | trajectory-task:scheduler | 93 | 2 | $0 | `experiments/artifacts/2026-08-01-reference-review/` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-reference-review | experiments/REFERENCE-REVIEW-RESULTS.md | measured |
 
-**Program totals: 10584 producer rows, 10271 judgments, $64.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $86.21.
+**Program totals: 10677 producer rows, 10273 judgments, $64.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $86.21.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -70,6 +71,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-01-no-steer-v2`: no-steer v2: M1 power CONFIRMED (pooled 28/30 vs 13/30 skips, Fisher p=2.7e-05, MAIN-NS 20/20 zero-thinking) with coverage UP 1.45->2.30 defects/sample; M2 transfer UNINFORMATIVE (both arms floor at 100% skip, MAIN routed zero steers)
 - `2026-08-01-severity-probe-v2`: severity pooling v2: V1 gate MARGINAL at 61.9% (v1 41.7%), zero two-step disagreements, inDeliverable quarantined at 38.1%; pool 21 issues vs 4 planted; TOCTOU now its own issue found by MAIN alone; MAIN highest recall 81.5% AND lowest precision 81.5%
 - `2026-08-01-enum-plus`: ENUM+ probe: enumeration is free and high-recall (0 thinking, 2/2 blocking, 7/8 any-harm); the support clause cuts no noise and costs 2.8x
+- `2026-08-01-reference-review`: Blind independent-discovery stage for the golden dataset. 40 of 44 distinct defects are in neither the planted list nor the observer pool. Reviewer missed planted sched-lease-caller-clock across all 3 passes (found the same line via omission->NaN, not the far-future trigger) — the reference review is not complete either.
 
 ## Reading the frozen evidence
 
