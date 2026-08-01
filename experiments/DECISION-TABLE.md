@@ -295,3 +295,36 @@ Claude and hurt GPT. Thin (2 rows at n=12) but consistent. Consequence:
 the contract FAMILY generalises across providers; WHICH repaired variant
 may not. That is an instruction-text choice, so it stays inside the
 branch-cost rule either way.
+
+## ENUM — enumeration dominates on the resolved metric (2026-08-01)
+
+One observation point (mid prefix L=20,165), 10 samples/arm, opus-high,
+scored on the RESOLVED metric (blocking/anyHarm binary axes; judge
+harmIfExecuted agreement 72.7% in this cell, better than v2's 61.9%):
+
+| arm | blocking | any-harm | precision | claims/msg | thinking | $/obs |
+|---|---:|---:|---:|---:|---:|---:|
+| MAIN | 2/2 | 3/8 | 95.0% | 3.67 | 289 | $0.0214 |
+| F2 | 1/2 | 1/8 | 90.0% | 3.00 | 785 | $0.0474 |
+| **ENUM** | **2/2** | **7/8** | 92.0% | **7.30** | **0** | **$0.0220** |
+| ENUM+D | 2/2 | 5/8 | 91.7% | 9.00 | 1466 | $0.0613 |
+
+ENUM: both blocking issues, 2.3x MAIN's any-harm recall, zero thinking on
+10/10 samples, at MAIN's price and under half F2's. Precision -3pp.
+
+**The support clause is a cost catastrophe, not a precision lever.** One
+57-character sentence took thinking 0 -> 1466 and cost 2.8x. Its
+pre-registered precision test FAILED (not-real 2 -> 2). Largest
+single-sentence cost effect measured in this program.
+
+Honest qualifications:
+- The precision lever was tested where the problem was absent (MAIN: 5
+  not-real in the C2 pool, 1 here). P2 is refuted as written; the
+  tradeoff is NOT established as intrinsic.
+- The "noise" is mostly not fabrication: 1 of 3 not-real issues was
+  raised by ALL FOUR arms (stale, the driver fixed it later); the other
+  two are process complaints, not invented defects.
+- ONE POINT sampled 10x, not a trajectory. Recall = "surfaced at least
+  once in ten tries" — fair across arms, but not the trajectory
+  measurement. ENUM needs a live-fork trajectory run before it takes the
+  lead in this table.
