@@ -55,9 +55,31 @@ from text (never keyword-matched, per the 96eff06 retraction). All three
 answer shapes are rendered as prose by `enum-trajectory-adapt.mjs` before
 judging, so no arm is identifiable by format.
 
-PENDING — the judging pass was still running when this document was
-written. Ground truth is confirmed (4/4 defects, all manually confirmed;
-liveness windows intact).
+25 candidate issues from 140 claims across 28 delivered messages.
+Judge agreement: 68% exact, **100% adjacent** (every disagreement is one
+step; 5 of 8 are the serious-vs-minor boundary) — consistent with
+SEVERITY-V4's finding that the middle of the scale is where judges split.
+
+| arm | blocking-tier | any-harm | both-judges-not-real | claims | issues |
+|---|---:|---:|---:|---:|---:|
+| MAIN | **0/1** | 5/12 | 4 | 27 | 10 |
+| F2 | **0/1** | 5/12 | 1 | 22 | 7 |
+| **ENUM** | **1/1** | **11/12** | 7 | 91 | 22 |
+
+**The single unanimously-blocking issue is the TOCTOU race** — "claimNext
+performs its eligibility check and its saveJob write non-atomically" —
+and **ENUM alone found it**. On any-harm recall ENUM reaches 11 of 12
+against both baselines' 5.
+
+ENUM's 7 not-real claims against MAIN's 4 and F2's 1 is the expected
+price of emitting 91 claims against 27 and 22. Precision on the pipeline's
+own blends: ENUM 73.1% mechanism / 79.4% practical, F2 75.0/83.3,
+MAIN 42.9/55.6 — ENUM is MORE precise than MAIN while finding 3.7x more.
+Weighted recall on those blends: ENUM 95.0/96.4%, F2 15.0/17.9%,
+MAIN 15.0/17.9%, and ENUM is the only arm with topHit=true.
+
+Ground truth confirmed: 4/4 defects, all manually confirmed, liveness
+windows intact.
 
 ## Corpus validity, honestly
 
@@ -96,3 +118,19 @@ manual confirmation.
 **$2.31 total** for the trajectory run: driver $0.9977, observers $1.3113
 across three arms. Judging is subscription-billed ($0). Under the ~$4
 budget.
+
+## Verdict
+
+ENUM's one-point dominance SURVIVES the trajectory, on both axes:
+- COST: 32.5% vs F2's 42.6%, most deliveries, zero thinking on 13/13.
+- COVERAGE: the only arm to catch the blocking issue (1/1 vs 0/1), and
+  11/12 any-harm against both baselines' 5/12.
+
+The tradeoff it pays is noise: 7 both-judges-not-real claims. But its
+PRECISION still beats MAIN's (73.1% vs 42.9% mechanism-blend), so this is
+not a recall-for-precision trade against the shipped baseline — only
+against F2, which is quieter, costlier and blind to the blocking issue.
+
+Limits: n=1 trajectory, 1 blocking issue in the pool (one flip moves the
+blocking column entirely), quiet span too short to measure false
+interrupts, and cross-run cost absolutes are not comparable.
