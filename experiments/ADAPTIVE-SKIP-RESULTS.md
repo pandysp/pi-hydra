@@ -159,3 +159,19 @@ zero spend, and is the natural next analysis.
 - Q2 untested: which contract feature moves P(steer) is exactly the open
   question, and this study did not earn an answer to it.
 - Causal direction between thinking and delivery unresolved.
+
+## Provenance notes
+
+- Frozen via `hydra-lab freeze` to
+  `experiments/artifacts/2026-08-01-adaptive-skip/` (6 files, 12 hashes
+  verified) and mirrored. Ledger entry `2026-08-01-adaptive-skip`.
+- **`duplicateRows: 42` in the ledger is expected, not corruption.** This
+  study deliberately fires the SAME cell ten times — that repetition is
+  the measurement. The ledger's cell key (one row per unit of work) reads
+  every repeat past the first as a duplicate. A sampling study will
+  always look like this in the ledger.
+- The ledger initially recorded this run as **$0**: `harnessSpend` summed
+  only the nested `usage.cost` shape, while replay-shaped rows carry the
+  priced figure flat. Fixed in `run-ledger.mjs` with a regression test;
+  the entry now reads the measured $1.3586. Every prior replay-shaped run
+  (the C1 and F3 instruments) was ledgered under the same gap.
