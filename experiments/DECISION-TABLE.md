@@ -368,3 +368,67 @@ a mob of HETEROGENEOUS observers should strictly beat a mob of identical
 ones. Every screen in this program compared arms as SUBSTITUTES; none
 tested them as COMPLEMENTS. Cheap to test on rows we already have: union
 the top-tier finds of any two arms and compare against either alone.
+
+## ENUM on a live trajectory (opus-high) — cost AND coverage
+
+One driver run, 15 points, three arms paired
+(experiments/ENUM-TRAJECTORY-RESULTS.md, artifacts 2026-08-01-enum-trajectory):
+
+| arm | observer $/driver $ | deliveries | mean thinking | zero-think | output tok |
+|---|---:|---:|---:|---:|---:|
+| MAIN | **23.0%** | 8 | 0 | 12/12 | 111 |
+| F2 | 42.6% | 9 | 579 | 4/14 | 644 |
+| **ENUM** | 32.5% | **11** | **0** | **13/13** | 410 |
+
+| arm | blocking-tier | any-harm | claims | not-real | precision |
+|---|---:|---:|---:|---:|---:|
+| MAIN | 0/1 | 5/12 | 27 | 4 | 42.9% |
+| F2 | 0/1 | 5/12 | 22 | 1 | — |
+| **ENUM** | **1/1** | **11/12** | 91 | 7 | **73.1%** |
+
+ENUM alone found the unanimously-blocking TOCTOU race. It is MORE precise
+than MAIN (73.1% vs 42.9%) while making 3.7x the claims — saying more did
+not make it noisier than the shipped baseline, only than F2 (quieter,
+costlier, blind to the blocking issue). Its cost premium over MAIN is
+VOLUME (410 vs 111 output tokens), both at zero thinking.
+
+Shape: ENUM 4.09 findings/message; both baselines exactly 1.00 — MAIN's
+single `message` field and F2's "write ONE concise lens finding" are the
+same ceiling reached two ways.
+
+Limits: n=1 trajectory; ONE blocking issue in the pool, so that column
+flips on a single judgment; quiet span 2 points vs 3 required, so
+false-interrupt rate is unmeasurable here; both baselines shifted vs C2
+(different driver run) — the paired within-run comparison is the load-
+bearing one.
+
+## ENUM config sweep — zero thinking transfers to opus-xhigh
+
+(experiments/ENUM-CONFIG-SWEEP-RESULTS.md, artifacts 2026-08-01-enum-config-sweep)
+
+| prefix | MAIN | F2 | ENUM |
+|---|---|---|---|
+| mid 20k | 4/10 skips, mean 688 | 1/10, mean 788 | **10/10, mean 0** |
+| long 38k | 10/10, mean 0 | 0/10, mean 804 | **10/10, mean 0** |
+
+ENUM is the ONLY arm that skips at both prefixes. At mid, MAIN
+deliberates on 6 of 10 samples where ENUM deliberates on none — at
+opus-xhigh ENUM is CHEAPER THAN MAIN on the axis that drives cost, not
+merely inheriting MAIN's cheapness. Volume transfers (3.50 and 5.00
+findings/message vs baselines' 0.80-1.00), so the contract is followed
+and the thinking number is interpretable. Format validity 10/10 every arm
+every cell; the one parse failure was F2's.
+
+Cost, long prefix: MAIN $0.0233, ENUM $0.0339, F2 $0.0653 — ENUM 48%
+below F2.
+
+**OpenAI NOT measured, structurally.** Recorded payloads ARE Anthropic
+API requests and the merge path is Anthropic-typed, so replay against GPT
+is impossible; it needs a real codex driver run. Funded and running
+(ENUM-GENERALISATION-SPEC). The agent correctly refused the available
+shortcut — the frozen-case harness supports sol but answers on ~800-token
+prefixes, and every cost effect here moves with prefix length.
+
+**ENUM's established scope: opus-high and opus-xhigh, one task
+(scheduler). Unmeasured on OpenAI and on exporter/dispatcher** — both
+running.
