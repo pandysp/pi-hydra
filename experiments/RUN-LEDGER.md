@@ -38,8 +38,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 27 | 2026-08-01 | `2026-08-01-enum-plus` | (recorded by hand) | 5336c06cea50bf2e806c66f1b10ce00ad3e2a8a4 (dirty) | — | 96 | 0 | $1.5217 | `experiments/artifacts/2026-08-01-enum-plus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-enum-plus | experiments/ENUM-PLUS-RESULTS.md | measured |
 | 28 | 2026-08-01 | `2026-08-01-reference-review` | experiments/reference-review.mjs + reference-review-analyse.mjs | 6f582765bf08413f824edafd4f915a37c23dbe23 (dirty) | trajectory-task:scheduler | 93 | 2 | $0 | `experiments/artifacts/2026-08-01-reference-review/` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-reference-review | experiments/REFERENCE-REVIEW-RESULTS.md | measured |
 | 29 | 2026-08-01 | `2026-08-01-consensus` | experiments/severity-consensus.mjs | 5d6e62d5d0ca600d337a52437ed7f67176b4a7a0 (dirty) | severity-pool:c2-trajectory | 0 | 126 | $0 | `experiments/artifacts/2026-08-01-consensus/` | ~/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-consensus | experiments/CONSENSUS-RESULTS.md | measured |
+| 30 | 2026-08-01 | `2026-08-01-enum-trajectory` | (recorded by hand) | bf6f400284738c43594371f2f69489dea21997cd (dirty) | — | 125 | 0 | $2.2723 | `experiments/artifacts/2026-08-01-enum-trajectory` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-enum-trajectory | — | measured |
 
-**Program totals: 10677 producer rows, 10399 judgments, $64.41 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $86.21.
+**Program totals: 10802 producer rows, 10399 judgments, $66.68 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $88.48.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
