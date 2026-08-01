@@ -59,3 +59,29 @@ them would confound an emergency-abort change into a cost test.
 Recorded-payload replay only (`adaptive-skip-probe.mjs` takes arbitrary
 prompt strings). 10 samples x 2 new variants x 1 prefix = 20 calls,
 ~$0.40. If N1 refutes, STOP — no frozen-case run, no judging.
+
+## Amendment (Andreas, 2026-08-01, before N3 data)
+
+N3 is DEMOTED from a gate to a descriptive note. Andreas: a flattened
+message routed urgently is not a big deal — the message is delivered
+anyway, just earlier than planned. He is right on that axis: the urgency
+information lives in the message TEXT, not in the channel label, and the
+driver is an agent that can triage content on arrival. My original
+framing implied the signal lives in the label; it mostly does not.
+
+What survives is a DIFFERENT concern on a different axis, recorded as an
+open question rather than a gate:
+
+**DRIVER-SIDE INTERRUPTION COST (unmeasured).** On the C2 trajectory arms
+delivered on ~9-10 of 18 observations but steered on only ~2. Promoting
+every queue to steer means the driver is interrupted mid-work ~9 times
+instead of ~2, and each interruption costs DRIVER tokens (re-reading,
+re-planning, possibly abandoning good work). Driver turns cost multiples
+of an observation, so this lands on the expensive side of the ledger.
+
+Our harness cannot see it: the trajectory design is open-loop by
+construction (deliveries recorded, never injected). So "promoting
+everything to steer is cheap on the OBSERVER side" is measurable today;
+"and costs nothing on the DRIVER side" is not. Any recommendation coming
+out of this probe must carry that limit explicitly, and a closed-loop
+run is the only way to settle it.
