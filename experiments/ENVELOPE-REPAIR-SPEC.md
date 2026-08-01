@@ -27,9 +27,15 @@ differ in instruction text only (branch-cost rule).
   steer control, 2 expected-none over-firing guards, 2 print diagnostics.
   Driver states the FACT, never the REMEDY. Domains disjoint from all
   existing corpora. This is where the semantic repair must show.
-- REGRESSION guard set: the 5 quiet-family categories from the screen
-  corpus (pending-equivalent, newly-delivered, visible-no-response,
-  full-resolution, explicit-rejection) — the envelope's measured win.
+- REGRESSION guard set (CORRECTED 2026-08-01 by the design panel, before
+  data): the QUIET families are pending-equivalent, newly-delivered,
+  visible-no-response, full-resolution — four, not five.
+  `explicit-rejection` is NOT quiet: its cases carry
+  expectedDelivery "steer", critical true, and sit in
+  FOLLOWUP_CATEGORIES. It is an OVER-SUPPRESSION guard (the arm must
+  still speak), the opposite requirement, and is gated as such under E2b
+  below. My original listing was wrong; recorded rather than silently
+  fixed.
 - KNOWN-BAD case dev-security-user-only: reported SEPARATELY and never
   gated (it is confounded — its driver states the remedy — and it is the
   case the fix was designed against; scoring it would be answer-keying).
@@ -48,9 +54,17 @@ Quality (fresh corpus):
   category at both configs. Failing = the fix broke abstention, which is
   the envelope's main measured value; such an arm is refuted regardless
   of E1.
+- E2b OVER-SUPPRESSION: F1/F2 must keep speaking where speech is
+  required — explicit-rejection and material-change families stay at
+  F0's rate minus at most one row per family, both configs.
 - E3 PRINT: report the print-family rate for all arms. Pre-registered as
-  DESCRIPTIVE (the dead zone is corpus-wide and may be a corpus artifact,
-  not a contract defect); a rate that moves is evidence, not a gate.
+  DESCRIPTIVE (the dead zone is corpus-wide — measured 1/34, 0/34, 1/34
+  for MAIN/J/F0, and both emitted prints landed on WRONG rows — so it is
+  not envelope-specific; any gain is a gain over MAIN too, not a
+  recovery of parity). Pre-registered OVER-FIRE WATCH: any print on a
+  fresh-* / material-change / emergency row is a driver-aware to
+  driver-invisible bucket error on critical rows — the most expensive
+  failure this design can cause; it is reported first, before any gain.
 - E4 FRAMING SAFETY: F2 quality (findingQuality, support) >= F1 - 5pp.
   Terseness that costs quality is refuted even if it is cheaper.
 
@@ -84,6 +98,33 @@ redesign the semantics — do not spend on xhigh. If step 3 shows F2's
 thinking unchanged, the framing hypothesis is dead and the cost story
 falls back to the trim/length factor alone; say so rather than iterating
 silently toward a target.
+
+## Design-panel corrections and honest bets (recorded before data)
+
+1. MECHANISM RESTATED: the defect is finding SELECTION, not dedup. All
+   six dev-security-user-only rows route steer (including MAIN); the
+   split is on `target` alone — MAIN names the user-actor remedy, the
+   envelope arms substitute an agent-actionable one. The envelope's
+   "route by who must act" framing turned actionability into a filter on
+   WHICH finding gets reported. F1/F2 therefore carry an anti-
+   substitution selection clause, not only a dedup carve-out.
+2. F1 - F0 is a FOUR-part bundle (dedup carve-out, print definition,
+   selection clause, re-liveness clause + preamble fix), not the two the
+   original spec named. If F1 breaches E2, the cheapest split is
+   preamble-only vs routing-only.
+3. HONEST BET, pre-registered: C1 (F2 thinking <= 0.5 x F0) is expected
+   to FAIL at F2's +184 input tokens; point estimate 350-550 mean
+   (20-50% reduction). The DECISIVE test is directional: F2 thinking
+   BELOW F0 despite F2 being 43% longer confirms framing as a real
+   lever; F2 >= F0 kills the framing hypothesis and the abort rule fires.
+4. Sub-ablation F2-minus (remove only "Decide from what is visible; do
+   not deliberate.") runs ONLY if F2 beats F1 on thinking — it isolates
+   the one instruction-to-not-reason device from the structural ones.
+5. Rubric-adjacency disclosed: the selection clause is adjacent to the
+   judge's target comparator wording. It names no answer and contains
+   none of {credential, token, revoke, rotate, secret, history, account,
+   deployment} (asserted by test). It is validated on the FRESH corpus
+   and never scored on dev-security-user-only.
 
 ## Anomaly discipline (standing)
 
