@@ -52,6 +52,10 @@ import {
 	structuredContextFormatCorrection,
 } from "./delivery-context-candidate.mjs";
 import {
+	buildFramedFooterObservationEnvelope,
+	buildFramedFooterObservationPrompt,
+	buildRepairedFooterObservationEnvelope,
+	buildRepairedFooterObservationPrompt,
 	buildScreenFooterObservationEnvelope,
 	buildScreenFooterObservationPrompt,
 	buildScreenJsonObservationEnvelope,
@@ -286,6 +290,33 @@ export const GOLDEN_ARMS = Object.freeze({
 		failOpen: false,
 		toolSurface: "management-only",
 	}),
+	// The envelope repair (`ENVELOPE-REPAIR-SPEC.md`). Both arms are
+	// `screen-footer` with a different envelope: same channel, same parser, same
+	// tool surface, same recovery budget, so F1 - F0 is the semantic repair and
+	// F2 - F1 is framing. Nothing here is a code branch — the branch-cost rule
+	// admits instruction text and nothing more.
+	"screen-footer-repaired": arm({
+		id: "screen-footer-repaired",
+		label: "screen-repaired-footer",
+		buildHandoff: splitHandoff(
+			(head, lens) => buildRepairedFooterObservationPrompt(head, lens),
+			(head) => buildRepairedFooterObservationEnvelope(head),
+		),
+		parse: parseFooterOnly,
+		failOpen: false,
+		toolSurface: "management-only",
+	}),
+	"screen-footer-framed": arm({
+		id: "screen-footer-framed",
+		label: "screen-framed-footer",
+		buildHandoff: splitHandoff(
+			(head, lens) => buildFramedFooterObservationPrompt(head, lens),
+			(head) => buildFramedFooterObservationEnvelope(head),
+		),
+		parse: parseFooterOnly,
+		failOpen: false,
+		toolSurface: "management-only",
+	}),
 });
 
 /**
@@ -302,6 +333,17 @@ export const ARM_ALIASES = Object.freeze({
 	A0: "screen-a0",
 	J: "screen-json",
 	F: "screen-footer",
+	// The envelope-repair spellings. MAIN is `screen-a0` — main's shipped
+	// contract text carried on the screen's constant placement and
+	// management-only surface, which is what "the re-benchmarked baseline"
+	// means: every arm in this comparison differs from it in instruction text
+	// alone. (`main-json` is the same contract with the wide surface and the
+	// combined carrier on both providers; using it here would confound the
+	// comparison with a tool-schema change.)
+	MAIN: "screen-a0",
+	F0: "screen-footer",
+	F1: "screen-footer-repaired",
+	F2: "screen-footer-framed",
 });
 
 export const ARM_NAMES = Object.freeze([...Object.keys(ARM_ALIASES), ...Object.keys(GOLDEN_ARMS)].sort());

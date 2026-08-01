@@ -14,6 +14,7 @@ import { hydraToolDescription, hydraToolParameters, validateHydraToolParams } fr
 import { GOLDEN_CASES } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
+import { USER_ACTOR_CASES } from "./delivery-context-user-actor-cases.mjs";
 import { argOf } from "./lib.mjs";
 import {
 	armContractHash,
@@ -98,7 +99,9 @@ const corpus =
 			? DEVELOPMENT_CASES
 			: corpusName === "screen"
 				? SCREEN_CASES
-				: null;
+				: corpusName === "user-actor"
+					? USER_ACTOR_CASES
+					: null;
 if (!corpus) throw new Error(`unknown corpus: ${corpusName}`);
 const cases = corpus.filter(
 	(item) =>

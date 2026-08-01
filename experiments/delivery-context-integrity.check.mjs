@@ -28,8 +28,9 @@ import {
 import { GOLDEN_CASES } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
+import { USER_ACTOR_CASES } from "./delivery-context-user-actor-cases.mjs";
 
-const ALL_CASES = [...GOLDEN_CASES, ...DEVELOPMENT_CASES, ...SCREEN_CASES];
+const ALL_CASES = [...GOLDEN_CASES, ...DEVELOPMENT_CASES, ...SCREEN_CASES, ...USER_ACTOR_CASES];
 
 function row(overrides = {}) {
 	return {

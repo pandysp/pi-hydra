@@ -7,6 +7,7 @@ import { argOf } from "./lib.mjs";
 import { GOLDEN_CASES } from "./delivery-context-golden-cases.mjs";
 import { DEVELOPMENT_CASES } from "./delivery-context-development-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
+import { USER_ACTOR_CASES } from "./delivery-context-user-actor-cases.mjs";
 import { assertJudgeMetric, buildJudgePrompt, judgeBuilderHash, parseJudgments } from "./delivery-context-judge-protocol.mjs";
 import { assertNoSnapshotDrift, isJudgeable } from "./delivery-context-judgeable.mjs";
 import { builderHashConflict, caseHash, staleCaseRows } from "./fingerprints.mjs";
@@ -129,7 +130,9 @@ function claudeCliTransport(spec) {
 // the Pi transport and its login check load only when that judge is selected.
 const transport = judgeSpec.transport === "pi" ? await piTransport(judgeSpec) : claudeCliTransport(judgeSpec);
 
-const caseById = new Map([...GOLDEN_CASES, ...DEVELOPMENT_CASES, ...SCREEN_CASES].map((item) => [item.id, item]));
+const caseById = new Map(
+	[...GOLDEN_CASES, ...DEVELOPMENT_CASES, ...SCREEN_CASES, ...USER_ACTOR_CASES].map((item) => [item.id, item]),
+);
 const rows = readFileSync(inputPath, "utf8")
 	.trim()
 	.split("\n")

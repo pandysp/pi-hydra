@@ -45,6 +45,10 @@ import {
 	structuredContextFormatCorrection,
 } from "./delivery-context-candidate.mjs";
 import {
+	buildFramedFooterObservationEnvelope,
+	buildFramedFooterObservationPrompt,
+	buildRepairedFooterObservationEnvelope,
+	buildRepairedFooterObservationPrompt,
 	buildScreenFooterObservationEnvelope,
 	buildScreenFooterObservationPrompt,
 	buildScreenJsonObservationEnvelope,
@@ -145,6 +149,14 @@ const EXPECTED = {
 		anthropic: { prompt: buildScreenFooterObservationPrompt(HEAD, LENS) },
 		"openai-codex": { prompt: LENS, envelope: buildScreenFooterObservationEnvelope(HEAD) },
 	},
+	"screen-footer-repaired": {
+		anthropic: { prompt: buildRepairedFooterObservationPrompt(HEAD, LENS) },
+		"openai-codex": { prompt: LENS, envelope: buildRepairedFooterObservationEnvelope(HEAD) },
+	},
+	"screen-footer-framed": {
+		anthropic: { prompt: buildFramedFooterObservationPrompt(HEAD, LENS) },
+		"openai-codex": { prompt: LENS, envelope: buildFramedFooterObservationEnvelope(HEAD) },
+	},
 };
 
 test("every registered arm has a transcribed expectation", () => {
@@ -219,17 +231,26 @@ test("an arm the table does not know is a throw, never a default handoff", () =>
 });
 
 test("the registry knows exactly the arm vocabulary the runner used to hardcode", () => {
-	// The runner's former `knownArms` set, verbatim.
+	// The runner's former `knownArms` set, verbatim, plus the envelope-repair
+	// arms and their spellings (`ENVELOPE-REPAIR-SPEC.md`).
 	const knownArms = [
 		"A", "B", "C", "control", "main-json", "base", "treatment", "samehead", "unseenonly",
 		"candidate", "candidate2", "candidate3", "candidate4", "structured", "structured2",
 		"A0", "J", "F", "screen-a0", "screen-json", "screen-footer",
+		"MAIN", "F0", "F1", "F2", "screen-footer-repaired", "screen-footer-framed",
 	];
 	assert.deepEqual(ARM_NAMES, [...knownArms].sort());
 	for (const name of knownArms) assert.equal(isKnownArm(name), true, `${name} dropped out of the registry`);
 	assert.deepEqual(
 		["A", "B", "C", "A0", "J", "F"].map(implementationArm),
 		["main-json", "control", "samehead", "screen-a0", "screen-json", "screen-footer"],
+	);
+	// MAIN is screen-a0, not main-json: the baseline must differ from the
+	// challengers in instruction text alone, and main-json also swaps the tool
+	// surface and the OpenAI carrier.
+	assert.deepEqual(
+		["MAIN", "F0", "F1", "F2"].map(implementationArm),
+		["screen-a0", "screen-footer", "screen-footer-repaired", "screen-footer-framed"],
 	);
 });
 

@@ -61,7 +61,10 @@ test("the screen letters map to the screen implementations without disturbing A/
 		["A", "B", "C", "A0", "J", "F"].map(implementationArm),
 		["main-json", "control", "samehead", "screen-a0", "screen-json", "screen-footer"],
 	);
-	assert.deepEqual([...SCREEN_ARMS].sort(), ["screen-a0", "screen-footer", "screen-json"]);
+	assert.deepEqual(
+		[...SCREEN_ARMS].sort(),
+		["screen-a0", "screen-footer", "screen-footer-framed", "screen-footer-repaired", "screen-json"],
+	);
 });
 
 test("A0 carries b51c157's contract text verbatim", () => {
