@@ -45,6 +45,8 @@ import {
 	structuredContextFormatCorrection,
 } from "./delivery-context-candidate.mjs";
 import {
+	buildDecidableFooterObservationEnvelope,
+	buildDecidableFooterObservationPrompt,
 	buildFramedFooterObservationEnvelope,
 	buildFramedFooterObservationPrompt,
 	buildRepairedFooterObservationEnvelope,
@@ -157,6 +159,10 @@ const EXPECTED = {
 		anthropic: { prompt: buildFramedFooterObservationPrompt(HEAD, LENS) },
 		"openai-codex": { prompt: LENS, envelope: buildFramedFooterObservationEnvelope(HEAD) },
 	},
+	"screen-footer-decidable": {
+		anthropic: { prompt: buildDecidableFooterObservationPrompt(HEAD, LENS) },
+		"openai-codex": { prompt: LENS, envelope: buildDecidableFooterObservationEnvelope(HEAD) },
+	},
 };
 
 test("every registered arm has a transcribed expectation", () => {
@@ -237,7 +243,7 @@ test("the registry knows exactly the arm vocabulary the runner used to hardcode"
 		"A", "B", "C", "control", "main-json", "base", "treatment", "samehead", "unseenonly",
 		"candidate", "candidate2", "candidate3", "candidate4", "structured", "structured2",
 		"A0", "J", "F", "screen-a0", "screen-json", "screen-footer",
-		"MAIN", "F0", "F1", "F2", "screen-footer-repaired", "screen-footer-framed",
+		"MAIN", "F0", "F1", "F2", "F3", "screen-footer-repaired", "screen-footer-framed", "screen-footer-decidable",
 	];
 	assert.deepEqual(ARM_NAMES, [...knownArms].sort());
 	for (const name of knownArms) assert.equal(isKnownArm(name), true, `${name} dropped out of the registry`);
@@ -249,8 +255,8 @@ test("the registry knows exactly the arm vocabulary the runner used to hardcode"
 	// challengers in instruction text alone, and main-json also swaps the tool
 	// surface and the OpenAI carrier.
 	assert.deepEqual(
-		["MAIN", "F0", "F1", "F2"].map(implementationArm),
-		["screen-a0", "screen-footer", "screen-footer-repaired", "screen-footer-framed"],
+		["MAIN", "F0", "F1", "F2", "F3"].map(implementationArm),
+		["screen-a0", "screen-footer", "screen-footer-repaired", "screen-footer-framed", "screen-footer-decidable"],
 	);
 });
 

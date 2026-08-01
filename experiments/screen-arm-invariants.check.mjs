@@ -63,7 +63,7 @@ test("the screen letters map to the screen implementations without disturbing A/
 	);
 	assert.deepEqual(
 		[...SCREEN_ARMS].sort(),
-		["screen-a0", "screen-footer", "screen-footer-framed", "screen-footer-repaired", "screen-json"],
+		["screen-a0", "screen-footer", "screen-footer-decidable", "screen-footer-framed", "screen-footer-repaired", "screen-json"],
 	);
 });
 

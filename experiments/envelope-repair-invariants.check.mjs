@@ -25,6 +25,7 @@ import {
 	REPAIRED_ACT_NOW_CLAUSE,
 	REPAIRED_CHECKLIST_ROUTING,
 	REPAIRED_COMPLETION_CARDINALITY,
+	REPAIRED_DECIDABLE_ROUTING,
 	REPAIRED_DEDUP_CLAUSE,
 	REPAIRED_LENS_AUTHORITY,
 	REPAIRED_ROUTING,
@@ -33,6 +34,8 @@ import {
 	SCREEN_DEDUP_CLAUSE,
 	SCREEN_FOOTER_GRAMMAR,
 	SCREEN_STEER_CLAUSE,
+	buildDecidableFooterObservationEnvelope,
+	buildDecidableFooterObservationPrompt,
 	buildFramedFooterObservationEnvelope,
 	buildFramedFooterObservationPrompt,
 	buildRepairedFooterObservationEnvelope,
@@ -49,6 +52,7 @@ const CASE = SCREEN_CASES[0];
 const F0 = buildScreenFooterObservationPrompt(HEAD, LENS);
 const F1 = buildRepairedFooterObservationPrompt(HEAD, LENS);
 const F2 = buildFramedFooterObservationPrompt(HEAD, LENS);
+const F3 = buildDecidableFooterObservationPrompt(HEAD, LENS);
 
 /** The design panel's parity list: every semantic criterion, verbatim. */
 const SEMANTIC_CRITERIA = [
@@ -98,6 +102,46 @@ test("F2 - F1 is framing and nothing else: all fifteen criteria in both", () => 
 	}
 });
 
+test("F3 - F2 is decidability and nothing else: all fifteen criteria in F3 too", () => {
+	// Same parity list, same reason. If a criterion dropped out while the rules
+	// were being made decidable, F3 - F2 would measure decidability AND a
+	// semantic edit, and D1's reading would be false.
+	const f3 = F3.toLowerCase();
+	for (const criterion of SEMANTIC_CRITERIA) {
+		assert.ok(f3.includes(criterion.toLowerCase()), `F3 is missing the criterion: ${criterion.slice(0, 60)}`);
+	}
+	// F3 keeps F2's cardinality unit verbatim: varying the anti-deliberation
+	// sentence as well would make F3 - F2 two factors.
+	assert.ok(F3.includes(REPAIRED_COMPLETION_CARDINALITY));
+	// Longer by design. The hypothesis is that ambiguity, not length, is what
+	// thinking is spent on, so a shorter F3 would not test it.
+	assert.ok(F3.length > F2.length, "F3 must be longer than F2 — that is the point of the test");
+});
+
+test("F3 states the precedence F2 leaves to first-match alone", () => {
+	// Each device, with the ambiguity it removes. These are the decidability
+	// factor; if one is dropped the arm is no longer the registered F3.
+	const DEVICES = [
+		// selection-vs-routing order: F2 appends the selection clause after the
+		// rules, leaving open whether the rules run per candidate finding.
+		["STEP 1 — pick the finding", "selection runs before routing"],
+		["carry exactly one forward", "how many findings the rules operate on"],
+		// 1 over 2: an in-progress emergency that was already raised.
+		["Test 1 outranks every later test, including test 2", "interrupt vs already-delivered"],
+		// 3 vs 4: the substitution defect's own boundary.
+		["When the agent cannot or may not carry out the remedy, test 3 is false", "steer vs print, from test 3's side"],
+		["Tests 3 and 4 collide only over who must act", "steer vs print, stated as a pair"],
+		// 4 over 5: user-owned remedy vs deferrable agent work.
+		["When the required actor is the user, test 5 is false", "queue vs print"],
+		// underdetermination, decided rather than deliberated.
+		["Decide each test on what the trajectory shows and do not assume what it does not show", "what to do when the trajectory is silent"],
+	];
+	for (const [device, ambiguity] of DEVICES) {
+		assert.ok(F3.includes(device), `F3 lost the device that removes: ${ambiguity}`);
+		assert.equal(F2.includes(device), false, `the device leaked into F2, which must keep the ambiguity: ${ambiguity}`);
+	}
+});
+
 test("the framing arm differs from the repaired arm only in the two framed units", () => {
 	// Substituting F2's routing and cardinality back into F1 must reproduce F2
 	// exactly: that is the operational meaning of "framing and nothing else".
@@ -116,6 +160,7 @@ test("the anti-deliberation sentence stays out of the acting surface", async () 
 	const acting = await import("./delivery-context-evaluation.mjs");
 	assert.equal(acting.SCREEN_ACTING_CARDINALITY.includes("do not deliberate"), false);
 	assert.equal(acting.SCREEN_ROUTING.includes(REPAIRED_SELECTION_CLAUSE), false, "the repair leaked into the acting envelope");
+	assert.equal(acting.SCREEN_ROUTING.includes("STEP 1 — pick the finding"), false, "F3's decidability rewrite leaked into the acting envelope");
 });
 
 test("no repaired arm names the answer to the case it was designed against", () => {
@@ -126,8 +171,10 @@ test("no repaired arm names the answer to the case it was designed against", () 
 	for (const [name, text] of [
 		["F1", F1],
 		["F2", F2],
+		["F3", F3],
 		["F1 envelope", buildRepairedFooterObservationEnvelope(HEAD)],
 		["F2 envelope", buildFramedFooterObservationEnvelope(HEAD)],
+		["F3 envelope", buildDecidableFooterObservationEnvelope(HEAD)],
 	]) {
 		// The lens is corpus text, not contract text; strip it before checking.
 		const contract = text.replace(LENS, "");
@@ -145,7 +192,7 @@ test("both repaired arms keep the footer channel, parser, surface and recovery b
 	// The spec's branch-cost rule: these arms differ from F0 in instruction text
 	// alone. A channel or schema change would make F1 - F0 two factors.
 	const f0 = armSpec("F0");
-	for (const name of ["F1", "F2"]) {
+	for (const name of ["F1", "F2", "F3"]) {
 		const spec = armSpec(name);
 		assert.equal(spec.toolSurface, f0.toolSurface, `${name}: tool surface differs from F0`);
 		assert.equal(spec.failOpen, f0.failOpen, `${name}: fail-open policy differs from F0`);
@@ -153,18 +200,25 @@ test("both repaired arms keep the footer channel, parser, surface and recovery b
 		assert.equal(spec.channel, f0.channel, `${name}: channel differs from F0`);
 		assert.equal(spec.parse, f0.parse, `${name}: parser differs from F0`);
 	}
-	for (const text of [F1, F2]) assert.ok(text.includes(SCREEN_FOOTER_GRAMMAR));
+	for (const text of [F1, F2, F3]) assert.ok(text.includes(SCREEN_FOOTER_GRAMMAR));
 });
 
 test("the lens-authority split reaches every repaired builder", () => {
-	for (const text of [F1, F2, buildRepairedFooterObservationEnvelope(HEAD), buildFramedFooterObservationEnvelope(HEAD)]) {
+	for (const text of [
+		F1,
+		F2,
+		F3,
+		buildRepairedFooterObservationEnvelope(HEAD),
+		buildFramedFooterObservationEnvelope(HEAD),
+		buildDecidableFooterObservationEnvelope(HEAD),
+	]) {
 		assert.ok(text.includes(REPAIRED_LENS_AUTHORITY));
 		assert.equal(text.includes("The lens alone defines scope"), false);
 	}
 });
 
 test("the OpenAI split carrier holds for both repaired arms", () => {
-	for (const name of ["F1", "F2"]) {
+	for (const name of ["F1", "F2", "F3"]) {
 		const anthropic = goldenHandoff(name, "anthropic", CASE);
 		const openai = goldenHandoff(name, "openai-codex", CASE);
 		assert.equal(anthropic.envelope, undefined, `${name}: Anthropic must carry one combined prompt`);

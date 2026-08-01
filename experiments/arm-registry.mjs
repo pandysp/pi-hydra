@@ -52,6 +52,8 @@ import {
 	structuredContextFormatCorrection,
 } from "./delivery-context-candidate.mjs";
 import {
+	buildDecidableFooterObservationEnvelope,
+	buildDecidableFooterObservationPrompt,
 	buildFramedFooterObservationEnvelope,
 	buildFramedFooterObservationPrompt,
 	buildRepairedFooterObservationEnvelope,
@@ -317,6 +319,20 @@ export const GOLDEN_ARMS = Object.freeze({
 		failOpen: false,
 		toolSurface: "management-only",
 	}),
+	// F3 varies decidability alone against F2: same semantics, same cardinality
+	// unit, same channel and surface. It is longer on purpose — the hypothesis is
+	// that ambiguity, not length, is what thinking is spent on.
+	"screen-footer-decidable": arm({
+		id: "screen-footer-decidable",
+		label: "screen-decidable-footer",
+		buildHandoff: splitHandoff(
+			(head, lens) => buildDecidableFooterObservationPrompt(head, lens),
+			(head) => buildDecidableFooterObservationEnvelope(head),
+		),
+		parse: parseFooterOnly,
+		failOpen: false,
+		toolSurface: "management-only",
+	}),
 });
 
 /**
@@ -344,6 +360,7 @@ export const ARM_ALIASES = Object.freeze({
 	F0: "screen-footer",
 	F1: "screen-footer-repaired",
 	F2: "screen-footer-framed",
+	F3: "screen-footer-decidable",
 });
 
 export const ARM_NAMES = Object.freeze([...Object.keys(ARM_ALIASES), ...Object.keys(GOLDEN_ARMS)].sort());

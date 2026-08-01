@@ -20,7 +20,14 @@ export const DRIVER_AWARE = "driver-aware";
  * cannot change what any frozen row means.
  */
 export const SCREEN_ARMS = Object.freeze(
-	new Set(["screen-a0", "screen-json", "screen-footer", "screen-footer-repaired", "screen-footer-framed"]),
+	new Set([
+		"screen-a0",
+		"screen-json",
+		"screen-footer",
+		"screen-footer-repaired",
+		"screen-footer-framed",
+		"screen-footer-decidable",
+	]),
 );
 
 export function sameHeadDeliveryContext(state, head) {
@@ -138,6 +145,46 @@ export const REPAIRED_CHECKLIST_ROUTING = `Take the first rule that fits and sto
 ${REPAIRED_SELECTION_CLAUSE}`;
 
 /**
+ * F3: F2's semantics at maximum decidability (`ENVELOPE-REPAIR-SPEC.md`, "Next
+ * isolated factor: DECIDABILITY"). The hypothesis under test is that thinking is
+ * spent on AMBIGUITY, not on tokens, so F3 is deliberately LONGER than F2 and
+ * every judgement F2 leaves to the model is stated instead:
+ *
+ *  - Selection before routing. F2 lists the rules and appends the selection
+ *    clause after them, leaving open whether the rules run per candidate finding
+ *    or once on a chosen one. F3 makes it two ordered steps.
+ *  - A decidable test per rule, in the form of a condition on what the
+ *    trajectory shows, rather than a label ("An emergency": when?).
+ *  - Precedence for every pair that can collide: 1 over 2 (an in-progress
+ *    emergency already raised), 3 over 4 and 4 over 3 (who owns the remedy —
+ *    the substitution defect's own boundary), 4 over 5 (user-owned vs deferrable
+ *    agent work). F2 leaves these to first-match alone, which is only implicit
+ *    precedence.
+ *  - Multiple findings: F2's selection clause implies one; F3 says carry exactly
+ *    one forward.
+ *  - Underdetermination: F2 leaves "can I tell?" to deliberation. F3 decides
+ *    tests on what the trajectory shows and forbids assuming what it does not —
+ *    a scoping of the discipline unit's evidence rule onto the tests, chosen
+ *    over a "when unsure, stay silent" default because that would flatten
+ *    findings, which D2 exists to catch.
+ *
+ * Test 5's "leaves the current work correct, safe, complete and verified" is
+ * test 3's third condition contraposed: same criterion, stated once positively
+ * and once negatively so neither rule needs the other read to be decided.
+ */
+export const REPAIRED_DECIDABLE_ROUTING = `Decide in two steps and do not revisit the first once you have passed it.
+
+STEP 1 — pick the finding. Take what the lens finds in the visible trajectory. If it finds nothing, the delivery is none and step 2 does not run. If it finds more than one problem, carry exactly one forward: the most consequential. ${REPAIRED_SELECTION_CLAUSE}
+
+STEP 2 — route that one finding. Read tests 1 to 6 in order, take the first that is true, and stop; a later test never overrides an earlier one. Decide each test on what the trajectory shows and do not assume what it does not show.
+1. interrupt — true when harm is happening now and aborting the run is what stops it: an emergency that must abort the run. ${REPAIRED_ACT_NOW_CLAUSE} Test 1 outranks every later test, including test 2.
+2. none — true when this same problem was already routed to the agent, in any wording. Semantically equivalent feedback counts as already delivered even while the underlying issue remains unresolved. It is live again if the agent refuses it or the situation changes, and then this test is false. The agent naming a problem, or saying only someone else can resolve it, neither delivers nor resolves it, so neither makes this test true.
+3. steer — true when all three hold: the finding is about work currently underway, the agent itself must carry out the remedy, and leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified. That it could be addressed on a later turn does not make it queue. When the agent cannot or may not carry out the remedy, test 3 is false however urgent the finding is: go to test 4.
+4. print — true when the agent need not act, or when the remedy is not the agent's to carry out because it lacks the ability or the permission. Print reaches the user and never the agent, so say what the user must do. Tests 3 and 4 collide only over who must act: test 3 when the remedy is the agent's own, test 4 when it is not.
+5. queue — true when the remedy is the agent's own and is genuinely deferrable follow-up, meaning leaving it undone leaves the current work correct, safe, complete and verified. When the required actor is the user, test 5 is false and the route is test 4.
+6. Otherwise the route is none.`;
+
+/**
  * The anti-deliberation sentence rides the judge-only cardinality unit, so it
  * cannot reach `SCREEN_ACTING_CARDINALITY`, whose "take as many turns as the
  * lens needs" is the opposite instruction for a head that does work.
@@ -173,6 +220,13 @@ const REPAIR_CHECKLIST = Object.freeze({
 	cardinality: REPAIRED_COMPLETION_CARDINALITY,
 });
 
+// F3 keeps F2's cardinality unit verbatim: varying the anti-deliberation
+// sentence too would make F3 - F2 two factors instead of decidability alone.
+const REPAIR_DECIDABLE = Object.freeze({
+	routing: REPAIRED_DECIDABLE_ROUTING,
+	cardinality: REPAIRED_COMPLETION_CARDINALITY,
+});
+
 export function buildRepairedFooterObservationPrompt(head, instruction) {
 	return buildRepairedObservationPrompt(head, instruction, SCREEN_FOOTER_GRAMMAR, REPAIR_PROSE);
 }
@@ -187,6 +241,14 @@ export function buildFramedFooterObservationPrompt(head, instruction) {
 
 export function buildFramedFooterObservationEnvelope(head) {
 	return buildRepairedObservationEnvelope(head, SCREEN_FOOTER_GRAMMAR, REPAIR_CHECKLIST);
+}
+
+export function buildDecidableFooterObservationPrompt(head, instruction) {
+	return buildRepairedObservationPrompt(head, instruction, SCREEN_FOOTER_GRAMMAR, REPAIR_DECIDABLE);
+}
+
+export function buildDecidableFooterObservationEnvelope(head) {
+	return buildRepairedObservationEnvelope(head, SCREEN_FOOTER_GRAMMAR, REPAIR_DECIDABLE);
 }
 
 /** J: A's three-field shape and vocabulary verbatim, no rename. */

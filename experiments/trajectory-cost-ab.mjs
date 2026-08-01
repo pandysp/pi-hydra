@@ -75,6 +75,7 @@ import {
 import { hydraToolDescription, hydraToolParameters } from "../protocol.ts";
 import { GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import {
+	buildDecidableFooterObservationPrompt,
 	buildFramedFooterObservationPrompt,
 	buildRepairedFooterObservationPrompt,
 	buildScreenFooterObservationPrompt,
@@ -111,6 +112,8 @@ export const ARM_PROMPTS = Object.freeze({
 	// so a trajectory row and a screen row carry byte-identical contract text.
 	F1: buildRepairedFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 	F2: buildFramedFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
+	// F3 = F2's semantics at maximum decidability, longer on purpose.
+	F3: buildDecidableFooterObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS),
 });
 
 export const ARMS = Object.freeze(Object.keys(ARM_PROMPTS));
