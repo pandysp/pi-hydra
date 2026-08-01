@@ -248,9 +248,20 @@ per sample) and deliveries rose (10/10 vs 2 noops). One zero-thinking
 sample named three planted defects; MAIN's most expensive sample (1295
 tokens) named one.
 
-NOT YET A RESULT TO ACT ON:
-- Fisher p=0.175 at n=10 — directionally clear, NOT significant. n=20
-  reaches p=0.048 if the effect holds.
+SETTLED AT n=30 (no-steer v2, e731a37): MAIN 13/30 skips vs MAIN-NS
+**28/30**, Fisher **p=2.7e-05**. The fresh n=20 run had MAIN-NS emit ZERO
+reasoning on all 20 samples. The label effect on MAIN is established.
+Transfer to a code-writing moment is UNINFORMATIVE, not negative: both
+arms skipped 10/10 there because MAIN routed zero steers — already at the
+floor, nothing for the label to remove.
+
+SECOND EFFECT, not obviously good: removing the label also moves the
+SPEAK/STAY-SILENT threshold. At the code moment MAIN is silent 10/10
+while MAIN-NS delivers 7/10 grounded observations. Whether that extra
+speech helps is the chattiness question, which has no evidence either
+way.
+
+Still open:
 - One prefix, one task moment, and that moment is a DOC-WRITING task
   where enumeration is the natural response. Transfer to a code-writing
   moment is untested.
