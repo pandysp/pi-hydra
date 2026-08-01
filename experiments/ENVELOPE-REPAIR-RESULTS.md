@@ -104,3 +104,30 @@ cost and is not reported. Thinking is cache-independent and stands.
 - F3 decidability probe (Andreas's hypothesis: ambiguity, not length,
   drives thinking).
 - Judged quality for the sol configs (routing only so far).
+
+## C2 — live-fork trajectory ratio (the headline KPI)
+
+One driver run (scheduler, opus-high, 19 points), three arms paired at
+identical observation points. Rows: ~/scratch/2026-08-01-hydra-c2-trajectory.
+
+| Arm | observer $ / driver $ | observer $ | marginal vs MAIN |
+|---|---:|---:|---:|
+| MAIN | **32.1%** | $0.3190 | — |
+| F0 | 67.2% | $0.6689 | +$0.3499 |
+| F2 | **58.6%** | $0.5836 | +$0.2646 |
+
+- MAIN's baseline REPLICATES (32.1% here vs 33.3% in the pilot, different
+  driver run) — the instrument is stable and Andreas's ~30% field prior
+  holds at this trajectory length.
+- F2 cuts the envelope's trajectory premium from +35.2pp to +26.5pp
+  (-25% of the premium).
+- C2 pre-registered bar (F2 - MAIN <= 15pp): **FAILS** at 26.5pp.
+  Reported as registered; no goalposts moved.
+- Deliveries: MAIN 10, F0 9, F2 9 — the repaired arm is not talking more,
+  it is talking better (see the quality table above).
+
+Consequence: after the repair, quality is fixed and routing is far
+better, but the cost SHAPE still does not meet the bar at opus-high.
+The remaining lever is decidability (F3, pre-registered 9db1114); if it
+does not close the gap, G1 is a genuine judgment call with the premium
+and the quality delta both on the table.
