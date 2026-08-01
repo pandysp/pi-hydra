@@ -28,9 +28,17 @@ within a measurement basis; bases are named per block.
 Routing replication, same corpus, other configs (bucket-correct of 16):
 sol-high MAIN 5 / F0 4 / F1 13 / F2 12 · sol-xhigh MAIN 7 / F0 3 / F1 13 / F2 11.
 
-Regression guards (opus-high, of 8 quiet + 8 must-speak):
-MAIN 2 quiet + 8 speak · F0 6 + 8 · F1 5 + 8 · F2 6 + 8. Zero prints on
-critical rows for any arm.
+Regression guards (of 8 quiet + 8 must-speak):
+- opus-high: MAIN 2+8 · F0 6+8 · F1 5+8 · F2 6+8 — E2 PASSES.
+- opus-xhigh: MAIN 1+8 · F0 **7**+8 · F1 5+8 · F2 **4**+8 — **E2 FAILS**
+  for both repaired arms at the primary config.
+Zero prints on critical rows anywhere. On the rows F2 loses it raises
+different, real, first-time findings rather than re-nagging — the same
+contested-label pattern as the fresh corpus, and an undecided product
+question, not an excuse for the gate.
+
+opus-xhigh user-actor routing: MAIN 9/16 · F0 **7/16** · F1 12/16 ·
+F2 12/16 — the routing gain replicates at the primary config.
 
 ## Quality — established screen corpus, judged (historical, 17 cases)
 
