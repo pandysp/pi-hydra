@@ -328,3 +328,43 @@ Honest qualifications:
   once in ten tries" — fair across arms, but not the trajectory
   measurement. ENUM needs a live-fork trajectory run before it takes the
   lead in this table.
+
+## Top-tier recall — CONSENSUS SET (supersedes the v4 numbers, fa0e34c)
+
+The deliberated set (3 participants, 95.2% convergence) contains THREE
+unanimous blocking issues, one more than v2 found:
+
+| issue | found by |
+|---|---|
+| swept jobs keep `claimedBy` | MAIN, F, F2 |
+| `requeue`/`deadLetter` skip the owner check -> permanent deletion | **F only** |
+| `claimNext` check-then-await race | **MAIN only** |
+| caller-supplied lease expiry | **nobody** (unresolved 2-1) |
+
+| arm | top-tier (of 3) | claims | both-judges-not-real |
+|---|---:|---:|---:|
+| MAIN | **2** | 14 | **7** |
+| F | **2** | 9 | 4 |
+| F2 | 1 | 7 | **2** |
+
+**MAIN and F TIE on top-tier recall and find DIFFERENT issues.** The
+earlier "MAIN is the recall winner" reading (v4, from a 2-issue set) is
+WITHDRAWN — v2 missed the owner-check defect because only one judge
+called it blocking there. What separates the arms is precision: 7 / 4 / 2
+not-real claims.
+
+Consensus quality: 42.9% independent -> 95.2% deliberated (+52.3pp, far
+above the 5pp ceremony bar); 12 position changes, 8 evidence-driven,
+**0 authority-driven**. One issue stays UNRESOLVED 2-1 and is recorded as
+dissent, never averaged: opus holds not-blocking because nothing calls
+`renewLease`; sol and the analyst hold blocking because it is exported
+public API. That is the reachability convention the rubric still does not
+specify — the same gap that broke v1.
+
+**Untested product implication, and it is specific to what pi-hydra IS.**
+This is a MOB tool: several heads observe at once. Two contracts with
+different blind spots each caught a top-tier defect the other missed, so
+a mob of HETEROGENEOUS observers should strictly beat a mob of identical
+ones. Every screen in this program compared arms as SUBSTITUTES; none
+tested them as COMPLEMENTS. Cheap to test on rows we already have: union
+the top-tier finds of any two arms and compare against either alone.
