@@ -31,6 +31,7 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 20 | 2026-07-31 | `2026-07-31-hydra-screen-verify` | judge dry-run (wave-7a scout) | — | screen(12) | 4 | 5 | $0 | **none** | ~/dev/personal/pi-hydra-frozen-artifacts/2026-07-31-hydra-screen-verify | — | reconstructed |
 | 21 | 2026-08-01 | `2026-08-01-hydra-dataset-audit` | dataset audit scratch (analysis only) | — | all three corpora | 0 | 0 | $0 | **none** | ~/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-dataset-audit | — | reconstructed |
 | 22 | 2026-08-01 | `2026-08-01-adaptive-skip` | (recorded by hand) | 177a5ec5a19484ac8aa4700827b96b4c44a0dfba | — | 53 | 0 | $1.3586 | `experiments/artifacts/2026-08-01-adaptive-skip` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-adaptive-skip | experiments/ADAPTIVE-SKIP-RESULTS.md | measured |
+| 23 | 2026-08-01 | `2026-08-01-severity-probe` | (recorded by hand) | d1781119e17bb30565efab0c11f65388c228c006 | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-01-severity-probe` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-severity-probe | experiments/SEVERITY-PROBE-RESULTS.md | measured |
 
 **Program totals: 10405 producer rows, 10271 judgments, $60.74 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $82.54.
 
@@ -60,6 +61,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-07-27-hydra-real-pi`: Live pi session records used for the production firing-model analysis (observations per driver turn). No cost recorded on these rows. Added 2026-08-01 by the wave-10 D6 repair.
 - `2026-07-31-hydra-screen-verify`: Six-invocation judge dry-run that gated the xhigh screen spend; 4 rows, 5 judgments, no metered cost. Added 2026-08-01 by the wave-10 D6 repair.
 - `2026-08-01-hydra-dataset-audit`: Analysis scratch from the phase-0.5 dataset audit; contains no jsonl evidence of its own. Added 2026-08-01 by the wave-10 D6 repair.
+- `2026-08-01-severity-probe`: severity-pooling probe: P1 not viable (41.7% exact judge agreement); zero producer spend, judges only
 
 ## Reading the frozen evidence
 

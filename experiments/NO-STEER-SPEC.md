@@ -72,7 +72,13 @@ framing implied the signal lives in the label; it mostly does not.
 What survives is a DIFFERENT concern on a different axis, recorded as an
 open question rather than a gate:
 
-**DRIVER-SIDE INTERRUPTION COST (unmeasured).** On the C2 trajectory arms
+**DRIVER-SIDE INTERRUPTION COST — AN UNTESTED HYPOTHESIS (Andreas,
+2026-08-01). Not a known cost. Zero measurements exist: the harness is
+open-loop by construction, so NO delivery in this program has ever
+reached a driver.** The claim below is reasoning, and it has twice been
+leaned on as though established (the "abstention is an economic feature"
+argument, and my objection to the no-steer idea). It must be labelled as
+a hypothesis wherever it appears. On the C2 trajectory arms
 delivered on ~9-10 of 18 observations but steered on only ~2. Promoting
 every queue to steer means the driver is interrupted mid-work ~9 times
 instead of ~2, and each interruption costs DRIVER tokens (re-reading,
@@ -85,3 +91,18 @@ everything to steer is cheap on the OBSERVER side" is measurable today;
 "and costs nothing on the DRIVER side" is not. Any recommendation coming
 out of this probe must carry that limit explicitly, and a closed-loop
 run is the only way to settle it.
+
+
+## What the driver-reaction hypothesis does and does not contaminate
+
+- It does NOT affect the pre-registered gates. E2 scores abstention
+  against CORPUS LABELS, not against any driver-cost claim. Published
+  verdicts stand on their own basis.
+- It DOES affect interpretation: "the corpus says silence was correct
+  here" is supported; "and that saves driver tokens" is not.
+- The settling experiment (biggest genuine gap in the instrument):
+  closed-loop run, same task, arms differing in delivery frequency,
+  deliveries ACTUALLY INJECTED; measure driver turns, driver tokens, and
+  task-completion correctness. It settles this AND the re-nudge question
+  Andreas raised earlier. Until it runs, chattiness-distracts-the-driver
+  is a hypothesis with no evidence either way.
