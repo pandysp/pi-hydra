@@ -105,16 +105,26 @@ closed by neither and stays open.
 | Arm | observer $ / driver $ | premium vs MAIN | planted defects found | deliveries |
 |---|---:|---:|---:|---:|
 | MAIN | 32.1% (33.3% in the pilot) | — | **3 of 4** | 10 |
-| F0 | 67.2% (63.6%) | +35.2pp | **4 of 4** | 9 |
+| F0 | 67.2% (63.6%) | +35.2pp | **3 of 4** | 9 |
 | F2 | 58.6% | +26.5pp | **4 of 4** | 9 |
 
-Both MAIN and F0 replicate across two independent driver runs. Coverage
-is a deterministic identifier match over delivered messages (first pass,
-not judge-scored). MAIN misses the lease-expiry defect; the envelope
-arms find all four AND interrupt the driver one time fewer.
+Both MAIN and F0 replicate across two independent driver runs.
 
-**This is the trade in one line:** +26.5pp of driver spend buys one more
-real defect of four, with one fewer interruption, on one trajectory.
+Coverage is LIVENESS-AWARE (corrected 2026-08-01): a defect counts only
+if it is named while live — after `firstVisible` and before `firstFixed`,
+derived from payload bytes and manually confirmed 4/4 (Q0a passes). My
+earlier identifier-match gave F0 4/4; it drops to 3/4 because its requeue
+mention lands at point 16, the same point the driver fixed it. Correcting
+my own number.
+
+Detection latency in points (0 = named the moment it became visible):
+MAIN 0/0/0 and one never · F0 0/0/5 · **F2 0/0/5/8**.
+
+**The trade in one line:** +26.5pp of driver spend buys the one defect
+MAIN never sees (a security defect: lease expiry computed from the
+caller's clock), with one fewer interruption, at a few points of latency,
+on one trajectory. MAIN is not slow — it is fast on what it sees and
+blind to one thing.
 
 ## Reading it
 
