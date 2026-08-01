@@ -53,7 +53,11 @@ and check whether the 2 thinking points reproduce at the same points.
 - Zero contract changes ship from this study: it is diagnostic. Any
   contract that comes out of it is proposed, then screened under
   ENVELOPE-REPAIR-SPEC's gates like every other arm.
-- Report skip RATE (share of observations with reasoning === 0) as the
-  primary metric, not mean thinking — the distribution is bimodal and the
-  mean hides it (that is how this was missed twice).
+- Report the full DISTRIBUTION of reasoning tokens per cell: mean,
+  median, and skip rate (share with reasoning === 0), plus the raw
+  per-observation values. Skip rate is an ADDITIONAL metric, NOT the
+  primary one (corrected by Andreas 2026-08-01 before data: declaring it
+  primary would presume the bimodal framing that is itself under test).
+  The mean alone did hide the effect twice, so it never travels alone —
+  but which metric carries the story is a finding, not an assumption.
 - Budget: ~$2. Anything larger needs a new pre-registration.
