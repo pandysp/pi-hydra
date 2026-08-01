@@ -171,3 +171,35 @@ are no rules to check against evidence. Testing that means removing the
 routing rules, which removes the abstention win with them; it is a real
 question with an expensive answer, and it is left open rather than
 guessed at.
+
+## Why MAIN is cheap: it SKIPS, it does not think less
+
+Per-observation thinking on the 19 recorded payloads (opus-high) is
+bimodal, and the means hide it:
+
+| Arm | observations with ZERO thinking | median | mean |
+|---|---:|---:|---:|
+| MAIN | **13 of 15** | 0 | 59 |
+| F0 | 2 of 15 | 716 | 663 |
+| F2 | 2 of 15 | 623 | 511 |
+
+The two points where MAIN does think, beside F2 at the same points:
+
+| point | prefix | MAIN | F2 |
+|---|---:|---:|---:|
+| r1/5 | 18,891 | 680 | 704 |
+| r3/14 | 35,214 | 210 | 214 |
+| the other 13 | — | **0** | 153-955 |
+
+When MAIN thinks it thinks the SAME amount as the envelope arm (within
+2-4%), at the same two moments. So: the SITUATION sets how much thinking
+a hard observation takes; the CONTRACT sets whether routine observations
+get any thinking at all. MAIN skips 13 of 15; the envelope skips 2.
+
+This reframes the premium: it is not depth, it is the absence of a skip.
+It also explains why both cost levers failed — framing (F2) and
+decidability (F3) change HOW the model deliberates, when the gap is
+WHETHER it deliberates. The untested lever that follows from the
+mechanism is an explicit fast path: permission to answer immediately
+when nothing in the trajectory is contentious, rather than a better
+rulebook. Registered as the next candidate; not yet measured.
