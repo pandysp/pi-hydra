@@ -130,3 +130,35 @@ silently toward a target.
 
 Anomaly pass on raw rows before any distillation; every surprise triaged
 harness-bug | dataset-label-bug | real-effect before entering a verdict.
+
+## Next isolated factor: DECIDABILITY (Andreas, 2026-08-01, before F3 data)
+
+Hypothesis (his): prompt length is a poor predictor of observation cost;
+thinking dominates, and what drives thinking is AMBIGUITY. An instruction
+set that is extremely clear and foolproof ("idiotensicher") should reduce
+thinking even if it is LONGER.
+
+Supporting evidence already measured (not proof — it motivated the
+hypothesis after the fact, so F3 is the test):
+- MAIN thinks ~0 on real prefixes and is not merely short: 3 fields,
+  120/240-char caps, near-zero degrees of freedom.
+- F2 beat F0 by -23% thinking while being 43% LONGER; its distinguishing
+  device is the ordered first-match list, i.e. removal of rule-precedence
+  ambiguity, not brevity.
+- F0's prose leaves precedence implicit, so precedence is re-derived per
+  observation.
+
+F3 = F2's semantics, maximum decidability: every rule gets an explicit
+decidable test, tie-breaks named, precedence stated for every pair that
+can collide, no judgment left implicit. F3 may be LONGER than F2 by
+design — that is the point of the test.
+
+- D1 (falsifiable): F3 thinking < F2 thinking on the 19 recorded payloads
+  at opus-high AND sol-high. If F3 >= F2 despite higher decidability, the
+  ambiguity hypothesis is refuted and length/structure is not the lever
+  either; the remaining explanation is contract SHAPE (caps + field
+  count), which points at MAIN's grammar, not its envelope.
+- D2 (safety): F3 quality gates E1/E2/E2b as F1/F2 did. Decidability that
+  buys cost by flattening judgment must not flatten the findings.
+- Instrument: recorded-payload replay (thinking is cache-independent;
+  cost from replay is NOT comparable to live-fork and is not reported).
