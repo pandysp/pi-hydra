@@ -1,6 +1,6 @@
 # experiments/ — index
 
-45 documents. This is the map. `README.md` documents the original cache
+47 documents. This is the map. `README.md` documents the original cache
 probes only and predates almost all of this; start here instead.
 
 Convention: every measurement has a SPEC (pre-registered before data) and
@@ -40,7 +40,8 @@ was refuted before running.
 | [ENUMERATE-SPEC.md](ENUMERATE-SPEC.md) → [ENUM-PLUS-SPEC.md](ENUM-PLUS-SPEC.md) → [ENUM-PLUS-RESULTS.md](ENUM-PLUS-RESULTS.md) | Enumeration: 2.3x recall at zero thinking; the support clause costs 2.8x from one sentence |
 | [ENUM-TRAJECTORY-RESULTS.md](ENUM-TRAJECTORY-RESULTS.md) | ENUM on a live trajectory: cheapest-but-one, best coverage, more precise than MAIN |
 | [ENUM-CONFIG-SWEEP-SPEC.md](ENUM-CONFIG-SWEEP-SPEC.md) → [ENUM-CONFIG-SWEEP-RESULTS.md](ENUM-CONFIG-SWEEP-RESULTS.md) | Zero thinking transfers to opus-xhigh; OpenAI structurally unmeasurable by replay |
-| [ENUM-GENERALISATION-SPEC.md](ENUM-GENERALISATION-SPEC.md) → [OPENAI-TRAJECTORY-RESULTS.md](OPENAI-TRAJECTORY-RESULTS.md) | Run A done: ENUM's zero-thinking does NOT transfer to OpenAI (thinks the most there); delivery-type coupling is Claude-specific. Run B (cross-task) separate |
+| [ENUM-GENERALISATION-SPEC.md](ENUM-GENERALISATION-SPEC.md) → [OPENAI-TRAJECTORY-RESULTS.md](OPENAI-TRAJECTORY-RESULTS.md) | Run A done: ENUM's zero-thinking does NOT transfer to OpenAI (thinks the most there); delivery-type coupling is Claude-specific |
+| [CROSS-TASK-TRAJECTORY-RESULTS.md](CROSS-TASK-TRAJECTORY-RESULTS.md) | Run B done: MAIN &lt; ENUM &lt; F2 cost ordering holds 3/3 tasks; ENUM coverage advantage holds; precision drops to 54% on dispatcher; first false-interrupt data (F2 2, others 0) |
 | [TERSE-ENUM-SPEC.md](TERSE-ENUM-SPEC.md) | QUEUED: bullets instead of prose — ENUM's premium is output volume |
 
 ## The quality metric (how to score an observation at all)
@@ -57,7 +58,8 @@ was refuted before running.
 
 | doc | role |
 |---|---|
-| [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the two ruled conventions (reachability, individuation) |
+| [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
+| [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |

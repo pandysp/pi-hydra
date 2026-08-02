@@ -429,8 +429,8 @@ is impossible; it needs a real codex driver run. Funded and running
 shortcut — the frozen-case harness supports sol but answers on ~800-token
 prefixes, and every cost effect here moves with prefix length.
 
-**ENUM's established scope: opus-high and opus-xhigh, one task
-(scheduler). Unmeasured on exporter/dispatcher** — running.
+**ENUM's established scope: opus-high and opus-xhigh; cross-task
+generalisation measured 2026-08-02 — see the cross-task block below.**
 
 ## ENUM on OpenAI — real sol trajectories (2026-08-02): the cost shape INVERTS
 
@@ -466,3 +466,58 @@ is unjustified until judged sol coverage shows its extra findings earn
 18-29pp of driver cost. Contracts were followed everywhere (format 92/92,
 ENUM genuinely enumerating at 2.12-3.00 findings/msg, below its Anthropic
 4.09).
+
+## Cross-task trajectories (2026-08-02): the ordering generalises, precision does not
+
+(experiments/CROSS-TASK-TRAJECTORY-RESULTS.md, artifacts
+2026-08-02-cross-task-trajectory; opus-high, arms paired, within-run
+comparisons only — driver cost is the denominator and moves per task.)
+
+| task | MAIN | ENUM | F2 |
+|---|---:|---:|---:|
+| scheduler (ref) | **23.0%** | 32.5% | 42.6% |
+| exporter | **47.4%** | 61.4% | 73.5% |
+| dispatcher | **37.4%** | 47.3% | 61.4% |
+
+Cost ordering MAIN < ENUM < F2 on 3 of 3 tasks; ENUM undercuts F2 by
+10-14pp everywhere. ENUM's zero-thinking mostly transfers (16/17
+dispatcher, 13/15 exporter zero-think) but is not unconditional.
+
+Coverage (per-task judged pools; golden-v1 blocking recall in
+parentheses):
+
+| task | arm | any-harm | precision | golden blocking |
+|---|---|---:|---:|---:|
+| exporter | MAIN | 2/18 | 50% | 0/3 |
+| exporter | F2 | 7/18 | 78% | 1/3 |
+| exporter | **ENUM** | **15/18** | 67% | **2/3** |
+| dispatcher | MAIN | 5/12 | 73% | 2/3 |
+| dispatcher | F2 | 7/12 | 75% | 2/3 |
+| dispatcher | **ENUM** | **10/12** | **54%** | 2/3 |
+
+ENUM was the only arm to raise golden exporter blockers (the CR
+quote-class and NaN-limit defects). **Disclosed cost: ENUM's precision
+drops to 54% on the dispatcher** (13/28 not-real, mostly test-coverage
+nitpicks) — "more precise than MAIN" was a scheduler observation, not a
+property of enumeration. First false-interrupt data in the program: F2
+steered twice inside the dispatcher's quiet span; MAIN and ENUM zero on
+both tasks. Known open calibration item: this run's two-judge pools sit
+one tier below golden-v1 (serious vs blocking) on all three exporter
+blockers; flagged, neither instrument preferred. 2 of 6 planted defects
+across the two tasks were missed by every arm.
+
+## Golden dataset v1 — the regression ruler exists (2026-08-02)
+
+(experiments/GOLDEN-DATASET-V1-RESULTS.md, `golden-dataset.json` version
+`4ea27b0018705940`; scoring is deterministic and free.)
+
+46 active issues (17 blocking, 29 harmful) + 26 recorded rejections;
+convergence 45.8%→95.4% plus a 7/7-unanimous re-judged slice, zero
+authority-driven changes, two dissents recorded verbatim. Whole-set
+blocking recall from frozen artifacts: MAIN 2, F 2, F2 1 of the 11
+scheduler blockers arms ever observed — and **25 of 37 scheduler issues
+(8 blocking) were found by NO arm**. That blind spot, not the 1-issue
+differences between arms, is the headline: contract tuning moves recall
+by single issues while the pool holds eight blockers nobody surfaces.
+Heterogeneous lenses (his "different heads") and coverage-first contracts
+are the levers that could reach it.
