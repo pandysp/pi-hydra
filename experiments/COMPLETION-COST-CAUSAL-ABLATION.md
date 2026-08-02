@@ -1,5 +1,12 @@
 # Completion cost and latency causal ablation
 
+> **SUPERSEDED IN PART.** This doc's recommendation to keep the FULL shared
+> public schema was reversed by the acting-channel smoke
+> ([`ACTING-CHANNEL-SMOKE-RESULTS.md`](ACTING-CHANNEL-SMOKE-RESULTS.md)):
+> self-removal terminality measured channel-independent and tool-free acting
+> measured cheaper, so the unified API ships a management-only schema. The
+> causal cost findings here stand.
+
 Date: 2026-07-24
 
 ## Question

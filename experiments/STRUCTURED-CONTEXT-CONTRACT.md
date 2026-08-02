@@ -1,5 +1,9 @@
 # Structured context contract: development gate
 
+> **ABANDONED.** v1 was rejected (critical misses); the v2 gate specified
+> below was never run — the thread ended when the footer channel won the
+> unified-API screen. Recorded here so the gate does not read as pending.
+
 ## Hypothesis
 
 The factual envelope is sound, but low-thinking models inconsistently perform

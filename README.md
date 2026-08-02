@@ -96,7 +96,7 @@ The active head set persists per session and survives resume. For headless runs 
 
 ### Decisions
 
-Every observation returns the same delivery decision. OpenAI heads call the typed `hydra` tool with `action: "complete_observation"`; Anthropic heads currently return a compact JSON decision whose `action` carries the delivery because a native completion call measured substantially slower and more expensive there.
+Every observation returns the same delivery decision, through one of three contracts. Judge-only heads (`tools: []`) write one natural-text finding and end with a final `DELIVERY:` line — on both providers. Acting OpenAI heads call the typed `hydra` tool with `action: "complete_observation"`; acting Anthropic heads return a compact JSON decision whose `action` carries the delivery because a native completion call measured substantially slower and more expensive there.
 
 - `none`: nothing to report, nothing delivered (`/hydra-stats` labels this internal outcome `noop`).
 - `print`: a note to you. Renders in the TUI, never enters the agent's context.

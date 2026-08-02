@@ -1,5 +1,12 @@
 # Anthropic cost sweep — main contract (A0) vs footer (F), 2026-07-31
 
+> **PARTIALLY RETRACTED.** This doc's recommendation to pin observer thinking
+> effort independently of the driver's was retracted by Andreas 2026-08-01:
+> observer and driver MUST share the thinking level, or the observer's replay
+> of the driver's prefix stops hitting the prompt cache (Anthropic invalidates
+> message cache on a thinking-param change), which costs far more than any
+> thinking savings. The cost measurements themselves stand.
+
 Cost-only sweep (no quality judging) requested by Andreas: is the footer's
 cost comparable to main's shipped contract across Claude model classes and
 reasoning efforts? 8 configs × {A0, F} × 12 screen cases × 2 samples = 384

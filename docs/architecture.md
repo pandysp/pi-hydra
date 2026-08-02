@@ -241,5 +241,5 @@ hydra began as [andon](../archive/README.md), a bash and tmux contraption around
 | Observation state | JSON file in `~/.local/state/andon-observer/` | session custom entries via `pi.appendEntry("hydra-call", ...)` |
 | Delivery | `tmux send-keys` | `pi.sendMessage` / `pi.sendUserMessage` |
 | Polling | JSONL mtime watch loop | driver commit events (`message_start`) + `agent_end` |
-| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | delivered-set dedup; queued feedback becomes part of the replayed context by design, since the head sees exactly what the driver sees |
+| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | factual delivery state from the ledger in the prompt — the head decides; queued feedback becomes part of the replayed context by design, since the head sees exactly what the driver sees |
 | Status display | none / external log | TUI footer with live hit ratio + cost |

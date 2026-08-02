@@ -168,8 +168,10 @@ interface HydraCall {
 	head: string;
 	kind?: ObserveKind;
 	// The provider API the call ran under; healthy hit ratios differ per
-	// provider, so display must not blend them. Absent on pre-codex
-	// entries, which were all Anthropic.
+	// provider, so display must not blend them. Absent on entries recorded
+	// before this field existed; the stats default those to Anthropic,
+	// which mislabels the few pre-field codex sessions (e.g. the 2026-07-15
+	// demo) — a display heuristic, acceptable for historical entries only.
 	api?: string;
 	action: Action;
 	input: number;

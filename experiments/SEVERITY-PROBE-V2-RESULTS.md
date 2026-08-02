@@ -1,5 +1,11 @@
 # Severity pooling v2 — results (2026-08-01)
 
+> **HEADLINE REVISED.** This doc's reading "MAIN is the stronger arm on
+> recall" was revised by the deliberated consensus set
+> ([`CONSENSUS-RESULTS.md`](CONSENSUS-RESULTS.md)): it adds a third unanimous
+> blocking issue (g07, found by F alone), so MAIN and F TIE at 2 of 3 on
+> different issues. The judgments and agreement numbers here stand.
+
 Pre-registered in `SEVERITY-PROBE-V2-SPEC.md` (42c0646, before data).
 Probe, not a shipped metric. Same input as v1: the C2 trajectory
 (scheduler task, opus-high, arms MAIN/F/F2), 28 delivered messages, 4
