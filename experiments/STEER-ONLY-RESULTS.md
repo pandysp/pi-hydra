@@ -3,10 +3,12 @@
 Runs `STEER-ONLY-SPEC.md` (pre-registered at c65dc7c before any data).
 Basis: recorded pilot payload, point `scheduler/opus-high/a1/r1/6`
 (mid prefix, L=20,165), piggyback tail, `adaptive-skip-probe.mjs`,
-n=10 samples/cell, 6 variants × opus-high + opus-xhigh. Smoke (1
-sample/variant, opus-high) frozen separately, not pooled. Spend $3.55
-harness-priced ($0.26 smoke + $1.61 high + $1.68 xhigh), plan-window
-metered. Zero errored rows; format validity 120/120.
+n=10 samples/cell, 6 variants × opus-high + opus-xhigh, plus the SO2
+repair cells per the spec addendum (4 variants × both configs). Smoke
+(1 sample/variant, opus-high) frozen separately, not pooled. Spend
+$5.70 harness-priced ($0.26 smoke + $1.61 high + $1.68 xhigh + $0.98
+so2-high + $1.17 so2-xhigh), plan-window metered, under the $8 cap.
+Zero errored rows anywhere; format validity 200/200.
 
 ## The cells
 
@@ -77,25 +79,60 @@ the delivery-type coupling replicates in the control cells.
 3. MAIN delivered 10/10 at xhigh vs 8/10 at high with skip 3/10 vs
    5/10 — the established stochastic skip, no triage needed.
 
+## The SO2 wording repair (spec addendum; run after the SO verdicts above)
+
+Andreas's ruling on the SO silence: the prompt was wrong, not the
+proposal — steer must read as the normal and only channel to the
+driver, folding in at its next checkpoint, and the SO cells stand as
+the wrong-prompt datapoint. SO2 replaces the collapsed routing
+sentence accordingly (exact text in the spec addendum; the act-on bar
+is gone, no urgency threshold language). Cells: {MAIN, MAIN-SO2,
+ENUM, ENUM-SO2} × both configs × n=10, same point, originals re-run
+for same-run pairing. The xhigh cell ran as two 5-sample invocations
+(foreground-timeout discipline; both headers frozen, pooled n=10).
+Zero errors, 80/80 parse.
+
+| config | variant | skips | mean think | routing (of 10) |
+|---|---|---:|---:|---|
+| opus-high | MAIN | 7/10 | 349 | steer 2, queue 5, none 3 |
+| opus-high | **MAIN-SO2** | 1/10 | 696 | **steer 10** |
+| opus-high | ENUM | 10/10 | 0 | queue 10 |
+| opus-high | **ENUM-SO2** | **10/10** | **0** | **steer 10** |
+| opus-xhigh | MAIN | 6/10 | 463 | steer 4, queue 5, none 1 |
+| opus-xhigh | **MAIN-SO2** | 0/10 | 870 | **steer 10** |
+| opus-xhigh | ENUM | 10/10 | 0 | queue 10 |
+| opus-xhigh | **ENUM-SO2** | **10/10** | **0** | **steer 10** |
+
+- **H5 HOLDS at both configs — the wording was the mechanism.**
+  MAIN-SO2 delivers 10/10 steer where MAIN-SO was 20/20 silent, and
+  the messages are grounded findings (the live stranded-claim defect),
+  not compliance noise.
+- **H6: the commitment coupling holds, and it prices the proposal.**
+  MAIN-SO2 thinks on 19/20 delivering rows, mean 696/870 vs same-run
+  MAIN 349/463 — roughly 2× at this point, because every observation
+  now commits a steer and steer-commitment is what MAIN deliberates
+  on; the cheap queue outlet no longer exists. One zero-thinking
+  steer row (high) shows the price is not a law per row.
+- **H7 HOLDS at both configs.** ENUM-SO2: 20/20 zero-thinking,
+  20/20 steer, still enumerating 2–4 findings/message.
+
 ## What this means for the benchmark and the runtime proposal
 
-- **The queue-removal proposal is SAFE for enumeration-shaped
-  contracts and HARMFUL for selection-shaped ones, on this evidence.**
-  ENUM absorbs the collapse at zero cost premium; MAIN under the
-  collapsed vocabulary stops delivering at all — a capability loss,
-  not a saving (its zero thinking is the silence of never speaking).
-  F2 is indifferent but was already the expensive arm.
-- The benchmark should carry **ENUM-SO** as an arm (the proposed
-  runtime shape at ENUM's price) alongside ENUM; carrying MAIN-SO
-  forward as a live-trajectory arm is the direct test of whether the
-  silence generalises beyond this point — cheap to include, and the
-  suppression risk is exactly what a trajectory with a quiet span and
-  a live blocker measures.
-- A runtime that removes queue does NOT need a code branch either
-  way: both vocabularies are instruction text over the same footer
-  parser (`steer` remains a valid label; `queue` simply stops being
-  offered), so the branch-cost rule is satisfied whichever way the
-  benchmark decides.
+- **The queue-removal proposal works at both configs with the SO2
+  wording, and its cost is arm-dependent.** ENUM absorbs the collapse
+  free (zero thinking before and after). MAIN pays MAIN's steer price
+  on every delivering observation (~2× its mixed-vocabulary thinking
+  at this point) — the honest cost of removing the cheap outlet from
+  a selection arm. F2 is indifferent (already steer-heavy and paying).
+- The benchmark should carry **ENUM-SO2 and MAIN-SO2** as the
+  steer-only arms; the SO variants are retired as wrong-prompt
+  datapoints per the addendum.
+- A runtime that removes queue does NOT need a code branch: both
+  vocabularies are instruction text over the same footer parser
+  (`steer` remains a valid label; `queue` simply stops being offered),
+  so the branch-cost rule is satisfied whichever way the design
+  lock-in decides. The correction-site survey for the runtime text is
+  in the spec addendum (utils.ts:394/402/433/446).
 
 ## Limits
 
