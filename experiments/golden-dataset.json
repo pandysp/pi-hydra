@@ -1,0 +1,2412 @@
+{
+ "version": "4ea27b0018705940",
+ "builtFrom": {
+  "stateDir": "~/scratch/2026-08-01-golden-v1",
+  "seedStateDir": "~/scratch/2026-08-01-golden-v1/seed-frame",
+  "finalRound": 5,
+  "converged": 70,
+  "total": 72
+ },
+ "sourceReports": 64,
+ "candidateTotal": 90,
+ "issues": [
+  {
+   "id": "SCHED-expired-keeps-claim",
+   "task": "scheduler",
+   "statement": "`sweepExpired` sets `state` back to \"pending\" but leaves `claimedBy` on the dead worker, and `claimNext` only accepts jobs with `claimedBy === null`, so swept jobs are never re-claimed.",
+   "members": [
+    "P-sched-expired-keeps-claim",
+    "R-D01",
+    "C-09",
+    "O-g01"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "planted",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Swept jobs retain their owner and become permanently unclaimable, capturing queued work."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "End-state `sweepExpired` still writes only `state: \"pending\"` while keeping `claimedBy`, and `claimNext` requires `claimedBy === null`, so swept jobs are permanently unclaimable by every entry point."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "swept jobs keep claimedBy and claimNext requires null, so the job is permanently captured"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "sched-expired-keeps-claim"
+   ],
+   "anchors": {
+    "expression": "saveJob\\(store, \\{ \\.\\.\\.job, state: \"pending\" \\}\\)",
+    "declaration": "export async function sweepExpired\\(",
+    "identifier": "sweepExpired"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-claim-toctou",
+   "task": "scheduler",
+   "statement": "`claimNext` checks `claimedBy === null` synchronously but writes the claim after an `await`, so two concurrent workers both pass the check and both run the same job.",
+   "members": [
+    "P-sched-claim-toctou",
+    "R-D02",
+    "C-10",
+    "O-g13"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "planted",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Concurrent claims can both succeed and execute the same job, duplicating real work."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The `claimedBy === null` test and the claiming write are separated by the `await` in `saveJob`, so two overlapping workers both claim and both run the same payload — duplicate execution of real work."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "check-then-await lets two workers claim and run the same job: duplicate execution of real work"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "sched-claim-toctou"
+   ],
+   "anchors": {
+    "expression": "if \\(job\\.claimedBy === null\\) \\{",
+    "declaration": "export async function claimNext\\(",
+    "identifier": "claimNext"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-lease-caller-clock",
+   "task": "scheduler",
+   "statement": "`renewLease` computes `leaseExpiresAt` from the caller-supplied `now` with no server clock and no default, so a far-future or omitted value (NaN) pins the job in `running` forever and no sweep can reclaim it.",
+   "members": [
+    "P-sched-lease-caller-clock",
+    "O-s01",
+    "R-D10"
+   ],
+   "provenance": [
+    "observer",
+    "planted",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "An omitted or invalid caller timestamp produces NaN, making the running job permanently invisible to expiry sweeps."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`renewLease` has no default for `now` (unlike `sweepExpired`), so an invited three-argument call writes `NaN`, and `NaN < now` is false, pinning the job in `running` beyond any sweep's reach forever."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "caller-supplied expiry pins a job in running forever; renewLease is exported public API so RULING 1 makes it reachable"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "sched-lease-caller-clock"
+   ],
+   "anchors": {
+    "expression": "leaseExpiresAt: now \\+ LEASE_MS",
+    "declaration": "export async function renewLease\\(",
+    "identifier": "renewLease"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-requeue-resets-attempts",
+   "task": "scheduler",
+   "statement": "`requeue` in src/worker.js writes `attempts: 0` instead of incrementing, so the retry counter never advances and a permanently failing job is retried without limit.",
+   "members": [
+    "P-sched-requeue-resets-attempts",
+    "R-D03"
+   ],
+   "provenance": [
+    "planted",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`requeue` always stores `attempts: 0`, allowing permanently failing handlers to execute repeatedly beyond `MAX_ATTEMPTS`."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`requeue` writes `attempts: 0`, actively overwriting a persisted counter with a wrong value so the `MAX_ATTEMPTS` bound can never be reached and a permanently failing handler's side effects re-execute without limit — load-bearing on its own, since incrementing here would still be needed even if the dead-letter path were wired."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "revising to blocking on the side-effect argument: each unbudgeted retry re-executes a non-idempotent handler s real-world effects (the dispatcher task shows what that means), and MAX_ATTEMPTS is a shipped safety contract the reset silently disables — that is release-holding for a queue library"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "sched-requeue-resets-attempts"
+   ],
+   "anchors": {
+    "expression": "attempts: 0, lastError",
+    "declaration": "export async function requeue\\(",
+    "identifier": "requeue"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d05",
+   "task": "scheduler",
+   "statement": "The dead-letter path is unwired — `isExhausted` is never called and `store.dead` is never written or read — so `MAX_ATTEMPTS` is unreachable and no job is ever retired.",
+   "members": [
+    "R-D05"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "No failure path calls `isExhausted` or writes `store.dead`, so poison jobs are never retired and can execute indefinitely."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`isExhausted` is defined but never invoked and `store.dead` is allocated but never written or read, so nothing in the source can ever retire a poison job — independently load-bearing, since fixing `requeue`'s counter alone still leaves retries unbounded because no caller consults the budget."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "same consequence through an independent expression: with isExhausted never called and store.dead never written, poison jobs re-execute forever even where attempts DID advance; the budget machinery is shipped and inert — blocking by the same side-effect argument as I04"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d06",
+   "task": "scheduler",
+   "statement": "`saveJob` is an unconditional whole-object upsert with no version/CAS field, so two overlapping read-modify-write updates silently lose one (last writer wins).",
+   "members": [
+    "R-D06"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`saveJob` awaits and then unconditionally replaces the whole record, so overlapping read-modify-write operations can overwrite one another, although release-holding consequences arise at the specific callers."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`saveJob` is the only write path and offers no conditional write or version field, so the concurrency safety its sole caller's docstring demands (\"safe to call from several of them at once\") is unachievable by any caller — the module's disclaimer that it \"owns nothing but the map and the async boundary\" does not make the primitive adequate for that documented concurrent use, though it costs a release only at the callers where lost updates actually execute work."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "every write path routes read-modify-write through saveJob across awaits with no version check, so the primitive´s contract is unsafe for its documented concurrent use; the release-holding lost-update instances are individuated at the callers"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d07",
+   "task": "scheduler",
+   "statement": "`renewLease` snapshots the job before its `await` and writes the full snapshot afterwards, reverting a `complete` that lands in between and resurrecting the finished job as `running`.",
+   "members": [
+    "R-D07"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A stale renewal can overwrite an intervening completion and resurrect a finished job as running."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`renewLease` writes its pre-await full snapshot, so a `complete` landing during the await is overwritten back to `running`/`claimedBy`, silently destroying the recorded completion."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "renewLease writes a pre-await snapshot and resurrects a completed job as running: duplicate execution"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d08",
+   "task": "scheduler",
+   "statement": "`sweepExpired` computes the expired list before any `await` and then writes those stale snapshots, clobbering a job completed during the sweep back to `pending` so it is re-executed.",
+   "members": [
+    "R-D08"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A stale sweep can overwrite an intervening completion, although retained claimedBy strands the job rather than immediately making it re-executable."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The expired list is snapshotted before the loop's awaits and written back verbatim, so a job completed mid-sweep is clobbered to `pending` with a stale owner — a silently lost completion and a permanently stuck record, even though the stated re-execution consequence is imprecise."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "stale snapshots clobber a job completed during the sweep back to pending, so it runs twice"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-07",
+   "task": "scheduler",
+   "statement": "`requeue` writes back the claim-time job snapshot instead of re-reading, silently reverting any lease renewal, sweep, completion, or attempt update made while the handler ran.",
+   "members": [
+    "R-D09",
+    "C-07"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Requeueing the claim-time snapshot can overwrite an intervening completion or attempt update and cause completed work to run again."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`requeue` writes back the claim-time snapshot with `claimedBy: null`, reverting any completion or state change made during the handler and making the already-finished job re-claimable, i.e. re-executed."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "claim-time snapshot write reverts renewals, sweeps and completions made while the handler ran"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d11",
+   "task": "scheduler",
+   "statement": "`runOnce` awaits the handler without ever calling `renewLease`, so a handler outliving `LEASE_MS` has its job swept and re-claimed while still executing.",
+   "members": [
+    "R-D11"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "runOnce never renews during a long handler, so its lease can expire and be swept, but sweepExpired retains claimedBy and therefore prevents the stated re-claim and duplicate execution."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "No renewal driver exists so a long handler's lease does expire, but `sweepExpired` writes `{...job, state:\"pending\"}` retaining `claimedBy` while `claimNext` requires `claimedBy === null`, so the stated re-claim during execution is impossible."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "nothing calls renewLease during the handler await, so any handler outliving LEASE_MS loses its lease — real; the stated re-claim consequence is blocked in the seed by the stranding defect (claimedBy retained), so not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g14",
+   "task": "scheduler",
+   "statement": "`complete` authorizes on `claimedBy` alone without checking `state === \"running\"` or lease validity, so a worker whose lease expired and whose job was requeued can still mark it done and discard the requeued work.",
+   "members": [
+    "R-D12",
+    "O-g14"
+   ],
+   "provenance": [
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "complete genuinely ignores state and lease expiry, but a swept job retains its owner and cannot be claimed by another worker, so the shown code does not discard competing requeued work."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`complete` genuinely checks only `claimedBy`, ignoring `state` and the lease, but the stated harm is refuted: `requeue` sets `claimedBy: null` (so the stale owner's guard fails) and swept jobs keep `claimedBy` and cannot be re-claimed, so no requeued work is discarded."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "complete really does authorize on claimedBy alone (the doc´s own gap table admits it), but in the seeded lifecycle a swept job is stranded and unclaimable, so no second owner´s work is discarded; genuine authorization gap, consequence masked"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d14",
+   "task": "scheduler",
+   "statement": "`runOnce` places `await complete(...)` inside the `try`, so a store failure after a successful handler run is caught as a handler failure and the job is requeued and re-executed.",
+   "members": [
+    "R-D14"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A transient completion failure is misclassified as handler failure and can requeue successfully completed real work for duplicate execution."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A throw from `complete` on the caller-supplied store (documented as standing in for a real database client) is caught as handler failure and requeued, re-executing already-completed real work — and on the last attempt dead-letters a job that actually succeeded."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a store failure after a successful handler is caught as handler failure and the job is re-executed"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-08",
+   "task": "scheduler",
+   "statement": "`requeue` reads `error.message` unguarded, so a non-Error throw yields `lastError: undefined` and a null/undefined throw raises a TypeError inside the catch, stranding the job as running and claimed.",
+   "members": [
+    "R-D15",
+    "C-08"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Reading message from null or undefined throws during failure handling and leaves the job permanently claimed or unclaimable."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`error.message` is read unguarded on the first line of requeue, so an ordinary `throw null`/non-Error from a caller handler TypeErrors out of runOnce leaving the job running/claimed, never retried and permanently unclaimable after a sweep."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a non-Error throw raises a TypeError inside the catch and strands the job running and claimed"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d18",
+   "task": "scheduler",
+   "statement": "`requeue` sets `state: \"pending\"` while leaving the old non-zero `leaseExpiresAt`, so the record advertises a live lease on an unclaimed job.",
+   "members": [
+    "R-D18"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Requeue leaves an externally visible stale lease on an unclaimed pending record, although scheduler behavior ignores it."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`newJob`, `complete`, and `deadLetter` all zero `leaseExpiresAt` while `requeue` alone leaves the stale non-zero value, a real invariant break though currently inert since consumers filter on `running`."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "a pending job advertising a live lease is misleading state, not corruption"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d19",
+   "task": "scheduler",
+   "statement": "`putJob` stores the caller's object by reference rather than copying, so later caller mutations rewrite store state without crossing the async write boundary.",
+   "members": [
+    "R-D19"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "putJob stores the supplied object directly while saveJob copies records, allowing later caller mutation to alter stored state without the modeled write boundary, though this does not itself evidence release-blocking loss."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`putJob` does `store.jobs.set(job.id, job)` by reference while the adjacent `saveJob` stores `{...job}`, so a later caller mutation silently rewrites store state without crossing the async write boundary this module exists to model."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "putJob stores the caller´s object by reference while sibling saveJob copies — an inconsistency that lets later caller mutations rewrite store state without crossing the write path; needs caller misuse, so harmful not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d20",
+   "task": "scheduler",
+   "statement": "`getJob` and `listJobs` return live references to the stored records, letting callers mutate persisted state in place and bypass `saveJob`.",
+   "members": [
+    "R-D20"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`getJob` and `listJobs` hand back the live Map records rather than copies, so persisted state is mutable in place and bypasses the documented `saveJob` boundary, but every write path shown (`claimNext`, `renewLease`, `complete`, `sweepExpired`, `requeue`) spreads before writing, so the reference alone produces no incorrect result without an added caller-side mutation."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "getJob/listJobs hand out the live stored records, so persisted state is mutable in place bypassing saveJob; same misuse precondition, harmful not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`."
+  },
+  {
+   "id": "SCHED-r-d22",
+   "task": "scheduler",
+   "statement": "`saveJob` sets the key unconditionally rather than requiring an existing entry, so a write against a removed job silently creates/resurrects it.",
+   "members": [
+    "R-D22"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Because `deadLetter` deletes asynchronously and `saveJob` later performs an unconditional set, a stale save can resurrect the record, although shown scheduler writes leave it non-claimable rather than duplicating work."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`deadLetter`'s `store.jobs.delete` is the only removal, so a `saveJob` write landing after retirement does recreate the record, but reaching that interleaving requires two workers to already hold the same job — the check-across-`await` in `claimNext`, a separately individuated expression."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "a delete path now exists (driver-written deadLetter performs the codebase´s only store.jobs.delete), so a stale saveJob write after retirement silently re-creates the record; real, but requires the retirement race, so harmful"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d24",
+   "task": "scheduler",
+   "statement": "`formatDuration` rounds the seconds remainder independently of the floored minutes, so the remainder can reach 60 and render `119_600` as \"1m60s\".",
+   "members": [
+    "R-D24"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Independent rounding produces the invalid presentation `1m60s`, which is a genuine but non-blocking reporting error."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Verified: 119_600 floors to 1 minute but rounds the remainder to 60, producing the impossible '1m60s' for an ordinary input — a display defect only."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "1m60s is a rendering defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d25",
+   "task": "scheduler",
+   "statement": "`formatDuration` branches on `seconds < 60` before applying `toFixed(1)`, so inputs in [59_950, 60_000) render as \"60.0s\" instead of rolling into the minutes format.",
+   "members": [
+    "R-D25"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Values just below one minute can round to `60.0s` instead of using the canonical minute representation."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Verified: 59_950 passes the `seconds < 60` test then `toFixed(1)` renders '60.0s' instead of rolling into minutes — wrong output for an ordinary input, but cosmetic."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "60.0s is a rendering defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d29",
+   "task": "scheduler",
+   "statement": "`formatJobLine` interpolates job fields into a log line with no escaping or length limit, so ids containing newlines or control characters can forge log entries.",
+   "members": [
+    "R-D29"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`formatJobLine` promises a console line but interpolates unrestricted IDs verbatim, so embedded newlines can create forged lines, which is only a reporting defect here."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`formatJobLine` is documented as producing a console line yet `${job.id}` is interpolated verbatim, so an id containing a newline emits several lines — a contract deviation visible in the source — while the forgery claim needs a parsing consumer that appears nowhere, leaving only reporting inaccuracy."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "formatJobLine interpolates caller-supplied job.id verbatim into the worker´s log line, so ids containing newlines forge log entries — a genuine, standard logging weakness; no evidenced parsing consumer, so not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d32",
+   "task": "scheduler",
+   "statement": "No test file covers src/store.js, src/scheduler.js, or src/worker.js, leaving all claim, lease, sweep, and retry logic untested.",
+   "members": [
+    "R-D32"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The shown tests cover none of the store, scheduler, or worker behavior, although missing tests are not release-blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Only `test/format.test.js` exists, so the claim race, sweep, lease, and retry/dead-letter logic ship with zero tests — a genuine gap, but missing tests are not release-holding."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "no tests on store, scheduler or worker; the rubric excludes missing tests from blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d33",
+   "task": "scheduler",
+   "statement": "test/format.test.js exercises no boundary inputs for `formatDuration` (minute rounding, 59_950, negative, fractional), so its defects pass the suite.",
+   "members": [
+    "R-D33"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The tests omit relevant duration boundaries that expose malformed outputs such as `1m60s`, but this test-coverage defect is not blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Evidenced by real defects the suite misses: `formatDuration(59_950)` yields \"60.0s\" and `formatDuration(119_500)` yields \"1m60s\", both untested."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "format tests skip every boundary, so its defects pass; still a test gap"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d34",
+   "task": "scheduler",
+   "statement": "docs/scheduling.md claims the worker renews the lease periodically and that a pending job is claimed by exactly one worker, neither of which the code provides.",
+   "members": [
+    "R-D34"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The documentation inaccurately promises periodic renewal and exclusive claims, but documentation defects are not blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Both doc claims are false — nothing calls `renewLease` and `claimNext`'s check-then-await allows two claimants — but the named defect is the documentation sentence, which is not release-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "converged round 1"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d35",
+   "task": "scheduler",
+   "statement": "docs/scheduling.md is a stub that omits the attempt budget, dead-letter list, and id-uniqueness contract present in the code.",
+   "members": [
+    "R-D35"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`docs/scheduling.md` explicitly remains a stub and omits scheduler concepts represented by `MAX_ATTEMPTS`, `isExhausted`, and `store.dead`, making it incomplete documentation but not release-blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The id-uniqueness element is fabricated — `putJob` does a bare `store.jobs.set(job.id, job)` with no uniqueness check — but `MAX_ATTEMPTS`/`isExhausted` and `store.dead` are shipped code the doc never mentions even in its own list of what it owes, so the self-declared stub is still a real (non-blocking) documentation gap."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the stub self-declares, but it also affirmatively promises content (It should describe the claim path, the lease, worker disappearance) while the seeded code ships MAX_ATTEMPTS/isExhausted/attempts machinery the doc never mentions — an honest stub is still an incomplete doc for shipped behavior; mildest tier, not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d37",
+   "task": "scheduler",
+   "statement": "`saveJob` makes only a shallow copy, so `payload` is aliased across store and snapshots and a handler mutating `job.payload` corrupts the stored job for retries.",
+   "members": [
+    "R-D37"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`saveJob`'s `{ ...job }` is shallow, so the payload object is aliased along a concrete path (`newJob` → `claimNext` spread → `saveJob` → `handler(job.payload)` → `requeue` spread) and a mutating handler would silently corrupt the retried payload, but nothing in the code shown mutates the payload, so the corruption requires an additional caller-side action."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "saveJob´s copy is shallow, so payload is aliased into the stored record that runOnce hands to arbitrary handlers and requeue re-queues — a handler mutating its input silently corrupts the retry payload; real, precondition-gated"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry."
+  },
+  {
+   "id": "SCHED-r-d39",
+   "task": "scheduler",
+   "statement": "`runOnce` ignores the return value of `complete`, reporting `{ ran: true, result }` even when `complete` returned `null` because the job was never marked done.",
+   "members": [
+    "R-D39"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Ignoring a null completion result falsely reports successful completion, but it only misreports an ownership or storage failure rather than causing the underlying duplicate execution."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`complete` can genuinely return `null` (job stolen or `claimedBy` mismatch) and `runOnce` swallows it to report success, but the lost signal is a reporting inaccuracy — the bad state comes from the non-atomic claim, not this line."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "reporting success when complete returned null is a reporting inaccuracy, which the rubric excludes"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d41",
+   "task": "scheduler",
+   "statement": "`renewLease` does not verify the lease is still live, so a worker can extend an already-expired lease and steal the job back from a sweeper about to requeue it.",
+   "members": [
+    "R-D41"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "An expired owner can renew and race with a sweep, but this does not itself cause duplicate execution or permanent capture in the shown implementation."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`renewLease` genuinely omits any expiry check, so an already-expired lease can be extended — a real hole in the lease protocol, though it cannot cause duplicate execution since swept jobs keep `claimedBy` and no second worker can claim them."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "extending an expired lease steals the job back from the sweeper; ownership stays single"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d44",
+   "task": "scheduler",
+   "statement": "`sweepExpired` leaves the stale `leaseExpiresAt` on the requeued job, so the record advertises a lease no one holds.",
+   "members": [
+    "R-D44"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The sweep leaves inconsistent stale lease metadata on a pending job, though that field alone does not make the job unclaimable."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`sweepExpired` writes `{ ...job, state: \"pending\" }`, genuinely leaving a stale `leaseExpiresAt` on a job nobody leases, though no consumer reads that field for pending jobs."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the requeued job advertises a lease nobody holds: misleading state"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-13",
+   "task": "scheduler",
+   "statement": "`stats()` partitions running jobs by `leaseExpiresAt >= now` versus `< now`, both false for a NaN lease, so a stuck job is counted in neither bucket and the summary reads all zeros.",
+   "members": [
+    "C-13",
+    "O-g04"
+   ],
+   "provenance": [
+    "code-review",
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "A NaN lease satisfies neither comparison, causing `stats` to silently omit a running job from both running and expired counts."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "A running job with a `NaN` lease satisfies neither `>= now` nor `< now`, so `stats` silently drops it from its own partition of running work; the \"all zeros\" clause overstates a real hole but does not invalidate it."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "a NaN lease falls into neither stats bucket so the summary reads zero: reporting inaccuracy"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-14",
+   "task": "scheduler",
+   "statement": "The newly shipped queue-lifecycle behavior (attempt increment and dead-letter retirement) has no automated test coverage — the only new test covers `pluralize`, which the diff does not touch — so reverting the central fix leaves the suite green.",
+   "members": [
+    "C-14",
+    "O-g10"
+   ],
+   "provenance": [
+    "code-review",
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The new retry-budget and dead-letter behavior is untested, allowing regressions in the central lifecycle change to pass the shown suite."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The shipped attempt-increment and dead-letter lifecycle has no test at all — the only added test exercises untouched `pluralize` — a genuine coverage gap, but missing tests are non-blocking by convention."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the shipped lifecycle change is untested and a revert stays green; the rubric excludes missing tests"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-15",
+   "task": "scheduler",
+   "statement": "The \"Known gaps, collected\" table in docs/scheduling.md is stale and asserts the opposite of the code shipped in the same commit (that requeue resets attempts, that attempts are never incremented, and that MAX_ATTEMPTS/store.dead are unused).",
+   "members": [
+    "C-15",
+    "O-g09"
+   ],
+   "provenance": [
+    "code-review",
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The collected-gaps table incorrectly says attempts reset and dead-letter machinery is unused despite the shipped increment and retirement logic."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The collected-gaps table asserts `requeue` resets `attempts` to `0` and that `MAX_ATTEMPTS`/`isExhausted`/`store.dead` are dead code, flatly contradicting the `attempts + 1` and `deadLetter` code shipped in the same commit."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the gaps table asserts the opposite of the code shipped beside it: documentation defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g02",
+   "task": "scheduler",
+   "statement": "The scheduler documentation describes swept jobs as returning to claimable work and fails to disclose that they remain stranded with `claimedBy` set.",
+   "members": [
+    "O-g02"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The `sweepExpired` comment promises another worker can claim swept jobs, but the update preserves `claimedBy` while `claimNext` requires it to be null, making the documentation inaccurate but nonblocking under the stated convention."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The premise is evidenced not by the .md but by scheduler.js's JSDoc \"Put jobs whose lease ran out back where another worker can pick them up\", which is false because `sweepExpired` writes `{...job, state: \"pending\"}` preserving `claimedBy` while `claimNext` only takes jobs with `job.claimedBy === null`; as stated the named defect is the documentation, and documentation defects are not blocking (the code-level stranding is individuated separately)."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "revising on the docstring evidence I missed: sweepExpired s seed docstring says put jobs back where another worker can pick them up while its write preserves claimedBy and claimNext requires null — the documentation-vs-write contradiction is real; the stranding write itself is I01 s expression, so this is the doc defect, not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g05",
+   "task": "scheduler",
+   "statement": "`sweepExpired` returns lease-expired jobs to the queue without incrementing `attempts`, so repeated worker losses never exhaust the retry budget or dead-letter the job.",
+   "members": [
+    "O-g05"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`sweepExpired` preserves `attempts` despite representing a lost execution attempt, but its retained `claimedBy` currently prevents repeated lease-loss redelivery and therefore prevents duplicate work from this omission."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`sweepExpired` writes `{ ...job, state: \"pending\" }` without touching `attempts`, a real budget-bypass gap, but the same write preserves `claimedBy` and `claimNext` claims only jobs where `job.claimedBy === null`, so the swept job is never re-executed."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "sweepExpired writes {...job, state: pending} without touching attempts, so lease-loss redeliveries are never charged against the retry budget — the budget-bypass family´s third expression, real and not blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g07",
+   "task": "scheduler",
+   "statement": "`requeue` and `deadLetter` omit the claim-owner check that `complete` performs, letting a worker with a stale claim requeue or permanently delete a job owned by another worker.",
+   "members": [
+    "O-g07"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A stale worker can overwrite or delete another worker's current job through requeue or deadLetter, causing duplicate work or data loss."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Exported `requeue`/`deadLetter` take a job snapshot and write or delete unconditionally with no owner or state check, so a stale claim can permanently remove another worker's job and cause duplicate execution."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a stale claim can permanently delete a job another worker is actively running: data loss"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g08",
+   "task": "scheduler",
+   "statement": "The newly added failure-path/dead-letter section of docs/scheduling.md is truncated mid-sentence with unfinished Markdown.",
+   "members": [
+    "O-g08"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The documentation visibly ends mid-sentence with an unfinished Markdown fragment."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The failure-path section literally ends at \"It writes `state: \" with an unterminated inline code span — a real but non-blocking documentation defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the dead-letter section is truncated mid-sentence: documentation defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g11",
+   "task": "scheduler",
+   "statement": "No test pins the exact-now boundary in `stats()` between the live (`>= now`) and expired (`< now`) lease classification.",
+   "members": [
+    "O-g11"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The new stats boundary behavior is untested at equality, although this missing coverage is not release-blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The newly added `stats()` has no tests at all, leaving the `>= now`/`< now` disjointness boundary unpinned — a genuine coverage gap on new code."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "no test pins the exact-now stats boundary: test gap"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-o-g16",
+   "task": "scheduler",
+   "statement": "`runOnce`, as library code, unconditionally writes to `console.log` on every invocation including idle ticks, flooding worker loops and polluting test output.",
+   "members": [
+    "O-g16"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "runOnce unconditionally logs even idle polling iterations, creating unavoidable output noise for library callers."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`runOnce` calls `logSummary` in every branch including the idle tick, so library code unconditionally writes to console with no injection or suppression option — real noise, not blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "unconditional console.log from library code on every tick: noise and cost"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-unbounded-page-size",
+   "task": "exporter",
+   "statement": "The exporter's page size comes straight from the query string with no server-side upper bound, so one request can pull the entire order table into memory.",
+   "members": [
+    "P-exp-unbounded-page-size"
+   ],
+   "provenance": [
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`exportOrders` passes attacker-controlled `query.limit` through `pages` to `queryOrders` without a cap, permitting excessive transient memory use but not an evidenced blocking consequence."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`pages()` takes `Number(options.limit)` straight from the passed-through query string with no server-side ceiling, a genuine defect, but the resulting oversized fetch is request-scoped transient memory cost rather than permanent resource capture, data loss, or silent wrong output."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "query.limit is attacker-reachable with no server-side cap and pulls the whole table into memory — real; but transient memory pressure sits outside the rubric´s enumerated blocking classes (loss, corruption, capture, security hole, duplicate work)"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "exp-unbounded-page-size"
+   ],
+   "anchors": {
+    "expression": "Number\\(options\\.limit \\?\\? DEFAULT_PAGE_SIZE\\)",
+    "declaration": "export async function\\* pages\\(",
+    "identifier": "pages"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-11",
+   "task": "exporter",
+   "statement": "`Number(options.limit ?? DEFAULT_PAGE_SIZE)` is unvalidated, so a NaN limit yields a header-only CSV reported as success and a negative one silently drops rows.",
+   "members": [
+    "C-11"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "NaN and negative limits can silently produce incomplete exports while returning success."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A NaN limit makes `slice(offset, offset + NaN)` return empty on the first page so the export succeeds with only a header, and a negative limit slices off trailing rows and then walks the offset backwards, both silently producing an incomplete CSV."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a NaN or negative limit yields a header-only or short CSV reported as success: silent incorrect results"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-n-plus-one-customer",
+   "task": "exporter",
+   "statement": "The per-row `getCustomer` call inside the export loop issues one database round trip per exported order instead of one batched query per page.",
+   "members": [
+    "P-exp-n-plus-one-customer"
+   ],
+   "provenance": [
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Awaiting getCustomer for every row creates a genuine N+1 round-trip performance defect, but only in cost and latency."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`getCustomer` is awaited once per row inside the page loop, an N+1 round-trip pattern the db docstring flags as the property that matters, but it is a performance cost rather than incorrect output."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "one round trip per exported row: cost and latency, correct output"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "exp-n-plus-one-customer"
+   ],
+   "anchors": {
+    "expression": "await getCustomer\\(db, row\\.customerId\\)",
+    "declaration": "export async function exportOrders\\(",
+    "identifier": "exportOrders"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-offset-drift",
+   "task": "exporter",
+   "statement": "The export pages with a growing offset over a live table instead of a keyset cursor or snapshot, so inserts or deletes landing between page queries silently duplicate or skip records.",
+   "members": [
+    "P-exp-offset-drift",
+    "C-05"
+   ],
+   "provenance": [
+    "code-review",
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Offset pagination against changing rows can silently skip or duplicate orders between page queries."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`queryOrders` re-filters the live row set on each call and the pager terminates on `rows.length < pageSize`, so a concurrent delete or insert between page queries silently truncates, skips, or duplicates records in the exported CSV."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "offset paging over a live table silently duplicates or skips records: silent incorrect results"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "exp-offset-drift"
+   ],
+   "anchors": {
+    "expression": "offset \\+= pageSize",
+    "declaration": "export async function\\* pages\\(",
+    "identifier": "pages"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-12",
+   "task": "exporter",
+   "statement": "The CSV quote-trigger class `/[\",\\n]/` omits carriage return (and nothing neutralises formula-leading characters), so a field can split a record and a cell can execute on open.",
+   "members": [
+    "C-12"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Unescaped carriage returns can corrupt CSV record boundaries, and formula-leading values can cause spreadsheet formula injection."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The quote-trigger class `/[\",\\n]/` omits `\\r`, so a field containing a carriage return is emitted unquoted and silently splits a record in RFC4180/Excel parsers, and the same expression leaves formula-leading characters unneutralised."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "an unquoted CR splits a record and formula leads execute on open: silent corruption plus injection"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-swallowed-failure",
+   "task": "dispatcher",
+   "statement": "`withRetries` returns `ok: true` after the attempt budget is exhausted, so `dispatchCharge` records a charge the upstream never accepted as delivered.",
+   "members": [
+    "P-retry-swallowed-failure",
+    "C-01"
+   ],
+   "provenance": [
+    "code-review",
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Exhausted failures are falsely reported as delivered, causing callers to proceed on a silently incorrect result."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "After the budget is exhausted `withRetries` returns `ok: true` with a null response, so `dispatchCharge` silently reports an undelivered charge as delivered."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a charge the upstream never accepted is recorded as delivered: silent incorrect results about money"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "retry-swallowed-failure"
+   ],
+   "anchors": {
+    "expression": "return \\{ ok: true, attempts, response: null",
+    "declaration": "export async function withRetries\\(",
+    "identifier": "withRetries"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-no-idempotency-key",
+   "task": "dispatcher",
+   "statement": "The retried `POST /v1/charges` carries no stable idempotency key, so a retry after a timeout re-charges a customer whose charge the upstream already accepted.",
+   "members": [
+    "P-retry-no-idempotency-key",
+    "C-02"
+   ],
+   "provenance": [
+    "code-review",
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Retrying an ambiguous failed POST without an idempotency key can execute the same charge twice."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The retry loop re-POSTs a byte-identical body with no idempotency key, so a charge accepted upstream before a thrown/lost response is charged again."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a retry re-charges a customer the upstream already charged: duplicate execution of real work"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "retry-no-idempotency-key"
+   ],
+   "anchors": {
+    "expression": "post\\(client, \"/v1/charges\", \\{",
+    "declaration": "export async function dispatchCharge\\(",
+    "identifier": "dispatchCharge"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-retries-client-errors",
+   "task": "dispatcher",
+   "statement": "The retry loop re-sends 4xx rejections for every attempt in the budget instead of retrying only transient failures, multiplying upstream load and delaying a permanent error the caller could act on.",
+   "members": [
+    "P-retry-retries-client-errors"
+   ],
+   "provenance": [
+    "planted"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Permanent 4xx responses are retried unnecessarily, adding avoidable requests and delay without causing a blocking failure category."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Treating every non-2xx as retryable does re-send permanent 4xx rejections for the whole budget, but the stated harm is wasted upstream load and a delayed error, which is cost rather than release-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "re-sending 4xx multiplies load and delays a permanent error: cost, not corruption"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "planted": [
+    "retry-retries-client-errors"
+   ],
+   "anchors": {
+    "expression": "lastError = new Error\\(`upstream responded \\$\\{response\\.status\\}`\\)",
+    "declaration": "export async function withRetries\\(",
+    "identifier": "withRetries"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-c-03",
+   "task": "dispatcher",
+   "statement": "`maskCard` misses several real PAN formats entirely and over-discloses on grouped PANs, so full card numbers reach the log that exists to prevent exactly that.",
+   "members": [
+    "C-03"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The limited PAN regex can leave complete card numbers in logs, creating a sensitive-data security exposure."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The `{12,15}` regex misses 12-digit and contiguous 17–19-digit PANs entirely and, on a grouped 19-digit PAN, matches only the first 16 digits leaving the real trailing digits in clear, so full card data reaches the log the function exists to sanitize."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "full PANs reach the log the redactor exists to protect: security and compliance hole"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "active",
+   "tier": "blocking",
+   "consensus": "unanimous"
+  }
+ ],
+ "rejected": [
+  {
+   "id": "SCHED-r-d04",
+   "task": "scheduler",
+   "statement": "`claimNext` never increments `attempts`, so no code path anywhere raises the attempt counter.",
+   "members": [
+    "R-D04"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Attempts are correctly charged on failure in requeue, so claimNext has no reason to increment them."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`requeue` is the designed charge site and it increments (`attempts: job.attempts + 1`), so `claimNext` not touching `attempts` is a correct division of labor, not a defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "requeue is the designed increment site; claimNext not touching attempts is not itself a defective expression — the budget defects are the requeue reset (I04) and the unwired dead-letter path (I06)"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d13",
+   "task": "scheduler",
+   "statement": "`complete` and `renewLease` trust an unauthenticated caller-supplied `worker` string as the sole authorization check, so any caller can impersonate another worker's identifier.",
+   "members": [
+    "R-D13"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The source defines worker as a cooperative in-process identifier and establishes no authentication boundary that the string comparison violates."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The module declares no authentication boundary — `worker` is a cooperative in-process identity token and any caller holding the store can mutate `store.jobs` directly — so this imports a threat model the code never claims."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the module declares no authentication boundary; worker is a cooperative in-process identity, so impersonation imports a threat model the code never claims"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d16",
+   "task": "scheduler",
+   "statement": "`complete` never deletes the entry and the store exposes no delete path, so finished jobs accumulate in the Map forever, growing memory and the per-claim `listJobs`+sort cost.",
+   "members": [
+    "R-D16"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`complete` changes the job to `done`, removing it from pending/running working sets, and nothing shown requires deletion or bounded retention of completed records."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`complete` fulfils its stated contract by setting `state: \"done\"` (so `listJobs(store, \"pending\")` no longer returns it), and store.js self-declares as the stand-in for \"a real client... in front of a database\" where retaining completed rows is normal — no bounded-retention or delete contract is promised anywhere, and the claimed harm is pure memory/sort cost."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding on the contract evidence: complete s own docstring promises only to drop the job from the working set, which state:done satisfies since claimNext/listJobs filter by state, and store.js declares itself a database stand-in — retention is not an evidenced contract violation"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d17",
+   "task": "scheduler",
+   "statement": "`complete` leaves `attempts` and `lastError` populated, so a successfully finished job still carries stale error text from a prior attempt.",
+   "members": [
+    "R-D17"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Preserving attempts and lastError on a done record legitimately retains the job's failure history and contradicts no shown contract."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Keeping `attempts` and `lastError` on a completed record is ordinary history retention; nothing in the code treats them as live state after `state: \"done\"`."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "attempts/lastError on a completed job are accurate history; no contract promises clearing them, so this is retention preference, not a defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d21",
+   "task": "scheduler",
+   "statement": "`putJob` overwrites an existing entry with the same id without checking, resetting `state`, `claimedBy`, and `attempts` under a running worker.",
+   "members": [
+    "R-D21"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Nothing documents `putJob` as insert-only or requires unique IDs, so its unconditional `Map.set` matches its stated interface."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`putJob` has no docstring and `store.js` states no uniqueness or insert-only contract, so an unconditional `Map.set` is exactly the semantics the name *put* denotes."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding: put names upsert semantics and Map.set delivers exactly that with no uniqueness contract anywhere; unlike renewLease (which computes a wrong value from a documented parameter) the harm here needs the caller to break id uniqueness it controls — not an evidenced defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-c-06",
+   "task": "scheduler",
+   "statement": "`saveJob` serves as both the insert and the update path with no id-collision check, so an ordinary enqueue of an existing id silently resets a running job to pending and discards the in-flight work.",
+   "members": [
+    "C-06"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "All shown saveJob calls update existing jobs, while putJob is the separate insertion helper, so the claimed ordinary enqueue path is not evidenced."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The premise is false on the source: `putJob` is the separate insert path and `saveJob` is the update primitive, so no ordinary enqueue routes through `saveJob` at all."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "factually wrong against the source: putJob is the enqueue path and saveJob the internal update path, so no ordinary enqueue routes through saveJob; the overwrite hazard is I21´s expression"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d23",
+   "task": "scheduler",
+   "statement": "`sweepExpired` uses the strict comparison `leaseExpiresAt < now`, so a lease expiring exactly at `now` is not swept on that pass.",
+   "members": [
+    "R-D23"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The source does not define the expiry boundary as inclusive, and both `sweepExpired` and `stats` consistently classify equality as still running."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Nothing in the source defines `leaseExpiresAt` as inclusive, `stats` uses the exact complement (`>= now` / `< now`) so the two views stay disjoint, and a lease equal to `now` is swept on the next pass with no lasting consequence."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the strict comparison is used consistently by sweepExpired and stats, and a lease expiring exactly at now is swept one pass later with no lasting consequence — boundary taste, not a defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d26",
+   "task": "scheduler",
+   "statement": "`formatDuration` has no guard for negative or non-finite input, so a negative age renders \"-500ms\" and a NaN age renders \"NaNmNaNs\".",
+   "members": [
+    "R-D26"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Negative durations are valid signed values, and the source promises no handling for non-finite inputs."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`-500ms` is a faithful rendering of −500 and `NaNmNaNs` only arises from NaN input; a pure formatter with no documented domain guard for out-of-domain input is not an evidenced defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "NaN and negative ages are out-of-domain inputs to a pure display helper with no promised handling; the rendering is faithful to the input"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d27",
+   "task": "scheduler",
+   "statement": "`formatDuration` does not round sub-second input, so a fractional millisecond value renders as \"999.5ms\".",
+   "members": [
+    "R-D27"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "999.5ms accurately represents a fractional millisecond duration, with no documented integer-rounding requirement."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`999.5ms` is the correct rendering of 999.5 ms and no contract in `format.js` or its tests requires integer milliseconds; the objection is stylistic consistency with the other branches."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "999.5ms is a correct rendering of the input; no contract requires integer rounding"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d28",
+   "task": "scheduler",
+   "statement": "`formatDuration` has no unit above minutes, so long ages render as \"1440m00s\" instead of hours.",
+   "members": [
+    "R-D28"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Minute-based output remains numerically correct for long durations, and no hours-unit format is promised."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`1440m00s` is numerically correct and merely verbose, and no hours unit is promised anywhere in the source — this is a feature request."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "1440m00s is correct if verbose; an hours unit is a feature request, not a defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d30",
+   "task": "scheduler",
+   "statement": "`runOnce` returns `{ ran: false }` with no delay or backoff signal, so the documented polling loop busy-spins on an empty queue.",
+   "members": [
+    "R-D30"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "runOnce performs one polling tick and returns ran:false as an explicit idle signal, leaving loop pacing to its caller."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`runOnce` is a single tick and `{ ran: false }` is itself the idle signal a caller's loop can back off on, so pacing belongs to the caller, not to this function."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "runOnce is a single tick and ran:false is itself the idle signal; no busy loop is shipped in the source, so the spin is hypothetical caller behavior"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d31",
+   "task": "scheduler",
+   "statement": "`pluralize` in src/format.js is exported but called by no module and covered by no test.",
+   "members": [
+    "R-D31"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`pluralize` is a valid exported helper, and having no internal caller or test is not a behavioral defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Under the reachability convention an exported helper needs no in-repo caller to count as reachable, missing tests are explicitly non-blocking, and `pluralize` itself computes correctly."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding on our own convention: RULING 1 makes an exported helper reachable by definition, so absent in-repo callers is not evidence of dead code, and missing tests are not defects — the observation dissolves under the rubric"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d36",
+   "task": "scheduler",
+   "statement": "`saveJob` returns `store.jobs.get(job.id)`, handing callers a live mutable reference to the stored object.",
+   "members": [
+    "R-D36"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Returning live records is consistent with getJob, listJobs, and putJob, and no snapshot or immutability guarantee is documented."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`getJob`, `listJobs`, and `putJob` all hand back live map records with no documented snapshot guarantee, so `saveJob` returning one is the module's uniform in-process behavior rather than a defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "saveJob returns the record the caller just passed in; aliasing to an object the caller already holds adds no hazard beyond the read-path issues recorded separately"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d38",
+   "task": "scheduler",
+   "statement": "`requeue` stores raw handler error text in `lastError` with no truncation or sanitisation, so sensitive or attacker-controlled text is persisted and exposed via `listJobs`.",
+   "members": [
+    "R-D38"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Keeping error.message in lastError is intentional failure-record behavior, and the source shows no trust boundary or unsafe exposure that makes it a defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Persisting `error.message` in an in-process job record that crosses no trust boundary and reaches no unsafe sink is ordinary error handling, not an evidenced security or correctness defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "error.message persisted into an in-process record with no evidenced external sink is ordinary error handling"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d40",
+   "task": "scheduler",
+   "statement": "`runOnce` does not catch rejections from `complete`/`requeue`, so a `saveJob` failure propagates out of the worker loop leaving the job in `running`.",
+   "members": [
+    "R-D40"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The shown saveJob implementation has no rejection path, and a rejection from complete would in any event enter runOnce's surrounding catch."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`complete` sits inside the `try`, and the shown `saveJob`/`deadLetter` are `setTimeout` + `Map.set`/`push` with no throw path, so the escaping rejection is speculative rather than evidenced."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the shown store (setTimeout + Map.set) has no rejection path, so the uncaught-rejection scenario is not evidenced by this source; open-world discipline cuts both ways"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d42",
+   "task": "scheduler",
+   "statement": "`runOnce` returns the failure branch without the error, so callers can log that a job failed but not why.",
+   "members": [
+    "R-D42"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The failure reason is retained in lastError, and no documented runOnce contract requires returning the error object."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The reason is persisted in `lastError` and no documented contract requires `runOnce` to return the error object, so this is API ergonomics preference."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the failure reason is persisted in lastError and no contract requires runOnce to return the error object — ergonomics, not a defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d43",
+   "task": "scheduler",
+   "statement": "`sweepExpired` returns `expired.length` counted before any write, so the reported reclaim count includes jobs whose writes never ran or were clobbered.",
+   "members": [
+    "R-D43"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "sweepExpired awaits every sequential save before returning, rejects if a save does not complete, and returns the number of jobs it actually touched."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Each write is awaited sequentially before `return expired.length`, so the count matches jobs actually written, and any residual mismatch would be reporting-only."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "all sweep writes are awaited before the return, so the count corresponds to writes performed; a rejection aborts the return rather than inflating it"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g03",
+   "task": "scheduler",
+   "statement": "`stats()` counts swept jobs that are pending but still carry `claimedBy` as ordinary pending work, overstating the amount of claimable queued work.",
+   "members": [
+    "O-g03"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`stats` accurately counts records whose state is `pending` and does not document that this bucket represents only currently claimable jobs."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`pending: listJobs(store, \"pending\").length` returns exactly the count of records in state `pending`, and the `stats` docstring makes claims only about `expired`, `running`, and `dead`; pending ≠ claimable originates in `sweepExpired` retaining `claimedBy`, which is its own gap-table row."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding on the docstring evidence: stats documents claims only for expired/running/dead and pending: listJobs(pending).length returns exactly what it names; the misleading total traces to I01 s write, one issue per expression"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g06",
+   "task": "scheduler",
+   "statement": "The dead-letter documentation omits that lease expirations do not consume retry attempts.",
+   "members": [
+    "O-g06"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The transition table identifies fields written by each operation and the sweep section explains that swept jobs remain stranded, so an additional explicit statement about unchanged attempts is not required for accuracy."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Because a swept job keeps `claimedBy` and can never be reclaimed by `claimNext`, there is no retry for the budget to charge; the doc already discloses the stronger actual consequence (\"permanently unclaimable\"), so the omission describes a non-existent effect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the transition table lists the fields sweep writes, from which attempts-untouched is derivable, and the doc already flags the sweep gap; omitting a derivable detail is not a defect of substance"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g12",
+   "task": "scheduler",
+   "statement": "`stats()`/`logSummary` report only pending, running, expired, and done, so the summary never includes a count of dead-lettered jobs.",
+   "members": [
+    "O-g12"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`stats` returns `dead: store.dead.length` and `logSummary` explicitly prints that dead count."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Directly contradicted by the source: `stats` returns `dead: store.dead.length` and `logSummary` prints `${pluralize(counts.dead, \"job\")} dead`."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "stats() and logSummary exist only in the driver-written end state, and there stats returns dead: store.dead.length and logSummary prints it — the omission claimed does not exist in any state of this artifact"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g15",
+   "task": "scheduler",
+   "statement": "docs/scheduling.md makes an unsupported repository-wide claim that nothing calls `sweepExpired`, based only on inspecting src.",
+   "members": [
+    "O-g15"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documentation only says that no timer in the shown repository runs `sweepExpired`, which is consistent with the source."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The doc's claim is scoped to this repository (\"no timer in this repo runs it\", \"callers invoke themselves\"), and no file in the source shown calls `sweepExpired`, so the statement is accurate as written."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the doc claims no repository timer invokes sweeping, which the shown repository supports; as written the claim is accurate"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g17",
+   "task": "scheduler",
+   "statement": "The documentation omits that `deadLetter` removes retired jobs from `store.jobs`, after which `getJob` and `complete` return null for them.",
+   "members": [
+    "O-g17"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The lifecycle text explicitly says dead-lettering removes the record from the job map and makes it unavailable to scheduler lookups."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The docs state it three times: the lifecycle table's \"← leaves the job map\", \"the only transition that removes the record from the job map\", and the `deadLetter` docstring naming `listJobs`, `getJob`, and every scheduler lookup by id."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end-state doc states the removal explicitly in the lifecycle table, the dead-is-terminal sentence and the deadLetter docstring; nothing is omitted"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g18",
+   "task": "scheduler",
+   "statement": "`deadLetter` deletes the job from `store.jobs`, so subsequent `getJob` or `complete` calls for a retired job return null.",
+   "members": [
+    "O-g18"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Removing a terminal dead-lettered job from `store.jobs` while retaining it in `store.dead` is the explicitly documented design, not a defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Deleting the record from `store.jobs` while pushing it to `store.dead` is the stated intended behavior for the terminal `dead` state, documented in the `deadLetter` docstring and the scheduling doc."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "removal from store.jobs on retirement is documented intended behavior (docstring and lifecycle table); getJob/complete returning null afterwards is that design, not a defect"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g19",
+   "task": "scheduler",
+   "statement": "The `pluralize` test was added without the suite ever being run, leaving it unverified.",
+   "members": [
+    "O-g19"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Not running the suite is not a defect in the shown code, and the added pluralize test is consistent with the implementation."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "All five `pluralize` assertions evaluate correctly against the implementation (including `pluralize(1, \"entry\", \"entries\")` → \"1 entry\"), so the test is sound and the claim that the suite was never run is an unevidenced process inference, not a defect in the code or docs shown."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "an unrun-but-passing test is a process gap, not a defect evidenced in the code"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-o-g20",
+   "task": "scheduler",
+   "statement": "The `MAX_ATTEMPTS = 5` comparison may be applied off by one, retiring a job after four runs rather than five.",
+   "members": [
+    "O-g20"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Attempts increment after each failed run, so the fifth failure changes attempts from 4 to 5 and retires the job after five runs, not four."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`requeue` increments before testing (0→1…→5) and `isExhausted` is `>= 5`, so the job is retried after failures 1–4 and dead-lettered on the fifth run, exactly as intended — no off-by-one exists."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "requeue increments before the check, so the fifth failure retires the job: the off-by-one is not real"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-c-04",
+   "task": "exporter",
+   "statement": "`exportOrders` is documented and filenamed per-tenant but applies no tenant filter anywhere in the data path, so every tenant's export contains every other tenant's orders.",
+   "members": [
+    "C-04"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Although the comment calls this an export for one tenant, exportOrders receives a caller-supplied db and the shown row/query model has no tenant field or shared-table contract evidencing a missing tenant predicate."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`queryOrders`'s only predicate is `createdAt >= since` and the row shape (`id`, `customerId`, `amount`, `createdAt`) contains no tenant discriminator to filter on, while `db` is caller-constructed via `createDb(rows, customers)` and `exportOrders(db, query)` takes no tenant argument (unlike `exportFilename(tenant, now)`) — the source evidences a pre-scoped db, not a shared multi-tenant table leaking rows."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding on the schema evidence: exportOrders takes no tenant parameter and no row field carries tenant identity, so the data model cannot express another tenant s orders — one db per tenant is the only coherent deployment and is correct as shipped; the residue (isolation rests on an undocumented db-construction precondition) is a different statement than the leak asserted here"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v1",
+   "status": "retired",
+   "reason": "consensus: not a real defect"
+  }
+ ]
+}

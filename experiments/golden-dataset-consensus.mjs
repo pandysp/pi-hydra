@@ -95,9 +95,20 @@ export function seededSource(taskId) {
 	return files.sort(([a], [b]) => a.localeCompare(b)).map(([path, body]) => `----- ${path}\n${body}`).join("\n");
 }
 
-export function sourceForTask(taskId, schedulerRows) {
-	if (taskId === "scheduler") return codeContext(schedulerRows);
-	return `THE CODE UNDER REVIEW (never edited during a session):\n\n${seededSource(taskId)}`;
+/**
+ * Which state an issue is judged against is part of the question, not a
+ * detail: the v1 build's rounds 1-2 showed both judges rejecting SEEDED
+ * defects (including a planted one) because the driver repaired them
+ * mid-session — they were answering "is this in the end state" where the
+ * set needs "was this a defect of the state the author reviewed"
+ * (GOLDEN-DATASET-DESIGN.md RULING 3). `--source seed` judges against the
+ * seeded files even for the scheduler; use it for issues whose authors saw
+ * only the seed (planted, reference-review). The default session source is
+ * correct for observer/code-review issues about driver-written artifacts.
+ */
+export function sourceForTask(taskId, schedulerRows, sourceMode = "session") {
+	if (taskId === "scheduler" && sourceMode !== "seed") return codeContext(schedulerRows);
+	return `THE CODE UNDER REVIEW (the seeded state, before any session):\n\n${seededSource(taskId)}`;
 }
 
 function roundOnePrompt(issues, source) {
@@ -142,13 +153,14 @@ async function main() {
 	const rowsPath = argOf(args, "--rows", `${process.env.HOME}/scratch/2026-08-01-hydra-c2-trajectory/rows.jsonl`);
 	const timeoutMs = Number.parseInt(argOf(args, "--cli-timeout-ms", "900000"), 10);
 	const batchSize = Number.parseInt(argOf(args, "--batch-size", "10"), 10);
+	const sourceMode = argOf(args, "--source", "session");
 	if (!stateDir) throw new Error("--state <dir> is required");
 
 	const issues = JSON.parse(readFileSync(issuesPath, "utf8")).issues;
 	const ids = issues.map((i) => i.id);
 	const rows = readFileSync(rowsPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
 	const tasks = [...new Set(issues.map((i) => i.task))];
-	const sources = Object.fromEntries(tasks.map((t) => [t, sourceForTask(t, rows)]));
+	const sources = Object.fromEntries(tasks.map((t) => [t, sourceForTask(t, rows, sourceMode)]));
 
 	const statePath = `${stateDir}/consensus.json`;
 	const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : { rounds: {} };

@@ -113,3 +113,20 @@ printed so a bad merge is visible.
 
 Both rulings are written into the judging prompts, not applied
 post-hoc, so labels are produced under them rather than adjusted to them.
+
+**RULING 3 — TEMPORAL FRAME (analyst, 2026-08-02, reversible).** An issue
+is judged against the state of the code its statement describes. A
+seeded-state defect does not stop being a defect because the driver fixed
+it during one recorded session — the fix ends the liveness window, which
+scoring already respects; "not present in the end state" is therefore not
+grounds for not-real on a seed-era issue. Symmetrically, issues about
+driver-written artifacts (`stats`, the doc rewrite) are judged against
+the recorded session state, the only state in which they exist.
+Surfaced by the v1 build: round-1 judges split exactly along this line
+(one judged the seed, one the end state) on every planted defect the
+driver later repaired. Not yet in the rubric text — it was argued through
+deliberation reasons in round 2; fold it into `RULINGS` before the next
+consensus run so labels are produced under it from round 1.
+Consequence if wrong: the set over-records defects a real deployment
+would never ship (they were fixed in-session). The per-record liveness
+windows and `firstSeen` keep that auditable.
