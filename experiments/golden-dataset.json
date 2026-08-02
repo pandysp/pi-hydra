@@ -1,14 +1,32 @@
 {
- "version": "4ea27b0018705940",
+ "version": "2b0a85843c9be981",
  "builtFrom": {
-  "stateDir": "~/scratch/2026-08-01-golden-v1",
-  "seedStateDir": "~/scratch/2026-08-01-golden-v1/seed-frame",
-  "finalRound": 5,
-  "converged": 70,
-  "total": 72
+  "base": "4ea27b0018705940",
+  "addition": {
+   "novel": {
+    "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-novel",
+    "seedStateDir": null,
+    "finalRound": 6,
+    "converged": 62,
+    "total": 67
+   },
+   "rejudge": {
+    "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-rejudge",
+    "seedStateDir": null,
+    "finalRound": 5,
+    "converged": 4,
+    "total": 5
+   },
+   "runId": "2026-08-02-golden-dataset-v2"
+  },
+  "edits": {
+   "patched": 6,
+   "removed": 4,
+   "credited": 11
+  }
  },
- "sourceReports": 64,
- "candidateTotal": 90,
+ "sourceReports": 145,
+ "candidateTotal": 208,
  "issues": [
   {
    "id": "SCHED-expired-keeps-claim",
@@ -398,9 +416,11 @@
    "statement": "`complete` authorizes on `claimedBy` alone without checking `state === \"running\"` or lease validity, so a worker whose lease expired and whose job was requeued can still mark it done and discard the requeued work.",
    "members": [
     "R-D12",
-    "O-g14"
+    "O-g14",
+    "C-RU07b"
    ],
    "provenance": [
+    "code-review",
     "observer",
     "reference-review"
    ],
@@ -446,7 +466,7 @@
     "opus": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "A throw from `complete` on the caller-supplied store (documented as standing in for a real database client) is caught as handler failure and requeued, re-executing already-completed real work — and on the last attempt dead-letters a job that actually succeeded."
+     "reason": "A throw from `complete` on the caller-supplied store (documented as standing in for a real database client) is caught as handler failure and requeued, re-executing already-completed real work —."
     },
     "analyst": {
      "blocking": true,
@@ -458,7 +478,8 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "reasonTrimmed": "reasons trimmed 2026-08-02 (v1 audit: driver-era clauses on a seed-era record): opus"
   },
   {
    "id": "SCHED-c-08",
@@ -590,42 +611,9 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
-   "tier": "harmful",
-   "consensus": "unresolved",
-   "dissent": "sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`.",
-   "frame": "session"
-  },
-  {
-   "id": "SCHED-r-d22",
-   "task": "scheduler",
-   "statement": "`saveJob` sets the key unconditionally rather than requiring an existing entry, so a write against a removed job silently creates/resurrects it.",
-   "members": [
-    "R-D22"
-   ],
-   "provenance": [
-    "reference-review"
-   ],
-   "votes": {
-    "sol": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "Because `deadLetter` deletes asynchronously and `saveJob` later performs an unconditional set, a stale save can resurrect the record, although shown scheduler writes leave it non-claimable rather than duplicating work."
-    },
-    "opus": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "`deadLetter`'s `store.jobs.delete` is the only removal, so a `saveJob` write landing after retirement does recreate the record, but reaching that interleaving requires two workers to already hold the same job — the check-across-`await` in `claimNext`, a separately individuated expression."
-    },
-    "analyst": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "a delete path now exists (driver-written deadLetter performs the codebase´s only store.jobs.delete), so a stale saveJob write after retirement silently re-creates the record; real, but requires the retirement race, so harmful"
-    }
-   },
-   "firstSeen": "2026-08-02-golden-dataset-v1",
-   "status": "active",
-   "tier": "harmful",
+   "tier": "blocking",
    "consensus": "unanimous",
+   "dissent": "RESOLVED 2026-08-02: RULING 4 confirmation deliberation (state consensus-ruling4), unanimous blocking — the caller-side discount the stall rested on is now ruled. Original stall: sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`.",
    "frame": "session"
   },
   {
@@ -633,9 +621,11 @@
    "task": "scheduler",
    "statement": "`formatDuration` rounds the seconds remainder independently of the floored minutes, so the remainder can reach 60 and render `119_600` as \"1m60s\".",
    "members": [
-    "R-D24"
+    "R-D24",
+    "C-RU03a"
    ],
    "provenance": [
+    "code-review",
     "reference-review"
    ],
    "votes": {
@@ -888,9 +878,9 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
-   "tier": "harmful",
-   "consensus": "unresolved",
-   "dissent": "sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry.",
+   "tier": "blocking",
+   "consensus": "unanimous",
+   "dissent": "RESOLVED 2026-08-02: RULING 4 confirmation deliberation (state consensus-ruling4), unanimous blocking — same ground as SCHED-r-d20. Original stall: sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry.",
    "frame": "session"
   },
   {
@@ -1100,7 +1090,7 @@
   {
    "id": "SCHED-o-g02",
    "task": "scheduler",
-   "statement": "The scheduler documentation describes swept jobs as returning to claimable work and fails to disclose that they remain stranded with `claimedBy` set.",
+   "statement": "src/scheduler.js's sweepExpired docstring promises jobs are put back where another worker can pick them up, but swept jobs keep claimedBy and are not claimable — the docstring asserts the opposite of the shipped behavior.",
    "members": [
     "O-g02"
    ],
@@ -1128,7 +1118,12 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "seed"
+   "frame": "seed",
+   "anchors": {
+    "expression": "back where another worker can pick them up",
+    "identifier": "sweepExpired"
+   },
+   "ratified": "2026-08-02 statement narrowing, unanimous (state consensus-editorial): all v1 votes rested on the sweepExpired JSDoc, not docs/scheduling.md"
   },
   {
    "id": "SCHED-o-g05",
@@ -1342,10 +1337,20 @@
    "task": "exporter",
    "statement": "`Number(options.limit ?? DEFAULT_PAGE_SIZE)` is unvalidated, so a NaN limit yields a header-only CSV reported as success and a negative one silently drops rows.",
    "members": [
-    "C-11"
+    "C-11",
+    "R-BE1-02",
+    "R-BE2-01",
+    "R-BE3-02",
+    "O-XE-g07",
+    "O-XE-g25",
+    "O-XE-g26",
+    "O-XE-g12",
+    "O-XE-g18"
    ],
    "provenance": [
-    "code-review"
+    "code-review",
+    "observer",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -1375,10 +1380,18 @@
    "task": "exporter",
    "statement": "The per-row `getCustomer` call inside the export loop issues one database round trip per exported order instead of one batched query per page.",
    "members": [
-    "P-exp-n-plus-one-customer"
+    "P-exp-n-plus-one-customer",
+    "R-BE1-05",
+    "R-BE2-04",
+    "R-BE3-07",
+    "O-XE-g05",
+    "C-RU01"
    ],
    "provenance": [
-    "planted"
+    "code-review",
+    "observer",
+    "planted",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -1417,10 +1430,12 @@
    "statement": "The export pages with a growing offset over a live table instead of a keyset cursor or snapshot, so inserts or deletes landing between page queries silently duplicate or skip records.",
    "members": [
     "P-exp-offset-drift",
-    "C-05"
+    "C-05",
+    "O-XE-s01"
    ],
    "provenance": [
     "code-review",
+    "observer",
     "planted"
    ],
    "votes": {
@@ -1455,49 +1470,22 @@
    "frame": "seed"
   },
   {
-   "id": "EXP-c-12",
-   "task": "exporter",
-   "statement": "The CSV quote-trigger class `/[\",\\n]/` omits carriage return (and nothing neutralises formula-leading characters), so a field can split a record and a cell can execute on open.",
-   "members": [
-    "C-12"
-   ],
-   "provenance": [
-    "code-review"
-   ],
-   "votes": {
-    "sol": {
-     "blocking": true,
-     "anyHarm": true,
-     "reason": "Unescaped carriage returns can corrupt CSV record boundaries, and formula-leading values can cause spreadsheet formula injection."
-    },
-    "opus": {
-     "blocking": true,
-     "anyHarm": true,
-     "reason": "The quote-trigger class `/[\",\\n]/` omits `\\r`, so a field containing a carriage return is emitted unquoted and silently splits a record in RFC4180/Excel parsers, and the same expression leaves formula-leading characters unneutralised."
-    },
-    "analyst": {
-     "blocking": true,
-     "anyHarm": true,
-     "reason": "an unquoted CR splits a record and formula leads execute on open: silent corruption plus injection"
-    }
-   },
-   "firstSeen": "2026-08-02-golden-dataset-v1",
-   "status": "active",
-   "tier": "blocking",
-   "consensus": "unanimous",
-   "frame": "seed"
-  },
-  {
    "id": "DISP-swallowed-failure",
    "task": "dispatcher",
    "statement": "`withRetries` returns `ok: true` after the attempt budget is exhausted, so `dispatchCharge` records a charge the upstream never accepted as delivered.",
    "members": [
     "P-retry-swallowed-failure",
-    "C-01"
+    "C-01",
+    "R-BD1-01",
+    "R-BD2-01",
+    "R-BD3-01",
+    "O-XD-g01"
    ],
    "provenance": [
     "code-review",
-    "planted"
+    "observer",
+    "planted",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -1536,11 +1524,13 @@
    "statement": "The retried `POST /v1/charges` carries no stable idempotency key, so a retry after a timeout re-charges a customer whose charge the upstream already accepted.",
    "members": [
     "P-retry-no-idempotency-key",
-    "C-02"
+    "C-02",
+    "R-BD1-03"
    ],
    "provenance": [
     "code-review",
-    "planted"
+    "planted",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -1578,9 +1568,11 @@
    "task": "dispatcher",
    "statement": "The retry loop re-sends 4xx rejections for every attempt in the budget instead of retrying only transient failures, multiplying upstream load and delaying a permanent error the caller could act on.",
    "members": [
-    "P-retry-retries-client-errors"
+    "P-retry-retries-client-errors",
+    "O-XD-s01"
    ],
    "provenance": [
+    "observer",
     "planted"
    ],
    "votes": {
@@ -1619,10 +1611,14 @@
    "task": "dispatcher",
    "statement": "`maskCard` misses several real PAN formats entirely and over-discloses on grouped PANs, so full card numbers reach the log that exists to prevent exactly that.",
    "members": [
-    "C-03"
+    "C-03",
+    "R-BD1-02",
+    "R-BD2-02",
+    "R-BD3-02"
    ],
    "provenance": [
-    "code-review"
+    "code-review",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -1646,15 +1642,184 @@
    "tier": "blocking",
    "consensus": "unanimous",
    "frame": "seed"
-  }
- ],
- "rejected": [
+  },
   {
-   "id": "SCHED-r-d04",
-   "task": "scheduler",
-   "statement": "`claimNext` never increments `attempts`, so no code path anywhere raises the attempt counter.",
+   "id": "EXP-r-be1-04",
+   "task": "exporter",
+   "statement": "Monetary amounts are serialised with `toFixed` on an IEEE-754 double, so a stored value sitting just below the decimal midpoint rounds down and the exported cent is wrong.",
    "members": [
-    "R-D04"
+    "R-BE1-04"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`row.amount.toFixed(2)` can produce an unexpected decimal cent for binary floating-point monetary values, but this is an export reporting inaccuracy rather than release-blocking corruption."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`row.amount.toFixed(2)` faithfully renders the double it is handed — the lost half-cent entered when money was stored in a binary float upstream — so it is a genuine money-in-double defect at the render site but not a release-holding silent corruption."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "moving to harmful with opus: money rendered via toFixed on a double is a real defect class even though the expression faithfully rounds the stored value — the pipeline offers no decimal-safe path."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "row.amount.toFixed(2)",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-ru08",
+   "task": "exporter",
+   "statement": "`getCustomer` substitutes a fabricated `{name:'unknown',tier:'none'}` record for an id absent from the table, so a broken foreign key ships as plausible export data instead of surfacing the missing row.",
+   "members": [
+    "R-BE1-06",
+    "R-BE2-05",
+    "R-BE3-05",
+    "O-XE-g10",
+    "C-RU08"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`getCustomer` explicitly defines the missing-id fallback, and no shown contract requires referential integrity or an error on a missing customer."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The fallback `?? { id, name: \"unknown\", tier: \"none\" }` lives in `db.js` itself, so the data layer manufactures a well-formed record with no error, null, or flag by which any caller could detect the miss, and the db.js docstring establishes only asynchrony as the contract — never the sentinel — but a wrong customer label in a CSV is a reporting inaccuracy, which the rubric excludes from blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "dropping blocking with opus: the sentinel ships fabricated-but-legible data and no shown contract demands an error; the silent RI damage into reports keeps it harmful."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "db.customers.get(id) ?? { id, name: \"unknown\", tier: \"none\" }",
+    "identifier": "getCustomer",
+    "file": "src/db.js"
+   },
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds anyHarm=false: `getCustomer` explicitly defines the missing-id fallback, and no shown contract requires referential integrity or an error on a missing customer."
+  },
+  {
+   "id": "EXP-c-ru06a",
+   "task": "exporter",
+   "statement": "`exportFilename` interpolates the caller-supplied tenant into the filename without sanitising path separators or CRLF, enabling path traversal and header injection.",
+   "members": [
+    "R-BE1-03",
+    "C-RU06a"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Unrestricted tenant text can produce traversal-capable or header-unsafe filenames, creating a security vulnerability in normal filename use."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`exportFilename` interpolates an unsanitised tenant that the signature accepts into a string whose only purpose is a filesystem path or `Content-Disposition` header, and nothing shown forbids an untrusted value, so path traversal and CRLF header injection are a live security hole."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "exportFilename interpolates tenant verbatim; a legal caller-supplied string (RULING 4) yields ../ traversal or CRLF in a header-bound filename — a security hole in an exported, documented API (RULING 1)."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": false,
+   "precondition": "a caller interpolates the returned filename into a filesystem path or Content-Disposition header with a hostile tenant string",
+   "anchors": {
+    "expression": "`orders-${tenant}-${new Date(now).toISOString().slice(0, 10)}.csv`",
+    "identifier": "exportFilename",
+    "file": "src/exporter.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-ru06b",
+   "task": "exporter",
+   "statement": "`exportFilename` stamps the date from `toISOString().slice(0,10)`, a UTC calendar day that names the wrong date near midnight in any non-UTC deployment.",
+   "members": [
+    "R-BE3-10",
+    "C-RU06b"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`exportFilename` consistently uses an ISO UTC date, and no shown contract says filenames must use the deployment-local calendar day."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`toISOString()` yields a UTC instant by definition and `docs/exports.md` is a self-declared stub that establishes nothing about intended dating, so near midnight in a non-UTC deployment the filename carries a concretely wrong calendar day — a reporting defect, hence non-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "toISOString().slice(0,10) stamps the UTC day; near midnight the filename names the wrong local date — a real reporting inaccuracy, and those are not blocking by the rubric."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": false,
+   "precondition": "a non-UTC deployment reads the filename date as a local day",
+   "anchors": {
+    "expression": "toISOString().slice(0, 10)",
+    "identifier": "exportFilename",
+    "file": "src/exporter.js"
+   },
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds anyHarm=false: `exportFilename` consistently uses an ISO UTC date, and no shown contract says filenames must use the deployment-local calendar day."
+  },
+  {
+   "id": "EXP-r-be2-06",
+   "task": "exporter",
+   "statement": "The HTTP `limit` query parameter is wired to the pager's page-size knob rather than to a row cap, so it never bounds the export and instead lets the caller dictate the number of database round trips.",
+   "members": [
+    "R-BE2-06",
+    "R-BE3-01"
    ],
    "provenance": [
     "reference-review"
@@ -1663,24 +1828,1097 @@
     "sol": {
      "blocking": false,
      "anyHarm": false,
-     "reason": "Attempts are correctly charged on failure in requeue, so claimNext has no reason to increment them."
+     "reason": "The pager documentation explicitly says the caller chooses page size, and no shown HTTP contract defines `query.limit` as a total-row cap."
     },
     "opus": {
      "blocking": false,
-     "anyHarm": false,
-     "reason": "`requeue` is the designed charge site and it increments (`attempts: job.attempts + 1`), so `claimNext` not touching `attempts` is a correct division of labor, not a defect."
+     "anyHarm": true,
+     "reason": "`exporter.js` documents that \"the HTTP layer hands the parsed query string straight through\" and then passes `query.limit` into `pages`, where it becomes `pageSize`, so the caller-supplied bound caps nothing and only dictates round-trip count — the pager's \"caller decides how big a page is\" docstring excuses `pager.js`, not this wiring — and the named consequence is cost, which does not block."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "limit reaching pages() as page size is a genuine caller-facing contract trap (a bound the caller asked for is not applied), distinct from the missing cap: same line, different consequence class as EXP-unbounded-page-size — flag individuation to the assembler."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "an HTTP caller sends limit expecting a row cap",
+   "anchors": {
+    "expression": "pages(db, { limit: query.limit, since: query.since })",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds anyHarm=false: The pager documentation explicitly says the caller chooses page size, and no shown HTTP contract defines `query.limit` as a total-row cap."
+  },
+  {
+   "id": "EXP-c-ru05",
+   "task": "exporter",
+   "statement": "`row.amount.toFixed(2)` is called with no type guard and before `csvField`'s null handling, so a null or string amount (the pg/mysql2 DECIMAL default) throws and aborts the entire export mid-stream.",
+   "members": [
+    "R-BE2-02",
+    "R-BE3-06",
+    "C-RU05",
+    "O-XE-g23"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Accepted null or string amounts cause a visible TypeError and abort the export, but do not silently corrupt data."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`row.amount.toFixed(2)` will throw on a null or string DECIMAL, a genuine unguarded call, but the throw is loud and `exportOrders` only joins `lines` on success so no truncated file ships as complete."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "row.amount.toFixed(2) throws on null/string amounts before csvField null-handling; a loud abort that discards work is real harm but a visible failure, not silent corruption."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a row carries a null or string amount",
+   "anchors": {
+    "expression": "row.amount.toFixed(2)",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g22",
+   "task": "exporter",
+   "statement": "A NaN `row.amount` passes `toFixed(2)` and `Math.round` without throwing, so the row prints NaN and poisons `totalCents`, turning the exported TOTAL into NaN instead of raising an error.",
+   "members": [
+    "O-XE-g22"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "NaN passes both formatting operations, so exportOrders successfully returns an invalid amount and a poisoned TOTAL instead of reporting an error."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`totalCents += Math.round(row.amount * 100)` silently absorbs NaN (Math.round(NaN)=NaN) so one bad row makes the final `(totalCents/100).toFixed(2)` render \"NaN\" and erases every good row's money from a summary the doc says is read positionally as the last line — a corrupted money aggregate that never raises, which is strictly worse than the one-cent divergence I graded blocking in I13."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "a NaN amount prints NaN and poisons totalCents so the TOTAL line is NaN — the money summary silently corrupts on data the signature accepts (RULING 4)."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "a row carries a NaN amount",
+   "anchors": {
+    "expression": "totalCents += Math.round(row.amount * 100)",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g15",
+   "task": "exporter",
+   "statement": "The `since` filter compares `createdAt` against the raw caller-supplied value with a relational operator instead of parsing it as a date, so a Date object or any non-matching string format silently matches no rows.",
+   "members": [
+    "R-BE3-03",
+    "O-XE-g15"
+   ],
+   "provenance": [
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Comparing unparsed date representations can silently omit qualifying orders from the export."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Comparing `createdAt >= since` against an unparsed caller value makes a Date or mismatched format silently match zero rows, returning a header-only export with a success status, and `countOrders` shares the bug so no count check catches it."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "since is compared with a raw >= against createdAt; a Date or non-ISO string the signature accepts (RULING 4) silently matches nothing and returns a well-formed empty CSV as success — silent incorrect results."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a caller passes a Date object or non-ISO string as since",
+   "anchors": {
+    "expression": "row.createdAt >= since",
+    "identifier": "queryOrders",
+    "file": "src/db.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-r-be3-09",
+   "task": "exporter",
+   "statement": "`queryOrders` destructures its options parameter with no object default, unlike its sibling `countOrders`, so calling it with only a db argument throws.",
+   "members": [
+    "R-BE3-09"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Omitting the undocumented options object causes the exported async function to reject instead of applying its property defaults."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`queryOrders` lacks the `= {}` default its sibling `countOrders` has, so a two-argument call on this exported function throws, but the TypeError is immediate and loud."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "queryOrders destructures options with no ={} default so queryOrders(db) throws while sibling countOrders(db) works — real but loud and minor."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a caller invokes queryOrders without an options argument",
+   "anchors": {
+    "expression": "queryOrders(db, { offset = 0, limit = 100, since = null })",
+    "identifier": "queryOrders",
+    "file": "src/db.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g21",
+   "task": "exporter",
+   "statement": "`totalCents += Math.round(row.amount * 100)` and the per-row `row.amount.toFixed(2)` apply different tie-rounding rules, so the TOTAL line can differ by a cent from the sum of the printed amounts.",
+   "members": [
+    "O-XE-g21"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "For example, -1.125 prints as -1.13 while Math.round(-1.125 * 100) contributes -112 cents, silently making TOTAL disagree with the exported amounts."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`toFixed` strips the sign before choosing the larger n (ties away from zero), so `(-1.125).toFixed(2)` prints \"-1.13\" while `Math.round(-1.125*100)` = Math.round(-112.5) = -112 (ties toward +infinity) accumulates -1.12, and separately 0.615 prints \"0.61\" while `0.615*100` lands on 61.5 and contributes 62 — a plausible-looking TOTAL that breaks the doc's stated guarantee that \"the printed total is exactly the sum of the printed per-row amounts\"."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "verified sol exhibit: (-1.125).toFixed(2) is -1.13 while Math.round(-1.125*100) contributes -112, and 0.615 prints 0.61 but contributes 62 — the docs promise exact reconciliation and a money summary silently drifts a cent; my unevidenced claim was wrong."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "totalCents += Math.round(row.amount * 100)",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g27",
+   "task": "exporter",
+   "statement": "The newly appended TOTAL line breaks existing consumers, which can no longer assume every post-header line is an order row.",
+   "members": [
+    "O-XE-g27"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The unconditional TOTAL push changes the prior public output from header-plus-order-rows to include a non-order row that existing consumers can silently ingest as an order."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The start-state doc states the exporter \"writes one CSV line per order\", and the unconditional `lines.push(csvRow([SUMMARY_LABEL, count, \"\", (totalCents/100).toFixed(2), \"\"]))` appends a non-order line in the identical five-column shape, so an existing consumer treating post-header lines as orders silently ingests a phantom order carrying the grand total."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "conceding on the phantom-order mechanism: a consumer of the prior format that treats post-header lines as orders silently ingests the grand total as an order row and double-counts the export — the in-session doc update does not reach existing consumers."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "an existing consumer treats every post-header line as an order row",
+   "anchors": {
+    "expression": "lines.push(csvRow([SUMMARY_LABEL, count, \"\", (totalCents / 100).toFixed(2), \"\"]))",
+    "identifier": "exportOrders",
+    "file": "src/exporter.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g14",
+   "task": "exporter",
+   "statement": "The `since` filter path through exporter.js, pager.js and db.js has no automated tests, since test/ contains only csv.test.js.",
+   "members": [
+    "O-XE-g14"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The shown test suite has no automated coverage of the since-filter integration path, which is a genuine missing-test defect but not blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "test/ contains only csv.test.js, so the `since` filter path through exporter, pager and db is genuinely uncovered — a real but non-blocking coverage gap."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the since path spanning three modules has zero automated coverage (test/ holds only csv cases) — suite-level absence of coverage for shipped behavior, the r-d32 precedent class."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "test/ contains only csv.test.js",
+    "identifier": "test",
+    "file": "test/csv.test.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g19",
+   "task": "exporter",
+   "statement": "`exportOrders`'s new output shape and count/total path — populated, zero-row, multi-page cents accumulation, TOTAL reconciliation — has no automated test coverage.",
+   "members": [
+    "O-XE-g19"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The new export summary, count, pagination, and cents-accumulation behavior has no automated coverage, which is a genuine missing-test defect but not blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The newly added count/total accumulation and TOTAL output shape ship with no automated test at all, a genuine but non-blocking coverage gap."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the new count/total output shape shipped with no test at all — feature-level coverage absence, same class as I18, distinct shipped surface."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "no test imports exportOrders",
+    "identifier": "test",
+    "file": "test/csv.test.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-o-xe-g17",
+   "task": "exporter",
+   "statement": "docs/exports.md is stale in stating that a zero-row export produces only a header line, now that `exportOrders` always emits both a header and a TOTAL line.",
+   "members": [
+    "O-XE-g17"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The final sharp-edge paragraph says an invalid limit yields only the header, but exportOrders unconditionally appends a TOTAL line even when no rows are exported."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Under \"Sharp edges, named\" the doc says a degenerate `limit` means \"the caller gets a well-formed CSV containing only the header row\", which the unconditional `lines.push(csvRow([SUMMARY_LABEL, ...]))` makes false (it is header plus `TOTAL,0,,0.00,`) and contradicts the doc's own zero-row bullet — a real reporting inaccuracy, and reporting inaccuracies are non-blocking by the rubric."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "opus quote verified: the degenerate-limit paragraph still promises a CSV containing only the header row while the unconditional TOTAL push makes it two lines — the end docs are internally inconsistent; I had checked only the zero-row bullet."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "containing only the header row",
+    "identifier": "docs",
+    "file": "docs/exports.md"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-ru11b",
+   "task": "exporter",
+   "statement": "Row dates are stringified locale-dependently instead of in a fixed format, so the same table exports differently across deployments.",
+   "members": [
+    "C-RU11b"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Nothing constrains `row.createdAt` to a string, so a valid `Date` reaches `String(value)` and produces deployment-dependent local-time text."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Nothing in the source constrains `row.createdAt` to a string — the only operation on it is `row.createdAt >= since`, which accepts a Date, and `createDb` accepts arbitrary rows — so a legal Date reaches `csvField`'s `String(value)` and renders environment-dependent text; a format inconsistency, not data loss."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "flipping back on my own RULING 4 usage: nothing constrains createdAt to a string and I accepted a legal Date for the since filter (I08) — the same convention makes a Date row legal here, and String(value) then renders environment-dependently; real format defect, not blocking."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a row carries a Date createdAt",
+   "anchors": {
+    "expression": "String(value)",
+    "identifier": "csvField",
+    "file": "src/csv.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-ru07a",
+   "task": "scheduler",
+   "statement": "`complete`'s owner check compares the caller's worker against `claimedBy` with `!==`, which is false when both are null, so `complete(store, id, null)` retires a job that was never claimed.",
+   "members": [
+    "C-RU07a"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "Passing null for worker allows an unclaimed pending job to be marked done without execution, losing real work."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`newJob` sets `claimedBy: null`, so for a never-claimed job the guard `job.claimedBy !== worker` is false when a caller legally passes `worker === null`, and `complete` writes `state: \"done\"` — silently retiring a job whose work never ran."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "complete(store,id,null) passes the claimedBy !== worker guard when both are null and retires a never-claimed job as done — silent state transition recording work as done that never ran."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "a caller passes null as the worker id",
+   "anchors": {
+    "expression": "if (!job || job.claimedBy !== worker)",
+    "identifier": "complete",
+    "file": "src/scheduler.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-ru13a",
+   "task": "scheduler",
+   "statement": "`claimNext` sorts the entire backlog on every call, costing hundreds of thousands of comparisons per tick at scale where a priority structure or partial scan would suffice.",
+   "members": [
+    "C-RU13a"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`claimNext` sorts the complete pending array on every invocation even though selecting the oldest claimable job requires only a linear scan, creating genuine avoidable cost but no blocking harm."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`claimNext` computes a full `.sort()` of the pending list but then reads only the first `claimedBy === null` element, work a single O(n) min-scan would satisfy, in a function whose own docstring says \"Workers call this in a loop\" — real avoidable cost, and cost is not blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "claimNext sorts the whole backlog per call — genuine O(n log n)-per-claim cost, and cost is not blocking."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "listJobs(store, \"pending\").sort((a, b) => a.createdAt - b.createdAt)",
+    "identifier": "claimNext",
+    "file": "src/scheduler.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-c-ru13b",
+   "task": "scheduler",
+   "statement": "`logSummary` makes three full map scans per call and emits tens of thousands of lines per hour on an idle scheduler.",
+   "members": [
+    "C-RU13b"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Each summary repeatedly scans the map and logs even on idle ticks, causing genuine overhead and noise but no blocking harm."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Verifiably real — `stats` spreads the whole Map three times per call via `listJobs`, and `runOnce` invokes `logSummary` even on the idle (`!job`) path, so every empty poll costs three scans and a console line — but cost and log noise are explicitly non-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "logSummary makes three full scans and logs on every idle tick — real operational noise/cost, not blocking."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "const counts = stats(store)",
+    "identifier": "logSummary",
+    "file": "src/worker.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-c-ru09b",
+   "task": "dispatcher",
+   "statement": "`post` fabricates a 200/{ok:true} response once the scripted response list is drained, so an under-scripted client silently reports successful delivery instead of signalling that no response was configured.",
+   "members": [
+    "R-BD1-04",
+    "R-BD2-04",
+    "R-BD3-03",
+    "O-XD-g02",
+    "C-RU09b"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "post returns a fabricated 200 after client.responses is exhausted, which can falsely pass an under-scripted no-network exercise, but the source identifies this client as a stand-in rather than a real upstream."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The `next === undefined` branch in `post` synthesizes `{status:200}`, a real defect, but src/http.js declares itself a \"Stand-in HTTP client\" with no network, so the consequence is a false-green verdict rather than any real charge being lost."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "post fabricates {status:200} when the scripted queue is empty, so an under-scripted exercise reports success against nothing — a real defect of the shipped stand-in that masks failures, confined to the test double."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "an exercise scripts fewer responses than attempts made",
+   "anchors": {
+    "expression": "return { status: 200, body: { ok: true } }",
+    "identifier": "post",
+    "file": "src/http.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-c-ru09a",
+   "task": "dispatcher",
+   "statement": "`createClient` keeps the caller's responses array by reference and `post` drains it in place with `shift()`, destroying caller-owned state as a side effect.",
+   "members": [
+    "R-BD1-05",
+    "R-BD3-04",
+    "C-RU09a"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "createClient retains the caller’s responses array and post mutates it with shift(), causing an undocumented destructive side effect confined to caller-supplied stand-in response data."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`createClient` stores the caller's array by reference and `post` drains it via `client.responses.shift()` with no documented licence to consume it — real harm, but confined to in-memory fixture state of the stand-in client."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "createClient keeps the caller array by reference and shift() drains it in place — destroying caller-owned state is real harm under RULING 4, in the test double."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a caller reuses the array it passed to createClient",
+   "anchors": {
+    "expression": "const next = client.responses.shift()",
+    "identifier": "post",
+    "file": "src/http.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-c-ru09c",
+   "task": "dispatcher",
+   "statement": "`post` records the caller's body object by reference in the mutable `client.sent` audit array instead of snapshotting it, so the record of what was transmitted can change after the fact.",
+   "members": [
+    "R-BD3-05",
+    "C-RU09c"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Retaining the mutable body reference allows the sent-record audit data to become inaccurate after transmission, but this is a reporting defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Storing the body by reference lets a legal later mutation by the caller retroactively rewrite the `client.sent` audit record, a genuine aliasing defect confined to in-memory fixture data."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "post records the live body object in client.sent so the audit trail can be mutated after the fact — real integrity defect of the stand-in."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a caller mutates the body object after posting",
+   "anchors": {
+    "expression": "client.sent.push({ url, body, headers })",
+    "identifier": "post",
+    "file": "src/http.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-o-xd-g03",
+   "task": "dispatcher",
+   "statement": "`http.post` provides no abort path for a timed-out POST, so the request stays in flight and may settle upstream while retries resend an identical body.",
+   "members": [
+    "O-XD-g03"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`runAttempt` abandons a timed-out `post` without cancellation and retries the same charge body, allowing multiple upstream executions of real work."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`runAttempt`'s `Promise.race` abandons a timed-out POST that `http.post` gives no way to cancel, and the retried body `{order, amount, currency}` carries no idempotency key — the doc itself states \"an upstream that succeeded but answered slowly sees N indistinguishable POSTs\" — which is duplicate execution of real work reachable through the documented public `timeoutMs` option; no other issue in this set owns that harm, so no deferral applies."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "holding harmful: the no-abort race is real as its own expression, but the duplicate-charge consequence both judges cite runs through the missing idempotency key, which is already the blocking record for duplicate execution — one blocking harm, one owning expression under RULING 2."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "an attempt exceeds timeoutMs while the upstream still processes it",
+   "anchors": {
+    "expression": "return Promise.race([started, expiry]).finally(() => clearTimeout(timer))",
+    "identifier": "runAttempt",
+    "file": "src/retry.js"
+   },
+   "tier": "blocking",
+   "consensus": "unresolved",
+   "dissent": "analyst holds blocking=false: holding harmful: the no-abort race is real as its own expression, but the duplicate-charge consequence both judges cite runs through the missing idempotency key, which is already the blocking record for duplicate execution — one blocking harm, one owning expression under RULING 2."
+  },
+  {
+   "id": "DISP-o-xd-g24",
+   "task": "dispatcher",
+   "statement": "`maskEmail` leaves a single-character local part unmasked, so an address like a@x.com is emitted with its real local part exposed.",
+   "members": [
+    "O-XD-g24"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "For `a@x.com`, `${match[0]}***${match.slice(at)}` preserves the entire one-character local part, making this a genuine redaction edge case."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`${match[0]}***${match.slice(at)}` applied to `a@x.com` emits the whole local part verbatim, so the redaction function outputs the unredacted address for that input class — a real, non-blocking under-redaction edge."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "maskEmail keeps the first local character, so a one-character local part is fully exposed and the address is recoverable — a real under-redaction edge."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "a logged address has a one-character local part",
+   "anchors": {
+    "expression": "`${match[0]}***${match.slice(at)}`",
+    "identifier": "maskEmail",
+    "file": "src/redact.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-o-xd-g11",
+   "task": "dispatcher",
+   "statement": "docs/dispatch.md omits the new per-result log field from the documented `dispatchCharge` return shape, flow block and examples, and still calls the shared aggregate array the only trace of a failed run.",
+   "members": [
+    "O-XD-g11"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Although the prose and flow document `log`, the runnable example inaccurately shows `dispatchCharge` returning only `id`, `delivered`, and `attempts`."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "Three conjuncts are refuted by the end doc (return shape `{ id, delivered, attempts, log }`, flow block ending `log: lines`, and the \"Every dispatch returns its own log\" paragraph), but the runnable exhibit annotates `console.log(await dispatchCharge(...))` as `// { id: 'ch-1', delivered: true, attempts: 4 }` — a three-key object for a four-key return, contradicting the doc's own \"`result.log.length` therefore equals `result.attempts`\" — a genuine but non-blocking documentation inaccuracy."
     },
     "analyst": {
      "blocking": false,
      "anyHarm": false,
-     "reason": "requeue is the designed increment site; claimNext not touching attempts is not itself a defective expression — the budget defects are the requeue reset (I04) and the unwired dead-letter path (I06)"
+     "reason": "opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate."
     }
    },
-   "firstSeen": "2026-08-02-golden-dataset-v1",
-   "status": "retired",
-   "reason": "consensus: not a real defect",
-   "frame": "session"
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "// { id: 'ch-1', delivered: true, attempts: 4 }",
+    "identifier": "dispatchCharge",
+    "file": "docs/dispatch.md"
+   },
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "analyst holds anyHarm=false: opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate."
   },
+  {
+   "id": "DISP-o-xd-g20",
+   "task": "dispatcher",
+   "statement": "The test suite has no coverage of the core retry/dispatch behaviors in src/retry.js and src/dispatch.js such as first-attempt success and budget exhaustion.",
+   "members": [
+    "O-XD-g20",
+    "O-XD-g18",
+    "O-XD-g19"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "No tests exercise retry or dispatch success and exhaustion paths, though missing coverage is non-blocking by convention."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "No test exercises `withRetries` or `dispatchCharge` at all, so first-attempt success and budget exhaustion are uncovered; the underlying `ok: true` bug would be blocking, but the issue as stated is only a missing test."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "src/retry.js and src/dispatch.js ship with zero tests including the money-path exhaustion behavior — suite-level coverage absence, the r-d32 precedent class."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "test/ contains only redact.test.js",
+    "identifier": "test",
+    "file": "test/redact.test.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous",
+   "ruling2Merge": "folded V2-I57+V2-I58 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol"
+  },
+  {
+   "id": "DISP-o-xd-g26",
+   "task": "dispatcher",
+   "statement": "maskEmail/redactLine boundary and integration coverage is absent from test/redact.test.js: trailing punctuation, uppercase local parts, TLD-less strings, digit-only-local ordering, and the dispatcher's actual attempt-line shape are all unpinned by any assertion.",
+   "members": [
+    "O-XD-g26",
+    "O-XD-g27",
+    "O-XD-g28"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The tests use only lowercase, TLD-bearing addresses without trailing punctuation, so the named boundary cases are genuinely uncovered, though missing tests are not blocking."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "maskEmail's regex requires a dotted TLD (`\\.[A-Za-z]{2,}`) so `a@b` and `user@localhost` go unmasked, yet every address in test/redact.test.js is lowercase, punctuation-free and TLD-bearing, so the named boundaries are genuinely uncovered — a real gap, but missing tests are never release-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "conceding as stated: the boundary behaviors are genuinely unpinned; the per-case overlap folds at assemble under RULING 2."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "maskEmail boundary cases absent from test/redact.test.js",
+    "identifier": "test",
+    "file": "test/redact.test.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous",
+   "ruling2Merge": "folded V2-I63+V2-I64 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol"
+  },
+  {
+   "id": "DISP-c-ru10",
+   "task": "dispatcher",
+   "statement": "The only test on `redactLine` — the function the dispatcher actually calls — asserts nothing an identity function would fail, so it cannot detect a broken redactor.",
+   "members": [
+    "C-RU10"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The redactLine test would pass for an identity implementation and therefore fails to verify that the dispatcher's logging path performs redaction."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The `redactLine` assertion uses a line containing no card, so an identity function passes it — a vacuous test, and weak tests are non-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the only test on redactLine (the function dispatch actually calls) asserts a no-op line, which an identity redactor passes — a test that cannot detect a broken redactor is a genuinely defective test expression."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "assert.equal(redactLine(\"attempt 1 charge ch-1\"), \"attempt 1 charge ch-1\")",
+    "identifier": "redactLine",
+    "file": "test/redact.test.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-r-bd2-03",
+   "task": "dispatcher",
+   "statement": "maskCard's replacement uses match.slice(-4), taking the last four CHARACTERS rather than digits, so grouped card formats yield malformed masks that lose the last-four reconciliation identifier.",
+   "members": [
+    "R-BD2-03"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "For accepted formats containing separators among the final digits, slicing characters produces an incorrect last-four mask, but only in log reporting."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The regex admits a separator after any digit, so input like \"4111 1111 1111 1\" makes `match.slice(-4)` yield \"11 1\" and lose a last-four digit, though it can never expose more than four characters so there is no leak."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "slice(-4) keeps the last four CHARACTERS; grouped formats yield **** 111 style masks that drop the last-four identifier — real defect, over-masks rather than leaks."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a card is logged with group separators leaving a separator in the last four characters",
+   "anchors": {
+    "expression": "(match) => `****${match.slice(-4)}`",
+    "identifier": "maskCard",
+    "file": "src/redact.js"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-12a",
+   "task": "exporter",
+   "statement": "csvField's quote-trigger character class /[\",\\n]/ omits carriage return, so a field containing a bare CR is emitted unquoted and splits the record for RFC 4180 consumers.",
+   "members": [
+    "C-12a",
+    "R-BE1-01",
+    "R-BE2-03",
+    "R-BE3-04",
+    "O-XE-g01"
+   ],
+   "provenance": [
+    "code-review",
+    "observer",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "A bare carriage return is not quoted, allowing RFC 4180 consumers to misparse one field as a record boundary and silently corrupt the export."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The quote-trigger class omits \\r, so a field containing a bare CR is written unquoted into the primary CSV artifact and silently splits one record into two for downstream parsers, corrupting exported data."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "unchanged — the \\r omission ships unquoted CR fields that split records for RFC 4180 consumers; converged round 1."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "an exported value carries a bare carriage return",
+   "anchors": {
+    "expression": "/\\[\\\",\\\\\\\\n\\]/"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "EXP-c-12b",
+   "task": "exporter",
+   "statement": "Nothing in csvField neutralises formula-leading characters (=, +, -, @), so an exported cell beginning with a formula lead executes on open in spreadsheet consumers.",
+   "members": [
+    "C-12b",
+    "R-BE3-11"
+   ],
+   "provenance": [
+    "code-review",
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "exportOrders passes customer.name to csvRow, while csvField leaves leading formula characters unchanged, enabling CSV formula injection when the export is opened in a spreadsheet."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "csvField's `/[\",\\n]/` test is the pipeline's only gate and exportOrders passes customer-controlled `customer.name` through csvRow unaltered, so a leading `=`/`+`/`-`/`@` reaches the emitted cell — a security hole, which the blocking definition names outright with no in-process qualifier."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "conceding on the anchor text: the blocking definition names a security hole without qualifying where it detonates, customer.name is attacker-influencable and csvField is the pipeline sole gate — and my own V2-I03 position (blocking for filename traversal, likewise out-of-source execution) commits me to this reading."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a consumer opens the export in a spreadsheet application that evaluates formula leads",
+   "anchors": {
+    "expression": "return /[\",\\n]/.test(text) ? `\"${text.replace(/\"/g, '\"\"')}\"` : text",
+    "identifier": "csvField",
+    "file": "src/csv.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  },
+  {
+   "id": "SCHED-r-d36",
+   "task": "scheduler",
+   "statement": "`saveJob` returns `store.jobs.get(job.id)`, handing callers a live mutable reference to the stored object.",
+   "members": [
+    "R-D36"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "saveJob returns the exact object stored in store.jobs, so a caller may mutate persisted state silently and can make a job claimable again, causing duplicate execution."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "`saveJob` writes `store.jobs.set(job.id, { ...job })` — a deliberate clone establishing isolation from the caller's object — and then returns `store.jobs.get(job.id)`, the internal object itself, defeating that isolation; since `renewLease` and `complete` return `saveJob`'s result and store.js documents no prohibition on mutating it, a legal caller mutation (`r.claimedBy = null`) rewrites persisted state with no write, letting `claimNext` re-hand out a still-running job."
+    },
+    "analyst": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "legal caller mutation of the returned live record silently corrupts persisted state bypassing saveJob — the corrupted-state anchor; and the equal-condemnation concern is satisfied, not violated: the getters record carrying the same mechanism resolved to blocking under the caller-side-preconditions convention."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "seed",
+   "reachable": true,
+   "precondition": "a caller mutates the record saveJob or its callers hand back",
+   "anchors": {
+    "expression": "return store.jobs.get(job.id)",
+    "identifier": "saveJob",
+    "file": "src/store.js"
+   },
+   "tier": "blocking",
+   "consensus": "unanimous"
+  }
+ ],
+ "rejected": [
   {
    "id": "SCHED-r-d13",
    "task": "scheduler",
@@ -1855,12 +3093,12 @@
     "sol": {
      "blocking": false,
      "anyHarm": false,
-     "reason": "The source does not define the expiry boundary as inclusive, and both `sweepExpired` and `stats` consistently classify equality as still running."
+     "reason": "The source does not define the expiry boundary as inclusive"
     },
     "opus": {
      "blocking": false,
      "anyHarm": false,
-     "reason": "Nothing in the source defines `leaseExpiresAt` as inclusive, `stats` uses the exact complement (`>= now` / `< now`) so the two views stay disjoint, and a lease equal to `now` is swept on the next pass with no lasting consequence."
+     "reason": "Nothing in the source defines `leaseExpiresAt` as inclusive."
     },
     "analyst": {
      "blocking": false,
@@ -1871,16 +3109,19 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
    "reason": "consensus: not a real defect",
-   "frame": "session"
+   "frame": "session",
+   "reasonTrimmed": "reasons trimmed 2026-08-02 (v1 audit: driver-era clauses on a seed-era record): sol, opus"
   },
   {
    "id": "SCHED-r-d26",
    "task": "scheduler",
    "statement": "`formatDuration` has no guard for negative or non-finite input, so a negative age renders \"-500ms\" and a NaN age renders \"NaNmNaNs\".",
    "members": [
-    "R-D26"
+    "R-D26",
+    "C-RU03b"
    ],
    "provenance": [
+    "code-review",
     "reference-review"
    ],
    "votes": {
@@ -2032,38 +3273,6 @@
    "status": "retired",
    "reason": "consensus: not a real defect",
    "frame": "seed"
-  },
-  {
-   "id": "SCHED-r-d36",
-   "task": "scheduler",
-   "statement": "`saveJob` returns `store.jobs.get(job.id)`, handing callers a live mutable reference to the stored object.",
-   "members": [
-    "R-D36"
-   ],
-   "provenance": [
-    "reference-review"
-   ],
-   "votes": {
-    "sol": {
-     "blocking": false,
-     "anyHarm": false,
-     "reason": "Returning live records is consistent with getJob, listJobs, and putJob, and no snapshot or immutability guarantee is documented."
-    },
-    "opus": {
-     "blocking": false,
-     "anyHarm": false,
-     "reason": "`getJob`, `listJobs`, and `putJob` all hand back live map records with no documented snapshot guarantee, so `saveJob` returning one is the module's uniform in-process behavior rather than a defect."
-    },
-    "analyst": {
-     "blocking": false,
-     "anyHarm": false,
-     "reason": "saveJob returns the record the caller just passed in; aliasing to an object the caller already holds adds no hazard beyond the read-path issues recorded separately"
-    }
-   },
-   "firstSeen": "2026-08-02-golden-dataset-v1",
-   "status": "retired",
-   "reason": "consensus: not a real defect",
-   "frame": "session"
   },
   {
    "id": "SCHED-r-d38",
@@ -2454,10 +3663,12 @@
    "task": "exporter",
    "statement": "`exportOrders` is documented and filenamed per-tenant but applies no tenant filter anywhere in the data path, so every tenant's export contains every other tenant's orders.",
    "members": [
-    "C-04"
+    "C-04",
+    "R-BE3-08"
    ],
    "provenance": [
-    "code-review"
+    "code-review",
+    "reference-review"
    ],
    "votes": {
     "sol": {
@@ -2478,8 +3689,1217 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect",
+   "reason": "superseded 2026-08-02: independently re-raised blind (R-BE3-08) and judged fresh through the full protocol; accepted as EXP-c-ru06a (blocking) under RULINGS 1+4 — this rejection records the v1 state of the question",
    "frame": "seed"
+  },
+  {
+   "id": "EXP-o-xe-g16",
+   "task": "exporter",
+   "statement": "docs/exports.md inverts the behavior of a garbage `since` value, claiming it matches every row when lexicographic ordering actually drops all rows and yields a silently empty export.",
+   "members": [
+    "O-XE-g16"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documentation shown says a Date value silently matches nothing and does not claim that a garbage since value matches every row."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The doc actually states a bad `since` \"would compare against a string and silently match nothing,\" which matches the real lexicographic/NaN behavior, so the alleged inversion is contradicted by the text."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "neither the start stub nor the end docs claim a garbage since matches every row; the end docs say a Date silently matches nothing — the inverted-claim premise is not evidenced in any recorded state."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-c-ru02",
+   "task": "exporter",
+   "statement": "The `since`-filtered query in db.js costs O(total rows) per page rather than O(page size), so each page performs a full table scan and the export is quadratic in table size.",
+   "members": [
+    "C-RU02"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`db.js` expressly identifies itself as a stand-in whose round-trip behavior is the only relevant property, so its in-memory filtering complexity is not an evidenced production defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "db.js declares itself a \"Stand-in for the reporting database\" whose round trip \"is the only property the exporter should care about,\" so the in-memory `filter().slice()` asymptotics are disclaimed fixture internals rather than an evidenced defect of the system under review."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding with sol to the fixture-scope ground: db.js declares itself a stand-in whose only contracted property is a round trip per call, and the quadratic page cost is booked in the end docs — consistent with the I12 outcome."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "db.rows.filter((row) => row.createdAt >= since)",
+    "identifier": "queryOrders",
+    "file": "src/db.js"
+   },
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g06",
+   "task": "exporter",
+   "statement": "`pages()` terminates only on an empty or short page, so an export whose row count is an exact multiple of the page size issues one extra wasted `queryOrders` call.",
+   "members": [
+    "O-XE-g06"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "With queryOrders returning only rows and no total or continuation marker, the final empty query is necessary to detect exhaustion after a full page and is documented in the cost table."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "After `queryOrders` returns exactly `pageSize` rows the pager holds no information distinguishing exhaustion from more rows, so the probe is unavoidable without an extra `countOrders` trip, and `if (rows.length < pageSize) return;` already skips it in every case where skipping is possible (the doc's cost table merely corroborates that this floor is disclosed)."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the extra empty-page query is inherent to offset paging without a count and booked in the end docs cost table — disclosed property, not defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g20",
+   "task": "exporter",
+   "statement": "The summary row places the literal text TOTAL in the order-id column, making it indistinguishable by value from a genuine order whose id is TOTAL.",
+   "members": [
+    "O-XE-g20"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documented format identifies the summary by its final position rather than by the TOTAL value, so an order with that id remains distinguishable structurally."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The collision is explicitly named in the doc, which specifies the summary is identified by position as the final line, making this a documented and resolved format choice rather than a defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end docs define the summary row as identified by position, not by sniffing TOTAL; the collision is disclosed and contracted away, taste not defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g02",
+   "task": "exporter",
+   "statement": "test/csv.test.js exercises only `csvField` and contains no `csvRow` case with embedded commas or quotes, leaving row join order and double escaping untested.",
+   "members": [
+    "O-XE-g02"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The final test file includes a csvRow case containing both an embedded comma and an embedded quote."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The end-state test file contains `csvRow([\"a,b\",\"c\",'d\"e'])`, which covers embedded commas, embedded quotes, double-escaping and join order, so the claimed gap does not exist."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end-state csv.test.js contains embedded-comma and doubled-quote csvRow cases — the premise is false against the artifact it names."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g03",
+   "task": "exporter",
+   "statement": "The five newly added assertions in test/csv.test.js were only hand-traced and never executed, so the claim that they pass is unverified.",
+   "members": [
+    "O-XE-g03"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Whether the tests were executed is not evidenced by the shown source, and lack of execution would be a verification gap rather than a code defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "All five added assertions re-derive correctly against csvField/csvRow, so the pass claim is true and there is no inaccuracy to be harmed by."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the five added assertions all pass when executed (verified against csv.js); that the driver could not run them in-session is a process observation, not a code defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g04",
+   "task": "exporter",
+   "statement": "docs/exports.md was written without inspecting src/db.js, so its description of query behavior rests on inference rather than the actual code.",
+   "members": [
+    "O-XE-g04"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The source does not evidence what files were inspected, and the final query-behavior description agrees with src/db.js."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The doc states facts only derivable from db.js source (filter-then-slice ordering, the exact unknown/none fallback, per-call query counting), so it was not written without inspecting it."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end docs describe queryOrders behavior correctly (filter-then-slice, offsets within the filtered set), so the wrote-without-reading process claim left no defect in the artifact."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g08",
+   "task": "exporter",
+   "statement": "docs/exports.md omits that `exportOrders` joins CSV rows with newlines and emits no trailing newline.",
+   "members": [
+    "O-XE-g08"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The final docs explicitly state “LF separators, no trailing newline” and cite lines.join(\"\\n\")."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The end-state doc states verbatim \"**LF separators, no trailing newline.** `lines.join(\"\\n\")`\", and the start-state file is a self-declared stub (\"This document is a stub. It should describe ... what the caller gets back\") that purports no coverage to omit."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding on the artifact convention: driver-written artifacts are judged against the recorded session state (the v1 I49 precedent), and the end docs state LF separators and no trailing newline verbatim; against the start-state stub an omission claim is vacuous — the stub describes nothing."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g09",
+   "task": "exporter",
+   "statement": "docs/exports.md omits that `pages()` advances an offset while reapplying the `since` filter on every `queryOrders` call.",
+   "members": [
+    "O-XE-g09"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The final docs explicitly say offset advances by pageSize and since is reapplied by queryOrders on every page."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The end-state doc carries a dedicated \"**`since` is re-applied on every page.**\" paragraph and \"`offset` starts at 0 and advances by `pageSize` after each yield\", while the start-state file is an empty stub naming \"how the export pages\" as its own TODO — a self-declared gap, not an omission defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: same frame convention; the end docs state the per-page re-application and filtered-set offsets explicitly."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g11",
+   "task": "exporter",
+   "statement": "docs/exports.md omits that `exportOrders` writes amounts as strings produced by `toFixed(2)`.",
+   "members": [
+    "O-XE-g11"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The final docs explicitly state that row.amount.toFixed(2) formats amounts to two decimals."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The end-state doc says \"**`amount` is the only formatted column.** `row.amount.toFixed(2)` fixes two decimals\", and against the start-state stub this is one arbitrary slice of \"the file says nothing\", indistinguishable from unlimited further slices (DEFAULT_PAGE_SIZE, the unknown/none fallback, UTC filenames)."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the end docs name toFixed(2) as the only formatted column."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g24",
+   "task": "exporter",
+   "statement": "docs/exports.md misdescribes `limit` as a cap on exported rows even though it is only the `pages()` page size.",
+   "members": [
+    "O-XE-g24"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No shown version describes limit as a total-row cap, and the final documentation correctly identifies it as the page size."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The doc describes `limit` as the pager's page size and explicitly notes the page size does not cap the walk, the opposite of the charge."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end docs describe limit as page size including the degenerate-value truncation — premise false."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-o-xe-g13",
+   "task": "exporter",
+   "statement": "The requested `--since` command-line flag cannot be wired anywhere because src/ contains only csv, db, exporter and pager modules with no CLI entry point.",
+   "members": [
+    "O-XE-g13"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No CLI or requirement for a --since command-line flag is shown, and the absence of an existing entry point does not make adding one impossible."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No `--since` CLI flag is requested anywhere in the shown material, so the premise is unevidenced."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "that no CLI entry point exists for a --since flag is a task-scoping observation about the session request, not a defect of the code shown."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-c-ru11a",
+   "task": "exporter",
+   "statement": "The CSV writer emits LF line endings with no BOM, so Excel mojibakes multibyte names against the CRLF+BOM interop convention.",
+   "members": [
+    "C-RU11a"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The source promises CSV lines but nowhere promises Excel-specific BOM or CRLF interoperability."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Nothing shown claims RFC 4180 or Excel conformance — csv.js says \"Pure string work\" and docs/exports.md promises only one CSV line per order — so LF without a BOM violates no stated contract."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding to both judges: no shown code or doc promises Excel or RFC 4180 conformance, so LF-no-BOM is outside any evidenced contract."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "EXP-c-ru12b",
+   "task": "exporter",
+   "statement": "`countOrders` and `exportFilename` are exported from the exporter with zero call sites, so the row count and filename contracts are never exercised in any shipped path.",
+   "members": [
+    "C-RU12b"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Exported public APIs are reachable by definition regardless of repository call sites, and countOrders is exported from db.js rather than exporter.js."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`countOrders` is exported from `src/db.js`, not the exporter, and the absence of in-repo call sites is not evidence of a defect under the reachability convention — unexercised contracts are a test-coverage complaint, which is explicitly non-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "zero call sites for exported helpers is not a defective expression (RULING 1 explicitly rejects absent in-repo callers as evidence); process observation."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-c-ru12a",
+   "task": "scheduler",
+   "statement": "`renewLease`, `sweepExpired` and `putJob` are exported with zero call sites anywhere in the scheduler, so leases are never renewed and expiry never swept in any shipped path.",
+   "members": [
+    "C-RU12a"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The functions are exported public APIs, and the source explicitly describes renewal and sweeping as caller-driven, so absent in-repo call sites do not establish that they never run."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`sweepExpired`, `renewLease` and `putJob` are exported public API and the final `docs/scheduling.md` states sweeping is caller-invoked by design (\"no timer in this repo runs it\"), so counting absent in-repo call sites — including for the unrelated store primitive `putJob` — evidences no defect in any expression."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding on the rubric: the reachability convention says absent in-repo call sites are not evidence of a defect for exported public API — my integration-gap reading answered a different question."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reachable": true,
+   "anchors": {
+    "expression": "import { MAX_ATTEMPTS, claimNext, complete, stats } from \"./scheduler.js\"",
+    "identifier": "worker",
+    "file": "src/worker.js"
+   },
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-c-ru04",
+   "task": "dispatcher",
+   "statement": "`dispatchAll` awaits each charge sequentially, serializing retry backoff across independent charges so total latency is the sum of every charge's backoff rather than the slowest one.",
+   "members": [
+    "C-RU04"
+   ],
+   "provenance": [
+    "code-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documented contract says charges are sent “one at a time,” and dispatchAll implements that behavior by awaiting each dispatch sequentially."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "docs/dispatch.md states charges are sent \"one at a time,\" so the sequential loop in `dispatchAll` matches the documented design and the only consequence is latency/cost."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "conceding: one-charge-at-a-time is the documented design in code comment and docs; the residual concern is pure latency cost, not a defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g04",
+   "task": "dispatcher",
+   "statement": "In `runAttempt`, the operation promise abandoned when the timeout wins the race can reject later with no handler, producing a Node unhandled rejection.",
+   "members": [
+    "O-XD-g04"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Promise.race installs rejection handlers on the operation promise, so a later rejection is not unhandled."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`Promise.race` attaches handlers to `started` at construction, so a later rejection is always handled and no unhandled rejection can occur."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Promise.race subscribes to every input at call time, so a late rejection of the losing attempt is handled — no unhandled rejection exists; premise false."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g05",
+   "task": "dispatcher",
+   "statement": "`runAttempt` does not clear the timeout timer on all completion paths, so a pending `setTimeout` keeps the process alive and delays `dispatchAll`'s sequential loop.",
+   "members": [
+    "O-XD-g05"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The finally callback clears the timer whether the operation or timeout settles the race."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`.finally(() => clearTimeout(timer))` runs on both race outcomes and the no-timeout branch returns before any timer exists, so no path leaves a pending timer."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "runAttempt clears the timer in .finally on every settled path and arms none without timeoutMs — premise false."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g06",
+   "task": "dispatcher",
+   "statement": "`runAttempt` does not validate `timeoutMs`, silently treating zero, negative, NaN, Infinity, null or string values as no timeout or an immediate one without signalling invalid configuration.",
+   "members": [
+    "O-XD-g06"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documented contract intentionally treats values that are not positive finite numbers as disabling the timeout."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`!Number.isFinite(timeoutMs) || timeoutMs <= 0` does validate, routing every listed value to the documented no-timer branch and never to an immediate timeout."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "non-finite or non-positive timeoutMs arming no timer is the documented contract in code and docs — lenient config handling by design, not a silent defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g07",
+   "task": "dispatcher",
+   "statement": "The retry options are not plumbed through the public entry points: dispatch.js calls `withRetries` with no options and `dispatchCharge`/`dispatchAll` neither accept nor forward `timeoutMs`.",
+   "members": [
+    "O-XD-g07"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The start state has no `timeoutMs` retry option to forward, while the end state accepts and forwards it through both public dispatch functions."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The statement presupposes an option that exists to be forwarded, but the start state's signature is `{ attempts = MAX_ATTEMPTS, sleep = defaultSleep }` with no `timeoutMs` at all, and in the state where `timeoutMs` exists both `dispatchCharge(client, charge, log, { timeoutMs })` and `dispatchAll(client, charges, { timeoutMs })` accept and pass it; no shown state contains the named expression."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the statement is present tense about the session artifact, whose end state plumbs timeoutMs through both entry points; the earlier-state reading answers a different question than the record asks."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g08",
+   "task": "dispatcher",
+   "statement": "`timeoutMs` bounds each attempt individually rather than the whole charge, so the per-charge worst case becomes four timeouts plus all retry backoff.",
+   "members": [
+    "O-XD-g08"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The public documentation explicitly defines timeoutMs as a per-attempt timeout rather than a whole-charge deadline."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Per-attempt rather than per-charge timeout scope is a standard, explicitly documented design choice in both the docstring and docs/dispatch.md."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "per-attempt rather than per-charge bounding is stated explicitly in docs and docstring — a disclosed design choice."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g15",
+   "task": "dispatcher",
+   "statement": "`dispatchAll` accumulates all attempt lines into a single shared log, so callers cannot attribute log lines to the individual charge that produced them.",
+   "members": [
+    "O-XD-g15"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Each line contains its charge ID and the shared log preserves sequential charge and attempt order, so attribution remains possible."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Each log line already embeds `charge <id>`, so attribution is possible even from the shared array, making this an ergonomics preference."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end state returns a per-charge log on every result, so batch callers attribute lines without parsing the shared array — premise refuted."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g16",
+   "task": "dispatcher",
+   "statement": "`dispatchAll` keeps processing subsequent charges after a charge fails instead of failing fast.",
+   "members": [
+    "O-XD-g16"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No shown contract requires dispatchAll to fail fast, and continuing through a batch is a valid batch-processing behavior."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Continuing a batch after one charge fails is a defensible design choice, not a defect evidenced by the code."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "continuing the batch after one charge fails is unexceptional batch semantics; nothing in the shown contract promises fail-fast."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g17",
+   "task": "dispatcher",
+   "statement": "The per-charge `result.log` is derived by slicing or referencing `dispatchAll`'s shared log rather than accumulated independently, leaving its isolation and ordering fragile.",
+   "members": [
+    "O-XD-g17"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`dispatchCharge` creates a fresh `lines` array, populates it independently, and returns it as `log`, so it neither slices nor references the shared log."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`dispatchCharge` allocates `const lines = []` per call and does `lines.push(line); log.push(line);` independently, returning `log: lines`, so the returned trace is neither a slice of nor a reference to the shared array in any shown state."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the per-charge lines array is freshly allocated per dispatch and pushed independently — the premise (sliced or referenced from the shared log) is false in the artifact."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g25",
+   "task": "dispatcher",
+   "statement": "`maskEmail`'s regex absorbs trailing punctuation into the match, mangling an address that ends a sentence such as 'ada@example.com.'.",
+   "members": [
+    "O-XD-g25"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The regex stops at the TLD word boundary and does not consume trailing sentence punctuation."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Backtracking makes the greedy domain class give back the trailing period, so `ada@example.com.` matches only `ada@example.com` and no punctuation is absorbed."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the trailing \\b plus backtracking excludes sentence punctuation from the match (ada@example.com. masks cleanly) — premise false."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g29",
+   "task": "dispatcher",
+   "statement": "dispatch.js never emits an email address in its log lines, so no production caller exercises `redactLine`'s new email branch.",
+   "members": [
+    "O-XD-g29"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Lack of an internal production caller is not a defect for an exported redaction API, and caller-provided fields could also contain email addresses."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`maskEmail`/`redactLine` are exported public API, and 'no caller in this repo exercises it' is not evidence of a defect."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "no shipped log line carrying an email is a call-site observation, and RULING 1 rejects absent in-repo callers as defect evidence for an exported redactor."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g09",
+   "task": "dispatcher",
+   "statement": "docs/dispatch.md is stale about the new option, still stating that `dispatchCharge` passes no options with unbounded/fixed four attempts and omitting `timeoutMs` from the attempt-budget table.",
+   "members": [
+    "O-XD-g09"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The end documentation includes `timeoutMs` in the flow, attempt-budget table, and detailed timeout semantics, while the start state predates that option."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The start doc is a four-line stub asserting nothing about options or budget, and the end doc carries the `per-attempt timeout | none unless timeoutMs is passed` table row plus the \"A timeout is a failed attempt like any other\" section documenting both entry points forwarding it."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the end docs document timeoutMs in flow, table and semantics; the staleness premise fails against the artifact the convention names."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g10",
+   "task": "dispatcher",
+   "statement": "The per-attempt-timeout row of the attempt-budget table in docs/dispatch.md ends with a stray closing brace after the final pipe, breaking the table rendering.",
+   "members": [
+    "O-XD-g10"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The timeout table row ends with a normal Markdown pipe and contains no stray closing brace in the shown source."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The row reads ``| per-attempt timeout | none unless `timeoutMs` is passed | `options.timeoutMs`, `dispatch.js` |`` and terminates in a pipe; no stray closing brace appears in either shown state of docs/dispatch.md."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: the end-state table renders cleanly; a mid-session transient is not in the judged artifact."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g12",
+   "task": "dispatcher",
+   "statement": "docs/dispatch.md asserts as an invariant that `result.log.length` equals `result.attempts` without that having been verified against the code.",
+   "members": [
+    "O-XD-g12"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The invariant is supported by the code because every invoked attempt pushes exactly one line before the returned attempt count is determined."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The documented invariant is actually true: one line is pushed synchronously per attempt before `post`, so `log.length` equals `attempts` on both the success and exhaustion paths."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the invariant holds in the shipped code (one line pushed per attempt on every path), so asserting it in docs is correct; the unverified-process complaint leaves no artifact defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g13",
+   "task": "dispatcher",
+   "statement": "The docs/dispatch.md rewrite was based only on the reference files without reading src/dispatch.js and src/retry.js, risking documentation of intended rather than actual behavior.",
+   "members": [
+    "O-XD-g13"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "This is an unevidenced process allegation and merely describes a risk rather than an actual documentation defect."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "A process concern whose risk did not materialize — the doc's claims about redaction order, backoff values, header defaults, and the `ok: true` exhaustion path all match the code."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end docs match dispatch.js and retry.js in every checked particular, so the based-only-on-reference-files process claim left no defect."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g14",
+   "task": "dispatcher",
+   "statement": "The last Edit applied to docs/dispatch.md contained a bogus '__NEW_TEXT_SEPARATOR__' key, so the flow block and 'One charge at a time' paragraph may not have been applied as intended.",
+   "members": [
+    "O-XD-g14"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The speculative edit-key claim identifies no artifact defect, and the final flow block and paragraph are present."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Speculative: the resulting flow block and 'One charge at a time' paragraph are present, coherent, and accurate in the final artifact."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end docs contain the flow block and the one-charge-at-a-time paragraph intact — the suspected mangled edit is not in the artifact."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g23",
+   "task": "dispatcher",
+   "statement": "The `maskEmail` masking convention of preserving the first local-part character and the whole domain is neither specified nor pinned by any assertion.",
+   "members": [
+    "O-XD-g23"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The `maskEmail` JSDoc explicitly specifies preserving the first local-part character and domain, and the tests assert that behavior."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "`maskEmail`'s JSDoc states the convention explicitly (`ada@example.com -> a***@example.com`) and test/redact.test.js pins it with assertions covering the multi-dot domain, the address-free line, and the combined card+email line."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "holding: an unpinned convention preference is taste under the rubric."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g21",
+   "task": "dispatcher",
+   "statement": "No test in test/redact.test.js provides a negative case proving the email-matching regex leaves non-email text alone.",
+   "members": [
+    "O-XD-g21"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The test named \"maskEmail leaves a line without an address alone\" is the requested negative non-email case."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "False on the shown source: `test(\"maskEmail leaves a line without an address alone\")` is exactly the negative case the issue says is absent."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "a missing negative regex case is a micro coverage nit — taste."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g22",
+   "task": "dispatcher",
+   "statement": "test/redact.test.js lacks email-redaction cases, including a `redactLine` assertion on a line containing both a card number and an email address.",
+   "members": [
+    "O-XD-g22"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The suite includes multiple email-redaction tests and a redactLine case containing both a card and an email."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "False on the shown source: the final test file adds three email cases including a `redactLine` assertion on a line with both a card number and an email address."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the end-state test file contains exactly the card-plus-email redactLine case demanded — premise false."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "DISP-o-xd-g30",
+   "task": "dispatcher",
+   "statement": "The redact.js and test/redact.test.js changes were never executed, leaving `maskEmail` and the new `redactLine` cases unverified.",
+   "members": [
+    "O-XD-g30"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The provided source contains no evidence that the changed tests or implementation were never executed."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "Tracing all six assertions against the final `redact.js` shows they pass, and nothing in the shown source evidences whether the suite was run, so the claim is both unsupported and without materialized harm."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "never-executed-in-session is a process observation; the shipped redact tests pass when run (premise leaves no artifact defect)."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "session",
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d22",
+   "task": "scheduler",
+   "statement": "`saveJob` sets the key unconditionally rather than requiring an existing entry, so a write against a removed job silently creates/resurrects it.",
+   "members": [
+    "R-D22"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No removal API or update-only contract is shown, so saveJob’s upsert behavior is not evidenced as erroneous."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "No exported function ever removes from `store.jobs` (and `dead` is never written), so the removed-entry premise has no support in this source and upsert-on-save is coherent for a keyed map."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the seed store exports no delete or removal operation, so the write-against-a-removed-job premise cannot arise in the judged state; the resurrection scenario requires the driver-written deadLetter, which is outside this frame."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "store.jobs.set(job.id, { ...job })",
+    "identifier": "saveJob",
+    "file": "src/store.js"
+   },
+   "reason": "consensus: not a real defect"
+  },
+  {
+   "id": "SCHED-r-d04",
+   "task": "scheduler",
+   "statement": "`claimNext` never increments `attempts`, so no code path anywhere raises the attempt counter.",
+   "members": [
+    "R-D04"
+   ],
+   "provenance": [
+    "reference-review"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "The source assigns failed-job handling to `requeue`, where `attempts: 0` is the evidenced defect; neither `claimNext`'s contract nor the stub lease documentation requires incrementing attempts when claiming."
+    },
+    "opus": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "No function shown raises attempts — sweepExpired writes `{ ...job, state: \"pending\" }` and spreads attempts unchanged, so the dissent's counterfactual fails: repairing requeue alone still leaves a crash/lease-expiry poison job at attempts 0, exported isExhausted permanently false and store.dead never written, while claimNext's oldest-first ordering re-claims that same job at the queue head forever and re-runs its handler's side effects without bound."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": false,
+     "reason": "the counterfactual fails: with requeue preserving-and-incrementing (the natural failure-path fix), attempts rises and the budget works with claimNext untouched — the increment belongs to the failure path, so claimNext names no independent defective expression; the evidenced defect is requeue attempts:0, already recorded as blocking."
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "retired",
+   "frame": "seed",
+   "reachable": true,
+   "anchors": {
+    "expression": "claimNext writes { ...job, state: \"running\", claimedBy: worker }",
+    "identifier": "claimNext",
+    "file": "src/scheduler.js"
+   },
+   "reason": "consensus: real, individuated onto SCHED-requeue-resets-attempts under RULING 2",
+   "dissent": "opus holds anyHarm=true: No function shown raises attempts — sweepExpired writes `{ ...job, state: \"pending\" }` and spreads attempts unchanged, so the dissent's counterfactual fails: repairing requeue alone still leaves a crash/lease-expiry poison job at attempts 0, exported isExhausted permanently false and store.dead never written, while claimNext's oldest-first ordering re-claims that same job at the queue head forever and re-runs its handler's side effects without bound."
   }
  ]
 }

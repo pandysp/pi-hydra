@@ -22,16 +22,31 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { argOf } from "./lib.mjs";
 
-const OBSERVER_POOL = "experiments/artifacts/2026-08-01-severity-probe-v2/out.json.gz";
+/**
+ * Every frozen observer pool, with the id namespace its candidates carry in
+ * golden-dataset members: v1's C2 scheduler pool is unprefixed (O-g08 ->
+ * "g08"), the cross-task pools are namespaced (O-XE-g01 -> "XE-g01",
+ * O-XD-g01 -> "XD-g01") — added for v2, whose records carry cross-task
+ * observer members that the C2-only map silently failed to credit.
+ */
+const OBSERVER_POOLS = [
+	{ path: "experiments/artifacts/2026-08-01-severity-probe-v2/out.json.gz", prefix: "" },
+	{ path: "experiments/artifacts/2026-08-02-cross-task-trajectory/severity-exporter.json.gz", prefix: "XE-" },
+	{ path: "experiments/artifacts/2026-08-02-cross-task-trajectory/severity-dispatcher.json.gz", prefix: "XD-" },
+];
 
-/** candidate id (g01, s01, ...) -> the arms whose messages produced its claims. */
-export function armsByObserverCandidate(poolPath = OBSERVER_POOL) {
-	const pool = JSON.parse(gunzipSync(readFileSync(poolPath)).toString());
-	const noteArm = Object.fromEntries(pool.pool.map((message) => [message.id, message.arm]));
-	const claimNote = Object.fromEntries(pool.claims.map((claim) => [claim.id, claim.note]));
+/** candidate id (g01, s01, XE-g01, ...) -> the arms whose messages produced its claims. */
+export function armsByObserverCandidate(pools = OBSERVER_POOLS) {
 	const out = {};
-	for (const candidate of pool.candidates) {
-		out[candidate.id] = new Set((candidate.members ?? []).map((m) => noteArm[claimNote[m]]).filter(Boolean));
+	for (const { path, prefix } of pools) {
+		const pool = JSON.parse(gunzipSync(readFileSync(path)).toString());
+		const noteArm = Object.fromEntries(pool.pool.map((message) => [message.id, message.arm]));
+		const claimNote = Object.fromEntries(pool.claims.map((claim) => [claim.id, claim.note]));
+		for (const candidate of pool.candidates) {
+			const key = `${prefix}${candidate.id}`;
+			if (out[key]) throw new Error(`observer candidate id collision across pools: ${key}`);
+			out[key] = new Set((candidate.members ?? []).map((m) => noteArm[claimNote[m]]).filter(Boolean));
+		}
 	}
 	return out;
 }

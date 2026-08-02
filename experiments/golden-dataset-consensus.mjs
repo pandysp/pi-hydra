@@ -12,8 +12,15 @@
  *    are judged against the recorded session (start AND end state — the driver
  *    wrote `stats`, `deadLetter` and the docs mid-run, and judging those
  *    against the seed measures the prompt, not the judgment: that is the bug
- *    that broke the first consensus round-1 run). Exporter and dispatcher were
- *    never touched by a driver, so their seeded files ARE their session state.
+ *    that broke the first consensus round-1 run). Since the cross-task
+ *    trajectories (2026-08-02), exporter and dispatcher ALSO have recorded
+ *    driver sessions: a session-frame issue there is judged against its
+ *    task's recorded rows (--rows-exporter / --rows-dispatcher), a seed-frame
+ *    issue against the seeded files. The v1-era premise that "their seeds ARE
+ *    their session state" is retired — stage B of the v2 build found 47 of 67
+ *    pool candidates carrying seed frames while describing driver-written
+ *    artifacts (maskEmail, timeoutMs, the TOTAL line), the RULING 3 bug class
+ *    in the accept direction at pool scale.
  * 2. **The four RULINGS are in the rubric**, not applied afterwards, so labels
  *    are produced under them rather than adjusted to them.
  * 3. **Batching is per task AND frame** (`--source auto`, the default, reads
@@ -130,8 +137,12 @@ export function seededSource(taskId) {
  * only the seed (planted, reference-review). The default session source is
  * correct for observer/code-review issues about driver-written artifacts.
  */
-export function sourceForTask(taskId, schedulerRows, sourceMode = "session") {
-	if (taskId === "scheduler" && sourceMode !== "seed") return codeContext(schedulerRows);
+export function sourceForTask(taskId, rowsByTask, sourceMode = "session") {
+	if (sourceMode !== "seed") {
+		const rows = rowsByTask[taskId];
+		if (!rows) throw new Error(`${taskId}: session frame requested but no recorded rows supplied (--rows-${taskId})`);
+		return codeContext(rows);
+	}
 	return `THE CODE UNDER REVIEW (the seeded state, before any session):\n\n${seededSource(taskId)}`;
 }
 
@@ -175,6 +186,8 @@ async function main() {
 	const stateDir = argOf(args, "--state", "");
 	const issuesPath = argOf(args, "--issues", `${stateDir}/issues.json`);
 	const rowsPath = argOf(args, "--rows", `${process.env.HOME}/scratch/2026-08-01-hydra-c2-trajectory/rows.jsonl`);
+	const rowsExporterPath = argOf(args, "--rows-exporter", `${process.env.HOME}/scratch/2026-08-01-hydra-cross-task/rows-exporter.jsonl`);
+	const rowsDispatcherPath = argOf(args, "--rows-dispatcher", `${process.env.HOME}/scratch/2026-08-02-hydra-cross-task/rows-dispatcher.jsonl`);
 	const timeoutMs = Number.parseInt(argOf(args, "--cli-timeout-ms", "900000"), 10);
 	const batchSize = Number.parseInt(argOf(args, "--batch-size", "10"), 10);
 	const sourceMode = argOf(args, "--source", "auto");
@@ -182,7 +195,14 @@ async function main() {
 
 	const issues = JSON.parse(readFileSync(issuesPath, "utf8")).issues;
 	const ids = issues.map((i) => i.id);
-	const rows = readFileSync(rowsPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+	const parseRows = (path) => existsSync(path)
+		? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+		: null;
+	const rowsByTask = {
+		scheduler: parseRows(rowsPath),
+		exporter: parseRows(rowsExporterPath),
+		dispatcher: parseRows(rowsDispatcherPath),
+	};
 
 	// Frame routing is per candidate, not per batch (the v1 symptom-filter
 	// repair missed two records — GOLDEN-DATASET-DESIGN.md RULING 3 addendum).
@@ -199,7 +219,7 @@ async function main() {
 	const taskFrames = [...new Set(issues.map((i) => `${i.task}:${i._frame}`))].map((key) => key.split(":"));
 	const sources = Object.fromEntries(taskFrames.map(([task, frame]) => [
 		`${task}:${frame}`,
-		sourceForTask(task, rows, frame),
+		sourceForTask(task, rowsByTask, frame),
 	]));
 
 	const statePath = `${stateDir}/consensus.json`;
