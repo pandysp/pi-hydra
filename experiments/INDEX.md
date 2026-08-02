@@ -85,6 +85,7 @@ measured ENUM-SO2 model contract stays byte-identical.
 | doc | role |
 |---|---|
 | [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze). **IN PROGRESS:** Andreas approved producer-first OpenAI work: existing frozen rows get their first Sol judgment, fresh causal studies precede an exact dated OpenAI matrix, and raw OpenAI producer rows may freeze before v2. Scoring, promotion, and verdicts still wait for valid v2 + Sol + Opus; Anthropic production still waits for v2. |
+| [CAPSTONE-JUDGE-SPEC.md](CAPSTONE-JUDGE-SPEC.md) | Registered replay-safe two-judge protocol for real trajectory deliveries. It splits every emitted finding into atomic claims, hides arm/tier labels, preserves raw responses, and treats the first Sol pass as one pending half rather than consensus. |
 | [CAPSTONE-FROZEN-INPUTS.json](CAPSTONE-FROZEN-INPUTS.json) | Deterministic SHA-256 inventory of the provisional dataset, all frozen scheduler/exporter/dispatcher/OpenAI trajectory inputs, and the scoring definitions. Regenerate after v2 freezes. |
 | `render-capstone-table.mjs` | One plain comparison-table renderer with the registered separate cost, quality, noise, delivery, and weighted-recall columns. It intentionally renders unavailable quality as blank rather than inventing provisional values. |
 

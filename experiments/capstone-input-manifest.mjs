@@ -31,6 +31,9 @@ export const CAPSTONE_INPUTS = [
 	"experiments/trajectory-ground-truth.mjs",
 	"experiments/golden-dataset-score.mjs",
 	"experiments/BENCHMARK-SPEC.md",
+	"experiments/CAPSTONE-JUDGE-SPEC.md",
+	"experiments/capstone-trajectory-judge-protocol.mjs",
+	"experiments/capstone-trajectory-judge.mjs",
 ];
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");

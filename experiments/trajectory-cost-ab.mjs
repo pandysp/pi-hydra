@@ -860,6 +860,10 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 			pointIndex,
 			pointKind: point.kind,
 			runIndex,
+			// Load-bearing for later support judging. A run-end observer receives
+			// this assistant message in addition to the captured request; older
+			// artifacts omitted it and left their terminal run ends unjudgeable.
+			assistantMessage: point.assistant ?? null,
 			files: snapshotWorkspace(root),
 		});
 

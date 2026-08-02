@@ -14,7 +14,7 @@ export function assertJudgeMetric(metric) {
  * keep a supported central finding distinguishable from an embellished one, so
  * the judge must decompose instead of returning a single strict FALSE.
  */
-const SUPPORT_POLICY = `Evidence policy for this benchmark:
+export const SUPPORT_POLICY = `Evidence policy for this benchmark:
 - Support requires evidence for both positive and negative factual claims. Missing evidence supports neither "it happened" nor "it did not happen."
 - An explicit assistant report is evidence for what it reports unless contradicted.
 - A risk explicitly framed with could, may, or can is supported when the shown mechanism makes it realistic.

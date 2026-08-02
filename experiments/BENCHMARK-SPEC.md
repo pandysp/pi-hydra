@@ -114,8 +114,9 @@ metric changes land between iterations, versioned and documented.
 1. **COMPLETE:** make the Opus-resume path replay-safe and prepare the
    frozen-input manifest, comparison renderer with intentionally blank quality
    cells, and scratch v2 results template;
-2. complete one registered Sol judgment pass over the already-frozen OpenAI
-   trajectories, without treating repeated Sol output as independent consensus;
+2. **IN PROGRESS:** complete one registered Sol judgment pass over the
+   already-frozen OpenAI trajectories under `CAPSTONE-JUDGE-SPEC.md`, without
+   treating repeated Sol output as independent consensus;
 3. register and run two causal OpenAI development studies on fresh, sealed
    material: terse ENUM output and the presence versus absence of `interrupt`;
 4. use those studies only to choose which candidates deserve producer spend,
