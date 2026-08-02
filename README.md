@@ -6,7 +6,7 @@
 
 ![A pi session: the head picker adds a security head, then as the agent builds a Flask app the security head catches debug=True (a Werkzeug RCE) and an open-redirect risk and steers the fix into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head watches with its own focus (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs about 1% of what the agent paid to build the context it reads; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
+hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head reviews through its own lens (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs a cache read instead of a context rebuild; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
 
 ## Why
 
@@ -18,11 +18,11 @@ A bad assumption caught mid-implementation costs one correction message, and the
 
 ## What it costs
 
-An observation costs its prompt (~220 tokens) plus a cache read at 10% of input price. On a 17K-token session that is about half a cent, or roughly 1% of what the driver paid to build the same context. Measured cache hit rates are 97%+ across real Anthropic sessions (the 17K reference measurement hits 99%); codex measures ~84–87% ([why](docs/architecture.md)).
+An observation costs its prompt (~220 tokens) plus a cache read at 10% of input price. On a 17K-token Anthropic session that is about half a cent. Measured cache hit rates are 97%+ across real Anthropic sessions (the 17K reference measurement hits 99%); codex measures ~84–87% ([why](docs/architecture.md)).
 
 A session costs more than the per-observation number suggests. An always-on head observes at every cache commit, and a session has many of those. Measured across real sessions, one head adds roughly 30% to total session cost: a driver session that would cost $1.00 costs about $1.30.
 
-Every number above is measured: the harness in [`experiments/`](experiments/README.md) re-verifies the cache behavior against the live API, and `/hydra-stats` shows the same numbers live for your own sessions.
+The harness in [`experiments/`](experiments/README.md) re-verifies the cache mechanism these numbers rest on against the live APIs: when an entry commits, what an observation can see, and whether the replay stays on the cache. The hit rates and costs above come from real sessions, and `/hydra-stats` shows the same numbers live for your own.
 
 ## Compared to subagents
 
@@ -32,7 +32,7 @@ pi's core ships four tools and no subagents; heads and subagents both arrive as 
 |---|---|---|
 | Context | fresh, isolated by default; zero anchoring to the driver's assumptions | the driver's payload byte-for-byte; fully anchored to the driver's assumptions |
 | Model | free: a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
-| Cost | a full-price context rebuild per task | ~1% of build cost per observation; ~30% per session always-on |
+| Cost | a full-price context rebuild per review | a cache read per observation; roughly 30% of session cost for one always-on head in the measured Anthropic regime |
 | Timing | on its own clock: Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points, in time to steer the next step |
 | Direction | spawned downward; can be `steer`ed downward (parent → child) and returns a final message | watches the same run; can `steer` or pull the cord upward (head → agent) |
 | What crosses | passive data, inert until the parent reads and acts on it | an act: a `steer` or `interrupt` that fires whether the agent agrees or not |
@@ -122,6 +122,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 - Two providers for now: Anthropic (Messages API) and OpenAI Codex (ChatGPT backend, GPT-5.6). Anthropic delivers the 97%+ hit ratio; codex measures ~84–87%, and sharing the driver's cache from the first observation needs pi's `"transport": "websocket"` setting — under the default `"auto"`, hydra falls back to its own cache scope to keep the driver's delta continuation safe ([measured](docs/architecture.md)). Nothing else is verified — hydra targets subscription auth on both providers; the OpenAI API-key path shares the code but stays disabled unless someone measures it.
 - A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
+- A head is not an independent reviewer. It reads the driver's exact context, so it inherits the driver's framing, assumptions, and blind spots. It catches problems while they are cheap, and it does not replace a black-box review of the finished work.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
 - An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)). On subscription codex that spend comes out of the same account quota as the agent's own work.
 
@@ -129,7 +130,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 - **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that re-verifies every cache claim against the live API. A full run costs under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that re-verifies the cache mechanism against the live APIs. A full cache-probe run costs under a dollar.
 
 ## History
 

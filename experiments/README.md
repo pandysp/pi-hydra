@@ -1,7 +1,7 @@
 # Cache experiments
 
 > **This file documents the ORIGINAL cache probes only (June/July 2026) and
-> predates almost everything in this directory. For the 44-document map —
+> predates almost everything in this directory. For the 51-document map —
 > decision table, specs, results, retractions — see
 > [`INDEX.md`](INDEX.md).**
 

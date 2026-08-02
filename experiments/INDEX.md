@@ -1,7 +1,8 @@
 # experiments/ — index
 
-51 documents. This is the map. `README.md` documents the original cache
-probes only and predates almost all of this; start here instead.
+51 mapped documents (52 Markdown files including this index). This is the map.
+`README.md` documents the original cache probes only and predates almost all
+of this; start here instead.
 
 Convention: every measurement has a SPEC (pre-registered before data) and
 a RESULTS doc. Where a spec has no results, the run has not happened or
@@ -12,7 +13,7 @@ was refuted before running.
 | doc | what it is |
 |---|---|
 | [DECISION-TABLE.md](DECISION-TABLE.md) | **The entry point.** Every arm, cost and quality, per config, with each block labelled by measurement basis. Carries the retractions. |
-| [RUN-LEDGER.md](RUN-LEDGER.md) | Every run: date, script, args, commit, corpus hash, rows, spend, artifact paths. Generated — edit `RUN-LEDGER.jsonl`. |
+| [RUN-LEDGER.md](RUN-LEDGER.md) | Every completed or reconstructed run through the steer-only probe: date, script, commit, corpus, rows, spend and artifact paths. Generated — edit `RUN-LEDGER.jsonl`. The interrupted v2 build is not a completed run and remains outside the ledger. |
 
 ## The contract screens (which API surface)
 
@@ -41,7 +42,7 @@ was refuted before running.
 | [ENUM-TRAJECTORY-RESULTS.md](ENUM-TRAJECTORY-RESULTS.md) | ENUM on a live trajectory: cheapest-but-one, best coverage, more precise than MAIN |
 | [ENUM-CONFIG-SWEEP-SPEC.md](ENUM-CONFIG-SWEEP-SPEC.md) → [ENUM-CONFIG-SWEEP-RESULTS.md](ENUM-CONFIG-SWEEP-RESULTS.md) | Zero thinking transfers to opus-xhigh; OpenAI structurally unmeasurable by replay |
 | [ENUM-GENERALISATION-SPEC.md](ENUM-GENERALISATION-SPEC.md) → [OPENAI-TRAJECTORY-RESULTS.md](OPENAI-TRAJECTORY-RESULTS.md) | Run A done: ENUM's zero-thinking does NOT transfer to OpenAI (thinks the most there); delivery-type coupling is Claude-specific |
-| [CROSS-TASK-TRAJECTORY-RESULTS.md](CROSS-TASK-TRAJECTORY-RESULTS.md) | Run B done: MAIN &lt; ENUM &lt; F2 cost ordering holds 3/3 tasks; ENUM coverage advantage holds; precision drops to 54% on dispatcher; first false-interrupt data (F2 2, others 0) |
+| [CROSS-TASK-TRAJECTORY-RESULTS.md](CROSS-TASK-TRAJECTORY-RESULTS.md) | Run B done: MAIN &lt; ENUM &lt; F2 cost ordering holds 3/3 tasks; ENUM coverage advantage holds; precision drops to 54% on dispatcher; first quiet-span delivery data (F2 2, others 0) |
 | [TERSE-ENUM-SPEC.md](TERSE-ENUM-SPEC.md) | QUEUED: bullets instead of prose — ENUM's premium is output volume |
 | [STEER-ONLY-SPEC.md](STEER-ONLY-SPEC.md) → [STEER-ONLY-RESULTS.md](STEER-ONLY-RESULTS.md) | Queue deleted (Andreas's proposal): ENUM absorbs it free (40/40 zero-thinking steer), MAIN needs a one-sentence wording repair then pays ~2× thinking, F2 indifferent; the silence was wording, not labels — deliberation attaches to committing a selection, not to the steer label |
 
@@ -61,7 +62,7 @@ was refuted before running.
 |---|---|
 | [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
 | [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
-| [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | RUNNING: two instrument waves before further benchmarks — v1 audit + calibration diagnosis + runner-up freeze, then blind reviews to deepen exporter/dispatcher |
+| [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | **INTERRUPTED / PROVISIONAL** at local checkpoint `d96123b`: candidate version `2b0a85843c9be981`, 75 active (28 blocking), consensus below its registered bar, checker 5/8. No v2 results or freeze exists; resume rather than restart. |
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |
@@ -70,7 +71,7 @@ was refuted before running.
 
 | doc | role |
 |---|---|
-| [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze); run matrix lands as an addendum after the v2 freeze and the steer-only verdict |
+| [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze). Steer-only is complete; the dated run-matrix addendum still waits on a valid v2 freeze. The capstone has not run. |
 
 ## Superseded / historical
 
@@ -95,7 +96,9 @@ text or a better reference set. All are recorded in place:
 
 ## Artifacts
 
-Every run's rows and judgments are frozen under `artifacts/<date>-<name>/`
-with `SHA256SUMS`, mirrored to `~/dev/personal/pi-hydra-frozen-artifacts/`,
-and listed in the run ledger. User prompts across both sessions:
+Completed decision evidence is frozen under `artifacts/<date>-<name>/` where
+available, mirrored to `~/dev/personal/pi-hydra-frozen-artifacts/`, and listed
+in the run ledger with its provenance gaps. The interrupted v2 consensus/build
+state remains in `~/scratch/2026-08-02-golden-v2/` until it is valid enough to
+freeze. User prompts across both sessions:
 `~/main-workspace/notes/side-projects/pi-hydra-user-messages-full.md`.

@@ -9,12 +9,12 @@ job"). End state: Andreas locks in the design(s).
 
 ## What is registered now vs later
 
-The SCORING DESIGN below is registered before any judged coverage
-exists, so the metric cannot be tuned toward an arm after the fact. The
-RUN MATRIX depends on two pending inputs (the golden v2 freeze and the
-steer-only probe verdict) and lands as a dated addendum to this file
-BEFORE any new producer run. Rescoring already-frozen rows needs no
-addendum.
+The SCORING DESIGN below was registered before any judged coverage
+existed, so the metric cannot be tuned toward an arm after the fact. The
+steer-only probe is now complete; it promotes MAIN-SO2 and ENUM-SO2 into
+consideration. The RUN MATRIX still depends on one pending input — a valid
+golden v2 freeze — and lands as a dated addendum to this file BEFORE any
+new producer run. Rescoring already-frozen rows needs no addendum.
 
 ## Scoring design (registered 2026-08-02, before data)
 
@@ -54,7 +54,7 @@ Reading rules, registered with the metric:
   standing rule stands: quality, cost, and delivery-correctness are
   never fused into one number.
 - **Ties on blocking recall** are broken in the verdict sentence,
-  written from any-harm recall, precision, false interrupts, and cost
+  written from any-harm recall, precision, quiet-span deliveries, and cost
   together — judgment stated in plain language, no further formula.
 - **No cross-task summing** (denominators differ): per-task rows plus
   an unweighted mean of per-task rates, labelled as such.
@@ -92,14 +92,15 @@ earlier passes are kept as shakedown artifacts, quoted only for what
 they taught. The evaluator freeze above applies WITHIN an iteration;
 metric changes land between iterations, versioned and documented.
 
-## Run matrix — pending addendum
+## Run matrix — pending v2, then dated addendum
 
 - Zero-spend rescoring against v2 of every frozen trajectory run:
   scheduler (C2, enum-trajectory), cross-task exporter + dispatcher,
   and the sol openai-trajectory rows — the latter is the standing
   missing input (first judged sol coverage), subscription-billed.
-- Fresh producer cells: only those the steer-only verdict earns, each
-  pre-registered here with arms, n, configs, and spend before running.
+- Fresh producer cells: baseline plus only the surviving arms, including the
+  repaired MAIN-SO2 and ENUM-SO2 steer-only candidates. Arms, n, configs, and
+  spend are pre-registered here before running.
 
 ## Boundaries
 

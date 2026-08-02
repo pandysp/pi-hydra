@@ -1,33 +1,30 @@
-# pi-hydra — decision table (2026-08-01, live document)
+# pi-hydra — decision table (2026-08-02, live evidence inventory)
 
-Every measured arm, its cost and its quality, in one place, so the keep/
-drop decision is readable without re-reading the wave docs. Every number
-traces to a frozen artifact via RUN-LEDGER.md. Cells are only compared
-within a measurement basis; bases are named per block.
+Every measured arm, its cost and its quality, in one place. Cells are only
+compared within a named measurement basis. Completed measurements trace to
+RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
 
-## READ FIRST — every "quality" number here uses the OLD definition
+> **CURRENT STATUS.** Golden v1 (`4ea27b0018705940`) is the valid ruler: 46
+> active issues, 17 blocking. Golden v2 is only a local provisional candidate
+> (`2b0a85843c9be981`): 75 active, 28 blocking, consensus below its registered
+> bar, checker 5/8. The capstone benchmark against v2 has not run. No arm or
+> provider contract is locked in. Finish and freeze v2, add the registered run
+> matrix, then run 2–3 look-at-the-data iterations before deciding.
 
-`findingQuality` = the message identified THE ONE seeded finding for that
-case, and the claim is supported. Both judges must agree. That is
-PRECISION ON A PRE-LOCALISED FINDING. It is structurally unable to
-express recall (one `findingTarget` per case across all 35 judged cases;
-extra real findings are penalised by the strict variant, never rewarded;
-median case 949 chars vs 19-38k-token real trajectories).
+## READ FIRST — quality bases differ
 
-So every quality claim below should be read as "best at identifying the
-single planted finding", NOT "finds the most real issues". This
-definition is UNDER ACTIVE CHALLENGE (SEVERITY-PROBE-SPEC v1/v2). If
-severity pooling becomes viable, the frozen artifacts should be
-RE-SCORED under it — zero producer spend, every delivered message is
-already stored.
+The early screen blocks use `findingQuality`: whether the message identifies
+the one pre-localised seeded finding and supports the claim. That measures
+precision on short cases, not recall across a real trajectory. One target per
+case, a median 949-character trajectory, and penalties for extra findings make
+those blocks structurally unable to answer “which arm finds the most real
+issues?”
 
-Not affected: routing/bucket numbers (judge-free comparison of chosen vs
-expected delivery) — though those depend on corpus expected-labels, which
-are assigned by fiat and have produced contested cases twice.
-
-Directional hint against MAIN that the current metric cannot see
-(severity v1): MAIN raised 5 issues both judges called NOT REAL, vs F 2
-and F2 1. A precision-aware metric would charge for that.
+The later trajectory blocks and golden-v1 section use deliberated issue sets
+and message-level credit. They can report blocking recall, any-harm recall and
+precision, but they still predate the unfinished v2 expansion. Routing and cost
+remain separate axes throughout. Read each block under its stated basis; never
+carry a screen ranking into a trajectory or production claim.
 
 ## The arms
 
@@ -37,7 +34,7 @@ and F2 1. A precision-aware metric would charge for that.
 | J | MAIN's JSON shape + the unified envelope | refuted at medium (sonnet routing never moved) |
 | F0 | natural finding + DELIVERY footer + the unified envelope | incumbent challenger; carries the user-actor defect |
 | F1 | F0 + the semantic repair (selection, print, dedup scope, re-liveness) | quality fixed, thinking-neutral |
-| F2 | F1's semantics as an ordered first-match checklist + "do not deliberate" | current lead |
+| F2 | F1's semantics as an ordered first-match checklist + "do not deliberate" | historical screen leader; not a lock-in verdict |
 | F3 | F2's semantics at maximum decidability (62% longer than F2, on purpose) | REFUTED as a cost lever (+7.6% thinking); safe but pointless |
 
 ## Quality — fresh user-actor corpus, judged (opus-high, n=12 judged rows/arm)
@@ -140,7 +137,7 @@ closed by neither and stays open.
 
 Both MAIN and F0 replicate across two independent driver runs.
 
-### COVERAGE: RETRACTED TWICE, NOW UNSCORED PENDING JUDGES
+### Historical coverage retraction — later superseded by golden v1
 
 I published planted-defect coverage from a KEYWORD MATCH (does the
 delivered message contain the defect's function name while the defect is
@@ -170,31 +167,31 @@ So the earlier claims "the envelope catches the defect MAIN misses" and
 "F2 alone is 4/4" are BOTH WITHDRAWN. They were artifacts of the keyword
 matcher, published three times before I read the underlying text.
 
-What stands: no coverage claim is defensible without JUDGED scoring. The
-S1 multi-label coverage judge ("which of these planted defects does this
-message identify?") makes neither error. It is built and unfunded, and it
-is now a precondition for any recall claim in this program.
+At this stage no coverage claim was defensible without judged scoring. Golden
+v1 later supplied that ruler and rescored the frozen rows; see the current
+golden-v1 section below. The retraction remains here because it explains why
+keyword coverage must never return.
 
-## Reading it
+## Historical reading before golden v1 and provider generalisation
 
-- **OpenAI (goal 1): settled.** F0 already beats MAIN on quality and cost
-  at medium, high and xhigh. F2 improves quality further. No premium to
-  justify.
-- **Anthropic (goal 3): the trade is real and quantified.** F2 buys +25pp
-  routing, target 75->100, print channel working, MAIN-equal finding
-  quality — for +26.5pp of driver cost at session scale (was +35.2pp).
-- **The bar it misses** is the pre-registered <=15pp shape test. The open
-  lever is decidability (F3).
-- **J is dead ON ANTHROPIC ONLY**: refuted at sonnet-medium, and its
-  xhigh cost advantage did not survive realistic prefixes. On OPENAI it
-  is the judged quality winner at high and xhigh (92.3 fq vs F0's 80.8).
-  Withdrawn as a global verdict.
+- The short screens made F0/F2 look settled on OpenAI and quantified an
+  Anthropic routing-versus-cost trade. Those are screen-scoped findings, not a
+  final product decision.
+- F3 failed as a cost lever. J was refuted on Anthropic but later won the judged
+  OpenAI screen, so “J is dead” remains withdrawn as a global verdict.
+- Later real trajectories changed the picture: ENUM is cheap on Claude but the
+  expensive arm on OpenAI, and cross-task precision varies sharply.
 
-## Pending cells
+Do not lock a design from this historical reading. The current decision waits
+for valid v2 and the capstone table.
 
-opus-xhigh confirmation of F1/F2/F3; judged quality for sol configs;
-fable (blocked on a refusal probe); F3 everywhere; acting-head arms
-under the repaired envelope.
+## Remaining cells
+
+Completed later in this document: opus-high/xhigh cost work, judged sol screens,
+real OpenAI trajectories, cross-task trajectories, golden v1 and steer-only.
+Still open or deferred: valid golden v2, the capstone run matrix and iterations,
+fable's refusal-gated verdict, acting-head confirmation, and the final shipped-
+text confirmation.
 
 ## Instrument limitation found 2026-08-01 — why the screens could not see this
 
@@ -215,16 +212,15 @@ Verified in code and corpus:
    949-char case the defect is legible in one pass — exactly the
    condition under which MAIN answers correctly with ZERO thinking.
 
-So: screens measure PRECISION on a salient, pre-localised finding;
-the trajectory measures RECALL across a real haystack. MAIN is genuinely
-good at the first (91.7-96.2 findingQuality) and worse at the second
-(3/4 planted defects vs the envelope's 4/4). The screens are not wrong —
-they are scoped to a question that systematically favours snap judgment.
+So: screens measure precision on a salient, pre-localised finding; trajectories
+are where recall across a real haystack becomes measurable. The screens are not
+wrong, but their scope systematically favours snap judgment. The earlier 3/4
+versus 4/4 planted comparison was itself withdrawn after the raw messages were
+read; golden-v1 credit later replaced it.
 
-Consequence: the trajectory benchmark's planted-defect coverage (built,
-S1 judging unfunded) is the metric that matches what observers are FOR.
-Funding it is the highest-value next measurement in this program, ahead
-of any further contract iteration.
+Consequence at the time: build a judged trajectory ruler before further
+contract iteration. That work produced golden v1. The current consequence is
+to finish v2 and run the already-registered capstone.
 
 ## No-steer probe (2026-08-01) — the cost mechanisms DISSOCIATE
 
@@ -265,12 +261,12 @@ Still open:
 - One prefix, one task moment, and that moment is a DOC-WRITING task
   where enumeration is the natural response. Transfer to a code-writing
   moment is untested.
-- Driver-side cost of promoting every queue to steer is an untested
+- Driver-side effect and cost of promoting every queue to steer is an untested
   hypothesis (open-loop harness cannot see it).
 
 Hypothesis it raises, bigger than the label: the expensive act is
-SELECTION (pick the one most urgent thing AND justify interrupting),
-not FINDING. Enumeration is cheaper and more complete. If that holds,
+SELECTION (pick one most urgent finding under the old high-bar delivery
+wording), not FINDING. Enumeration is cheaper and more complete. If that holds,
 the cheap high-coverage design lets observers enumerate and lets the
 runtime triage — a product direction, not a wording tweak.
 
@@ -398,7 +394,7 @@ same ceiling reached two ways.
 
 Limits: n=1 trajectory; ONE blocking issue in the pool, so that column
 flips on a single judgment; quiet span 2 points vs 3 required, so
-false-interrupt rate is unmeasurable here; both baselines shifted vs C2
+quiet-span delivery rate is unmeasurable here; both baselines shifted vs C2
 (different driver run) — the paired within-run comparison is the load-
 bearing one.
 
@@ -422,12 +418,11 @@ every cell; the one parse failure was F2's.
 Cost, long prefix: MAIN $0.0233, ENUM $0.0339, F2 $0.0653 — ENUM 48%
 below F2.
 
-**OpenAI NOT measured, structurally.** Recorded payloads ARE Anthropic
-API requests and the merge path is Anthropic-typed, so replay against GPT
-is impossible; it needs a real codex driver run. Funded and running
-(ENUM-GENERALISATION-SPEC). The agent correctly refused the available
-shortcut — the frozen-case harness supports sol but answers on ~800-token
-prefixes, and every cost effect here moves with prefix length.
+**At this stage OpenAI was not measured.** Recorded payloads are Anthropic API
+requests and cannot be replayed against GPT, so the comparison required a real
+codex driver run. That run later completed; the next block records the result.
+The refused shortcut was still correct: the frozen-case sol harness answers on
+~800-token prefixes, while every cost effect here moves with prefix length.
 
 **ENUM's established scope: opus-high and opus-xhigh; cross-task
 generalisation measured 2026-08-02 — see the cross-task block below.**
@@ -499,7 +494,7 @@ ENUM was the only arm to raise golden exporter blockers (the CR
 quote-class and NaN-limit defects). **Disclosed cost: ENUM's precision
 drops to 54% on the dispatcher** (13/28 not-real, mostly test-coverage
 nitpicks) — "more precise than MAIN" was a scheduler observation, not a
-property of enumeration. First false-interrupt data in the program: F2
+property of enumeration. First quiet-span delivery data in the program: F2
 steered twice inside the dispatcher's quiet span; MAIN and ENUM zero on
 both tasks. Known open calibration item: this run's two-judge pools sit
 one tier below golden-v1 (serious vs blocking) on all three exporter
@@ -547,3 +542,20 @@ differences between arms, is the headline: contract tuning moves recall
 by single issues while the pool holds eight blockers nobody surfaces.
 Heterogeneous lenses (his "different heads") and coverage-first contracts
 are the levers that could reach it.
+
+## Golden dataset v2 — interrupted, not a ruler (2026-08-02)
+
+Local checkpoint `d96123b` contains provisional version
+`2b0a85843c9be981`: 75 active issues (28 blocking, 47 harmful) and 61 recorded
+rejections across scheduler, exporter and dispatcher. It must not be cited as
+golden v2. Novel consensus is 62/67, rejudge consensus 4/5, and
+`golden-dataset.check.mjs` passes only 5/8 invariants; schema,
+rejected-reason vocabulary and anchor resolution still fail. There is no
+`GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
+
+## Capstone benchmark — not run
+
+`BENCHMARK-SPEC.md` freezes the scoring design and 2–3 iteration protocol.
+The steer-only input is complete; the dated run-matrix addendum still waits on
+a valid v2 freeze. No baseline/arm table against v2 and no design lock-in
+exist.

@@ -28,7 +28,7 @@ Frontmatter keys:
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
-There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model; that is what makes observation cost ~1% of what the agent paid.
+There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model. That is the constraint that makes the replay a cache read rather than a context rebuild, and it is why a head cannot be given a stronger model than the driver's.
 
 ## Where heads live
 
