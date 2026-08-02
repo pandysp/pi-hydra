@@ -1905,7 +1905,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total cache write: ${write.toLocaleString()} tokens`,
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
-					`  delivery groups: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
+					`  decision groups: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,
