@@ -31,8 +31,13 @@ observation point of a run leave that run's denominator):
    issues; the absolute both-judges-not-real count is reported beside
    it (13 noisy queue items and 3 noisy queue items are different
    products at the same ratio).
-4. **false interrupts** — steer/interrupt deliveries inside the task's
-   pre-registered quiet span.
+4. **quiet-span deliveries** — driver-visible deliveries
+   (steer/interrupt) inside the task's pre-registered quiet span.
+   Semantics note (Andreas, 2026-08-02): a steer is NOT a disruption —
+   it folds into the driver's work at the next checkpoint. This column
+   therefore measures unneeded feedback reaching the driver, not
+   interruption; earlier docs' "false interrupts" label carries the
+   same definition under a misleading name.
 5. **costs** — $/observation (production-priced) and observer$/driver$
    across the trajectory, from the run's own usage records.
 
