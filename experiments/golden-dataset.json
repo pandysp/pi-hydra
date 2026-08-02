@@ -10,6 +10,7 @@
     "converged": 62,
     "total": 67
    },
+   "precision": null,
    "rejudge": {
     "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-rejudge",
     "seedStateDir": null,
@@ -28,12 +29,19 @@
   "consensus": {
    "novel": {
     "converged": 62,
-    "total": 67
+    "total": 67,
+    "baseConverged": 62,
+    "precisionConverged": 0
    },
    "rejudge": {
     "converged": 4,
     "total": 5
    }
+  },
+  "stableDissent": {
+   "rejudge": [
+    "RD04"
+   ]
   }
  },
  "sourceReports": 145,
@@ -5044,7 +5052,9 @@
   "convergence": {
    "novel": {
     "converged": 62,
-    "total": 67
+    "total": 67,
+    "baseConverged": 62,
+    "precisionConverged": 0
    },
    "rejudge": {
     "converged": 4,

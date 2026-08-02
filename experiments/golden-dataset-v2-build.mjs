@@ -7,7 +7,7 @@
  * `--allow-provisional` escape hatch exists only to repair and validate an
  * interrupted checkpoint; it marks the output provisional in-band.
  */
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,13 +29,54 @@ const SOURCE = { P: "planted", R: "reference-review", C: "code-review", O: "obse
 const novel = assemble(`${P}/consensus-novel`, null, RUN_ID);
 const rejudge = assemble(`${P}/consensus-rejudge`, null, RUN_ID);
 const novelState = JSON.parse(readFileSync(`${P}/consensus-novel/issues.json`, "utf8")).issues;
+const precisionStateDir = `${P}/consensus-precision`;
+const precision = existsSync(`${precisionStateDir}/consensus.json`)
+	? assemble(precisionStateDir, null, RUN_ID)
+	: null;
+const novelConsensus = JSON.parse(readFileSync(`${P}/consensus-novel/consensus.json`, "utf8"));
+const novelOpen = new Set(novelConsensus.rounds[novel.builtFrom.finalRound].open);
+
+const sameSet = (a, b) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
+if (precision) {
+	const precisionIssues = JSON.parse(readFileSync(`${precisionStateDir}/issues.json`, "utf8")).issues;
+	if (precisionIssues.length !== 2 || precision.builtFrom.total !== 2) throw new Error("precision state must contain exactly the registered CL38 and CL52 questions");
+	if (precisionIssues.map((issue) => issue.id).sort().join(",") !== "CL38,CL52") throw new Error("precision state ids drifted from CL38,CL52");
+	for (const repaired of precisionIssues) {
+		const original = novelState.find((issue) => issue.id === repaired.replaces);
+		if (!original) throw new Error(`${repaired.id}: replacement target ${repaired.replaces} is absent from the novel state`);
+		if (!novelOpen.has(repaired.replaces)) throw new Error(`${repaired.id}: replacement target ${repaired.replaces} was not an unresolved original question`);
+		const oldRecord = [...novel.issues, ...novel.rejected].find((record) => sameSet(record.members ?? [], original.members ?? []));
+		const newRecord = [...precision.issues, ...precision.rejected].find((record) => sameSet(record.members ?? [], repaired.members ?? []));
+		if (!oldRecord || !newRecord) throw new Error(`${repaired.id}: could not route precision replacement by frozen members`);
+		novel.issues = novel.issues.filter((record) => record !== oldRecord);
+		novel.rejected = novel.rejected.filter((record) => record !== oldRecord);
+		newRecord.precisionRepair = {
+			replaces: repaired.replaces,
+			previousStatement: oldRecord.statement,
+			stateDir: precisionStateDir.replace(process.env.HOME, "~"),
+		};
+		(newRecord.status === "active" ? novel.issues : novel.rejected).push(newRecord);
+	}
+}
+
+const precisionConverged = precision?.builtFrom.converged ?? 0;
 const convergence = {
-	novel: { converged: novel.builtFrom.converged, total: novel.builtFrom.total },
+	novel: {
+		converged: novel.builtFrom.converged + precisionConverged,
+		total: novel.builtFrom.total,
+		baseConverged: novel.builtFrom.converged,
+		precisionConverged,
+	},
 	rejudge: { converged: rejudge.builtFrom.converged, total: rejudge.builtFrom.total },
 };
-const belowBar = Object.entries(convergence).filter(([, result]) => result.converged / result.total < 0.95);
-if (belowBar.length > 0 && !ALLOW_PROVISIONAL) {
-	throw new Error(`refusing final v2 build below the registered 95% consensus bar: ${belowBar.map(([name, result]) => `${name} ${result.converged}/${result.total}`).join(", ")} (use --allow-provisional only for recovery/checker work)`);
+const rejudgeConsensus = JSON.parse(readFileSync(`${P}/consensus-rejudge/consensus.json`, "utf8"));
+const rejudgeRound = rejudgeConsensus.rounds[rejudge.builtFrom.finalRound];
+if (JSON.stringify(rejudgeRound.open) !== JSON.stringify(["RD04"])) {
+	throw new Error(`rejudge termination changed: expected stable RD04 dissent, got ${(rejudgeRound.open ?? []).join(",")}`);
+}
+const belowBar = convergence.novel.converged / convergence.novel.total < 0.95;
+if (belowBar && !ALLOW_PROVISIONAL) {
+	throw new Error(`refusing final v2 build below the registered 95% novel-consensus bar: ${convergence.novel.converged}/${convergence.novel.total} (use --allow-provisional only for recovery/checker work)`);
 }
 
 // inheritCredit: the removed EXP-c-12's five pool credits re-route onto the
@@ -50,8 +91,6 @@ for (const rec of [...rejudge.issues, ...rejudge.rejected]) {
 	rec.members = [...rec.members, ...credit];
 	rec.provenance = [...new Set([...(rec.provenance ?? []), ...credit.map((m) => SOURCE[m[0]])])].sort();
 }
-
-const sameSet = (a, b) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
 
 // RULING 2 repair for the clusterer's under-merge (triaged harness-bug): the
 // judges rate each statement as stated per the rubric, so cross-record
@@ -147,19 +186,20 @@ for (const [target, srcs] of Object.entries(creditFile.credit)) {
 if (Object.keys(edits.addMembers).length === 0) throw new Error("addMembers empty after routing — expected ~11 credited records");
 
 const addition = {
-	builtFrom: { novel: novel.builtFrom, rejudge: rejudge.builtFrom, runId: RUN_ID },
+	builtFrom: { novel: novel.builtFrom, precision: precision?.builtFrom ?? null, rejudge: rejudge.builtFrom, runId: RUN_ID },
 	issues: [...novel.issues, ...rejudge.issues],
 	rejected: [...novel.rejected, ...rejudge.rejected],
 };
 const merged = mergeDatasets(base, addition, edits);
 merged.builtFrom.baseCommit = BASE_COMMIT;
 merged.builtFrom.consensus = convergence;
-if (belowBar.length > 0) {
+if (belowBar) {
 	merged.provisional = {
 		reason: "below the registered 95% consensus bar",
 		convergence,
 	};
 }
+merged.builtFrom.stableDissent = { rejudge: ["RD04"] };
 
 // Schema repair is editorial source metadata only: it changes no statement,
 // vote, tier, status, or dataset content version. Every anchor names its exact
