@@ -31,6 +31,14 @@ construction and are among the most valuable things an observer catches.
     anchors           { expression, declaration, identifier } for liveness
     tier              blocking | harmful          (the two RELIABLE axes;
                       never the 4-level scale, 61.9% agreement)
+    reachable         whether the defective path is reached in-repo
+                      (RULING 1 promised this field; the v1 audit found
+                      the pipeline never wrote it — added for v2)
+    precondition      caller behavior required to trigger harm, if any
+                      (RULING 4; null when the defect fires unaided)
+    frame             seed | session — the state the issue is judged
+                      against (RULING 3 made mechanical; v1 routed frames
+                      by a symptom filter and missed two records)
     provenance        planted | reference-review | promoted
     promotedFrom      runId + date, when provenance = promoted
     votes             { sol, opus, analyst } at promotion time
@@ -130,3 +138,42 @@ consensus run so labels are produced under it from round 1.
 Consequence if wrong: the set over-records defects a real deployment
 would never ship (they were fixed in-session). The per-record liveness
 windows and `firstSeen` keep that auditable.
+2026-08-02 addendum: folded into the rubric text (18b5627). The v1 build
+routed frames by a SYMPTOM filter (judges rejecting on driver-repair
+reasons), which the audit showed misses the accept direction (a driver
+ADDITION manufacturing a defect: SCHED-r-d22) and the silent-concession
+case (SCHED-r-d04). v2 routes mechanically: every pool candidate carries
+`frame: seed | session` derived from its provenance at pool time.
+
+**RULING 4 — CALLER-SIDE PRECONDITIONS (analyst, 2026-08-02,
+reversible).** A defect's tier is rated under the interaction its
+statement names, provided the public contract does not forbid that
+interaction. "A caller mutates a record it fetched" is part of
+as-if-executed, exactly as RULING 1 treats "a caller reaches the
+exported function"; the required caller behavior is recorded in the
+`precondition` field, separate from the tier, so the discount stays
+visible and re-scorable. A precondition the contract explicitly forbids
+(a documented "do not mutate") DOES discount — violating a stated
+contract is the caller's defect, not this record's.
+Surfaced by the v1 audit: the ungoverned discount ("the reference alone
+produces no incorrect behavior") carried both standing dissents
+(SCHED-r-d20, SCHED-r-d37) and several rejection margins, deciding
+labels without ever being ruled. Scope: all labels produced after the
+fold, plus ONE confirmation round for the two dissent-carrying records —
+the RULING 1 precedent (the C2 lease-clock dissent dissolved the same
+way once the convention entered the rubric).
+Consequence if wrong: we over-tier defects whose harm requires unusual
+but legal caller behavior; `precondition` keeps that auditable.
+
+## Build conventions added by the v1 audit (2026-08-02)
+
+- A source report that bundles independent defective expressions SPLITS
+  into multiple pool candidates under RULING 2 (v1's one-report-one-
+  cluster contract bundled EXP-c-12's two defects and dropped a
+  provenance on SCHED-o-g08).
+- Rejection reasons carry a two-value vocabulary: `not a real defect`
+  vs `real, individuated onto <id> under RULING 2` (v1 hardcoded the
+  first for all 26).
+- New records enter with anchors; v1's anchors cover only the 10
+  planted records, which is what let a two-defect bundle and a
+  mis-scoped statement through the offline guard.
