@@ -41,6 +41,7 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 30 | 2026-08-01 | `2026-08-01-enum-trajectory` | (recorded by hand) | bf6f400284738c43594371f2f69489dea21997cd (dirty) | — | 125 | 0 | $2.2723 | `experiments/artifacts/2026-08-01-enum-trajectory` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-enum-trajectory | — | measured |
 | 31 | 2026-08-01 | `2026-08-01-enum-config-sweep` | experiments/adaptive-skip-probe.mjs | 46dc6f96a73e1dfd7536a8879deca69163ad5771 | recorded-payload-replay (trajectory pilot) | 60 | 0 | $2.2197 | `experiments/artifacts/2026-08-01-enum-config-sweep/` | ~/dev/personal/pi-hydra-frozen-artifacts/2026-08-01-hydra-enum-config-sweep | experiments/ENUM-CONFIG-SWEEP-RESULTS.md | measured |
 | 32 | 2026-08-02 | `2026-08-02-openai-trajectory` | (recorded by hand) | 62474c2cf67109a9d1a130c06a4b7620d4386558 (dirty) | — | 199 | 0 | $3.2019 | `experiments/artifacts/2026-08-02-openai-trajectory` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-openai-trajectory | experiments/OPENAI-TRAJECTORY-RESULTS.md | measured |
+| 33 | 2026-08-02 | `2026-08-02-golden-dataset-v1` | (recorded by hand) | fa4bb1e54d2f25d5b53cd36e5ef205ac59772ec3 (dirty) | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-02-golden-dataset-v1` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-golden-dataset-v1 | experiments/GOLDEN-DATASET-V1-RESULTS.md | measured |
 
 **Program totals: 11061 producer rows, 10399 judgments, $72.10 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $93.90.
 
@@ -79,6 +80,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-01-consensus`: Three-participant deliberation to convergence. 42.9%->95.2%; zero authority-driven changes; s01 unresolved 2-1 on a reachability convention. Round-1 first attempt was invalidated by a prompt defect (seeded code instead of codeContext) and re-run.
 - `2026-08-01-enum-config-sweep`: sol-high/sol-xhigh NOT RUN: recorded payloads are Anthropic-shaped; the replay instrument has no OpenAI path (structural, documented in the results doc)
 - `2026-08-02-openai-trajectory`: OpenAI trajectory runs (ENUM-GENERALISATION runs A): scheduler x sol-high + sol-xhigh, arms MAIN/F2/ENUM paired at production points. N1 REFUTED: ENUM's zero-thinking does not transfer to OpenAI (2 skips in 92 valid obs; ENUM thinks the MOST); thinking does not track delivery type on sol. N2: ratios sol-high 51/57/69%, sol-xhigh 59/64/88% (MAIN/F2/ENUM) — denominator half of opus's; absolute per-obs cost comparable. N4: contracts followed (ENUM 2.12-3.00 findings/msg, format 100%). 25 cache-floor exclusions: 20 structural small-prefix quantization, 4 stochastic backend loss (~5%), 1 websocket error.
+- `2026-08-02-golden-dataset-v1`: golden dataset v1 build: 90 candidates -> 72 clustered -> 46 active (17 blocking), 2 dissents; RULING 3 frame repair mid-protocol; zero producer spend. treeDirty = sibling fork's in-progress files, not this run's
 
 ## Reading the frozen evidence
 
