@@ -89,6 +89,11 @@ function readExisting(path) {
 	};
 }
 
+export function stableJudgeHeader(header) {
+	const { ts: _ts, codeCommit: _codeCommit, codeDirty: _codeDirty, ...stable } = header;
+	return stable;
+}
+
 async function judgeBatch({ batch, model, credential, prices }) {
 	const visible = batch.candidates.map(({ key, reason, message }) => ({ key, reason, message }));
 	const prompt = buildStudyJudgePrompt({ testCase: batch.testCase, candidates: visible });
@@ -142,7 +147,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const rowsPath = argOf(args, "--rows", "");
 	const output = argOf(args, "--output", "");
 	const dryRun = args.includes("--dry-run");
+	const concurrency = Number.parseInt(argOf(args, "--concurrency", "1"), 10);
+	const executionCeiling = Number.parseFloat(
+		argOf(args, "--execution-ceiling", String(STUDY_JUDGE_SPEC.spendCeilingUsd)),
+	);
+	const runnerContinuation = args.includes("--runner-continuation");
+	const continuationNote = argOf(args, "--note", "");
 	if (!rowsPath || (!dryRun && !output)) throw new Error("--rows and --output are required (output may be omitted with --dry-run)");
+	if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
+	if (!Number.isFinite(executionCeiling) || executionCeiling < STUDY_JUDGE_SPEC.spendCeilingUsd) {
+		throw new Error(`--execution-ceiling must be at least ${STUDY_JUDGE_SPEC.spendCeilingUsd}`);
+	}
+	if ((runnerContinuation || executionCeiling > STUDY_JUDGE_SPEC.spendCeilingUsd) && !continuationNote) {
+		throw new Error("runner continuation or ceiling extension requires --note");
+	}
 	const producerBytes = readFileSync(rowsPath);
 	const rows = readProducerRows(rowsPath);
 	const batches = buildJudgeBatches(rows);
@@ -173,40 +191,67 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	}
 	const existing = readExisting(output);
 	if (existing.header) {
-		const withoutTs = ({ ts: _ts, ...rest }) => rest;
-		if (JSON.stringify(withoutTs(existing.header)) !== JSON.stringify(withoutTs(header))) {
+		if (JSON.stringify(stableJudgeHeader(existing.header)) !== JSON.stringify(stableJudgeHeader(header))) {
 			throw new Error(`${output} judge header drifted`);
+		}
+		if (existing.header.codeCommit !== header.codeCommit && !runnerContinuation) {
+			throw new Error(`${output} runner commit changed; pass --runner-continuation --note after verifying the judge protocol is unchanged`);
 		}
 	} else if (existsSync(output)) {
 		throw new Error(`${output} exists without a judge header`);
 	} else {
 		appendFileSync(output, `${JSON.stringify(header)}\n`);
 	}
+	if (runnerContinuation || executionCeiling > STUDY_JUDGE_SPEC.spendCeilingUsd || concurrency > 1) {
+		appendFileSync(
+			output,
+			`${JSON.stringify({
+				kind: "openai-protocol-study-judge-runner-continuation",
+				fromCodeCommit: existing.header?.codeCommit ?? header.codeCommit,
+				toCodeCommit: header.codeCommit,
+				judge: STUDY_JUDGE_SPEC,
+				concurrency,
+				executionCeiling,
+				note: continuationNote,
+				ts: Date.now(),
+			})}\n`,
+		);
+	}
 
 	let spend = existing.spend;
 	let errors = 0;
-	for (const batch of batches) {
-		if (existing.done.has(batch.id)) continue;
-		if (spend >= STUDY_JUDGE_SPEC.spendCeilingUsd) throw new Error(`judge spend ceiling reached at $${spend.toFixed(4)}`);
-		let row;
-		try {
-			row = await judgeBatch({ batch, model, credential, prices });
-			errors = row.error ? errors + 1 : 0;
-		} catch (error) {
-			errors++;
-			row = {
-				kind: "openai-protocol-study-judge-batch",
-				batchId: batch.id,
-				caseId: batch.testCase.id,
-				candidates: batch.candidates,
-				error: error instanceof Error ? error.message : String(error),
-				ts: Date.now(),
-			};
+	const pending = batches.filter((batch) => !existing.done.has(batch.id));
+	let cursor = 0;
+	let stopError = null;
+	async function worker() {
+		while (!stopError && cursor < pending.length) {
+			if (spend >= executionCeiling) {
+				stopError = new Error(`judge execution ceiling reached at $${spend.toFixed(4)}`);
+				return;
+			}
+			const batch = pending[cursor++];
+			let row;
+			try {
+				row = await judgeBatch({ batch, model, credential, prices });
+				errors = row.error ? errors + 1 : 0;
+			} catch (error) {
+				errors++;
+				row = {
+					kind: "openai-protocol-study-judge-batch",
+					batchId: batch.id,
+					caseId: batch.testCase.id,
+					candidates: batch.candidates,
+					error: error instanceof Error ? error.message : String(error),
+					ts: Date.now(),
+				};
+			}
+			appendFileSync(output, `${JSON.stringify(row)}\n`);
+			spend += row.cost ?? 0;
+			process.stderr.write(`${batch.id}: ${row.error ? `ERROR ${row.error}` : `${row.judgments.length} judged, $${row.cost.toFixed(4)}`}\n`);
+			if (errors >= 3) stopError = new Error("three consecutive judge errors; stopping");
 		}
-		appendFileSync(output, `${JSON.stringify(row)}\n`);
-		spend += row.cost ?? 0;
-		process.stderr.write(`${batch.id}: ${row.error ? `ERROR ${row.error}` : `${row.judgments.length} judged, $${row.cost.toFixed(4)}`}\n`);
-		if (errors >= 3) throw new Error("three consecutive judge errors; stopping");
 	}
+	await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, () => worker()));
+	if (stopError) throw stopError;
 	appendFileSync(output, `${JSON.stringify({ kind: "openai-protocol-study-judge-end", spend, ts: Date.now() })}\n`);
 }

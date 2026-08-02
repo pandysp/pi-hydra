@@ -86,6 +86,26 @@ mechanism cannot inherit a specific unstated consequence. The runner uses one
 `gpt-5.6-sol` xhigh pass in batches of at most eight, preserves each raw reply,
 resumes by batch id, and stops at $6 or three consecutive errors.
 
+### Runner-only continuation (registered after cost, before further judgments)
+
+The first two immutable eight-finding batches completed cleanly, costing
+$0.16024 and $0.19824 and taking roughly two minutes each. That projects beyond
+the original $6 safety ceiling and makes serial execution unnecessarily long.
+No judgment content has been used to alter the protocol. The continuation
+therefore changes execution only:
+
+- same producer rows and blind keys;
+- same byte-identical prompt builder and parser;
+- same Sol xhigh judge and batch size 8;
+- concurrency 3 instead of 1;
+- recorded execution ceiling $12 instead of $6.
+
+The existing two batches remain authoritative and are not replayed. The runner
+accepts code-provenance drift only with `--runner-continuation --note`, while
+still refusing any judge, producer-hash, batch-id, price, or matrix drift. It
+appends the old/new code commits, concurrency, ceiling, and reason before
+resuming. This is throughput and budget authorization, not an evaluator change.
+
 No wording changes after output, no known-case tuning, no answer keys in the
 prompt, and no evaluator change that rescues an arm. Exact prompts, hashes,
 matrix size, and stop rules must be appended here before the first call.
