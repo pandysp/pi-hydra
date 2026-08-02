@@ -1,6 +1,6 @@
 # experiments/ — index
 
-47 documents. This is the map. `README.md` documents the original cache
+48 documents. This is the map. `README.md` documents the original cache
 probes only and predates almost all of this; start here instead.
 
 Convention: every measurement has a SPEC (pre-registered before data) and
@@ -60,6 +60,7 @@ was refuted before running.
 |---|---|
 | [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
 | [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
+| [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | RUNNING: two instrument waves before further benchmarks — v1 audit + calibration diagnosis + runner-up freeze, then blind reviews to deepen exporter/dispatcher |
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |
