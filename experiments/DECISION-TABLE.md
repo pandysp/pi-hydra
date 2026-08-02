@@ -506,6 +506,32 @@ one tier below golden-v1 (serious vs blocking) on all three exporter
 blockers; flagged, neither instrument preferred. 2 of 6 planted defects
 across the two tasks were missed by every arm.
 
+## Steer-only — queue deleted from the vocabulary (2026-08-02)
+
+(experiments/STEER-ONLY-RESULTS.md, artifacts 2026-08-02-steer-only;
+recorded-payload point L=20,165, n=10/cell, opus-high AND opus-xhigh,
+$5.70. Andreas's proposal: steer absorbs queue.)
+
+| variant | delivery | thinking |
+|---|---|---|
+| MAIN-SO (original wording) | none 20/20 — **SILENT** | 0, nothing delivered |
+| MAIN-SO2 (one-sentence repair) | steer 20/20, grounded | **~2× same-run MAIN** (696/870 vs 349/463) |
+| ENUM-SO and ENUM-SO2 | steer 20/20 each | **0 on all 40 rows** |
+| F2-SO | steer 10/10, unchanged | usual band |
+
+Reading: the label collapse is FREE for ENUM, costs MAIN ~2× thinking
+(every delivery now pays the selection-commitment that queue used to
+avoid), and F2 is indifferent. MAIN's total silence under the original
+wording was the PROMPT (a high act-on bar beside the interrupt ladder,
+nothing saying steer is the normal channel), not the label set — the
+repair is one sentence: "Steering is the normal and only way to reach
+the agent and folds in at its next checkpoint." Mechanism refinement:
+deliberation attaches to COMMITTING a selected delivery, not to the
+steer label itself. Both vocabularies are instruction text over the
+same footer parser — no code branch either way. Benchmark carries
+MAIN-SO2 and ENUM-SO2 as the steer-only arms. Runtime wording sites for
+after lock-in: utils.ts:394/402/433/446.
+
 ## Golden dataset v1 — the regression ruler exists (2026-08-02)
 
 (experiments/GOLDEN-DATASET-V1-RESULTS.md, `golden-dataset.json` version

@@ -1,6 +1,6 @@
 # experiments/ — index
 
-49 documents. This is the map. `README.md` documents the original cache
+51 documents. This is the map. `README.md` documents the original cache
 probes only and predates almost all of this; start here instead.
 
 Convention: every measurement has a SPEC (pre-registered before data) and
@@ -43,6 +43,7 @@ was refuted before running.
 | [ENUM-GENERALISATION-SPEC.md](ENUM-GENERALISATION-SPEC.md) → [OPENAI-TRAJECTORY-RESULTS.md](OPENAI-TRAJECTORY-RESULTS.md) | Run A done: ENUM's zero-thinking does NOT transfer to OpenAI (thinks the most there); delivery-type coupling is Claude-specific |
 | [CROSS-TASK-TRAJECTORY-RESULTS.md](CROSS-TASK-TRAJECTORY-RESULTS.md) | Run B done: MAIN &lt; ENUM &lt; F2 cost ordering holds 3/3 tasks; ENUM coverage advantage holds; precision drops to 54% on dispatcher; first false-interrupt data (F2 2, others 0) |
 | [TERSE-ENUM-SPEC.md](TERSE-ENUM-SPEC.md) | QUEUED: bullets instead of prose — ENUM's premium is output volume |
+| [STEER-ONLY-SPEC.md](STEER-ONLY-SPEC.md) → [STEER-ONLY-RESULTS.md](STEER-ONLY-RESULTS.md) | Queue deleted (Andreas's proposal): ENUM absorbs it free (40/40 zero-thinking steer), MAIN needs a one-sentence wording repair then pays ~2× thinking, F2 indifferent; the silence was wording, not labels — deliberation attaches to committing a selection, not to the steer label |
 
 ## The quality metric (how to score an observation at all)
 
