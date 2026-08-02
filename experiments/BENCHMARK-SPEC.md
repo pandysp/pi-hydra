@@ -63,6 +63,30 @@ absent from the set enters the design doc's promotion path; a version
 bump re-scores every frozen run for free, and every quoted number
 carries its version.
 
+## Iteration protocol (Andreas, 2026-08-02)
+
+Issues are EXPECTED to surface once benchmarks run against the set;
+plan is 2–3 iterations before the dataset is declared final for serious
+comparisons. Per iteration:
+
+1. Scoring pass under that iteration's frozen metric and dataset
+   version.
+2. A dedicated look-at-the-data pass over raw rows AND judgments
+   (fork/workflow agents reading the text, not summaries), before any
+   number is distilled.
+3. Every surprise triaged harness-bug | dataset-label-bug |
+   real-effect. Label fixes go through the consensus protocol, never
+   applied on the finder's authority; harness fixes land immediately;
+   real effects enter the results.
+4. Version bump, free re-score, next iteration.
+
+The dataset is FINAL for lock-in comparisons only after an iteration
+whose data pass surfaces no dataset-label bugs (target: by iteration
+3). The lock-in table reads exclusively from the final iteration;
+earlier passes are kept as shakedown artifacts, quoted only for what
+they taught. The evaluator freeze above applies WITHIN an iteration;
+metric changes land between iterations, versioned and documented.
+
 ## Run matrix — pending addendum
 
 - Zero-spend rescoring against v2 of every frozen trajectory run:
