@@ -430,5 +430,39 @@ shortcut — the frozen-case harness supports sol but answers on ~800-token
 prefixes, and every cost effect here moves with prefix length.
 
 **ENUM's established scope: opus-high and opus-xhigh, one task
-(scheduler). Unmeasured on OpenAI and on exporter/dispatcher** — both
-running.
+(scheduler). Unmeasured on exporter/dispatcher** — running.
+
+## ENUM on OpenAI — real sol trajectories (2026-08-02): the cost shape INVERTS
+
+(experiments/OPENAI-TRAJECTORY-RESULTS.md, artifacts
+2026-08-02-openai-trajectory; basis: live sol driver trajectories,
+scheduler, arms paired at production points — not comparable cell-by-cell
+to the Anthropic trajectory block, whose driver costs 2x per turn.)
+
+| cell | arm | observer $/driver $ | $/obs | mean thinking | skip | findings/msg |
+|---|---|---:|---:|---:|---:|---:|
+| sol-high | MAIN | **51.1%** | $0.0212 | 253 | 0/16 | 1.00 |
+| sol-high | F2 | 57.3% | $0.0223 | 227 | 1/17 | 1.00 |
+| sol-high | ENUM | 69.1% | $0.0270 | 402 | 1/17 | 2.12 |
+| sol-xhigh | MAIN | **58.7%** | $0.0269 | 405 | 0/14 | 1.00 |
+| sol-xhigh | F2 | 64.0% | $0.0293 | 401 | 0/14 | 1.00 |
+| sol-xhigh | ENUM | 87.5% | $0.0401 | 775 | 0/14 | 3.00 |
+
+**N1 REFUTED: ENUM's zero-thinking is Anthropic-only.** 2 zero-reasoning
+rows in 92 valid sol observations across ALL arms. On sol, thinking does
+not track delivery type (`queue` rows think MORE than `steer`, and `none`
+rows think) — the skip mechanism the whole Anthropic cost story rests on
+is Claude adaptive-thinking behavior, not a contract property. GPT-5.6
+reasoning at high/xhigh is effectively always-on; no contract earns a
+skip discount there, and every label/anti-deliberation lever is
+Anthropic-scoped.
+
+Reading: **enumeration is the cheap arm on Anthropic and the expensive
+arm on OpenAI** (MAIN +60-90% thinking, most output). Second provider
+split of this kind (framing was the first). A per-provider contract
+choice stays instruction-text-cheap and allowed; a unified recommendation
+assuming ENUM's cost profile generalises is refuted. ENUM's sol premium
+is unjustified until judged sol coverage shows its extra findings earn
+18-29pp of driver cost. Contracts were followed everywhere (format 92/92,
+ENUM genuinely enumerating at 2.12-3.00 findings/msg, below its Anthropic
+4.09).
