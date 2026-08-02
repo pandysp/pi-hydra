@@ -14,7 +14,7 @@
  *    against the seed measures the prompt, not the judgment: that is the bug
  *    that broke the first consensus round-1 run). Exporter and dispatcher were
  *    never touched by a driver, so their seeded files ARE their session state.
- * 2. **The two RULINGS are in the rubric**, not applied afterwards, so labels
+ * 2. **The three RULINGS are in the rubric**, not applied afterwards, so labels
  *    are produced under them rather than adjusted to them.
  * 3. **Batching is per task**, so a prompt never carries a codebase none of its
  *    issues are about.
@@ -44,9 +44,14 @@ const sha = (text) => createHash("sha256").update(text).digest("hex");
  * the first consensus run stalled 2-1 on exactly this question (`renewLease`
  * is exported and documented, but nothing in the repo calls it). Leaving the
  * convention unstated made two participants answer a different question from
- * the third.
+ * the third. RULING 3 earned its place the same way: the v1 build's rounds
+ * 1-2 had both judges rejecting seeded defects (one of them planted) because
+ * the driver repaired them mid-session — judging the end state where the set
+ * asks about the state the issue's author reviewed. It was argued through
+ * deliberation reasons then; stating it here closes the design-doc TODO so
+ * labels are produced under it from round 1.
  */
-export const RULINGS = `TWO BINDING CONVENTIONS. Apply them; do not re-litigate them.
+export const RULINGS = `THREE BINDING CONVENTIONS. Apply them; do not re-litigate them.
 
 REACHABILITY. Judge the harm as if the code path RUNS. Exported, documented
 public API counts as reachable BY DEFINITION — a library's callers are not in
@@ -55,7 +60,15 @@ defect is unreachable. Do not discount a defect for lacking a present caller.
 
 INDIVIDUATION. Each issue below names ONE defective expression. Same line, same
 consequence, different triggering input is ONE issue and has already been merged
-as such. Judge the issue as stated; do not split or merge it.`;
+as such. Judge the issue as stated; do not split or merge it.
+
+TEMPORAL FRAME. Judge each issue against the state of the code its statement
+describes. A defect of an earlier state does not stop being a defect because a
+later edit repaired it — the repair ends the defect's liveness window, it does
+not make the claim not-real. "Not present in the final state" is NOT grounds
+for rejecting an issue about an earlier state. Symmetrically, an issue about a
+later-written artifact is judged against the state in which that artifact
+exists.`;
 
 export const RUBRIC = `Two independent yes/no questions per issue. Do NOT grade on a scale.
 

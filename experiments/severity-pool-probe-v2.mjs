@@ -79,7 +79,7 @@ none — no harm follows, OR the claim describes behaviour the code does not act
  * v1's judges split on two conventions the anchors never stated. Both are now
  * separate questions, and question 1 forbids the discounting explicitly.
  */
-export function judgePrompt(issues, code) {
+export function judgePrompt(issues, code, conventions = "") {
 	const rendered = issues
 		.map((issue, index) => `j${String(index + 1).padStart(2, "0")}: ${issue.statement}`)
 		.join("\n\n");
@@ -98,7 +98,7 @@ ${HARM_ANCHORS}
 3. inDeliverable — is the defect in, or does it break, what the user explicitly asked the agent to produce in this session?
    yes / no. Judge the user's stated request, not how interesting the defect is.
 
-${code}
+${conventions ? `${conventions}\n\n` : ""}${code}
 
 THE CANDIDATE DEFECTS:
 
@@ -441,7 +441,7 @@ export function scoreArms(pool, claims, candidates, blends) {
 // Transports (re-stated, see header)
 // ---------------------------------------------------------------------------
 
-async function piTransport(spec) {
+export async function piTransport(spec) {
 	const [{ streamSimple }, { resolveModel }] = await Promise.all([
 		import("@earendil-works/pi-ai/compat"),
 		import("./model-catalog.mjs"),
@@ -470,7 +470,7 @@ async function piTransport(spec) {
 	};
 }
 
-function claudeCliTransport(spec, cliTimeoutMs) {
+export function claudeCliTransport(spec, cliTimeoutMs) {
 	return {
 		name: "opus",
 		model: spec.model,
@@ -512,7 +512,7 @@ function claudeCliTransport(spec, cliTimeoutMs) {
 	};
 }
 
-async function askWithRecovery(transport, prompt, parse) {
+export async function askWithRecovery(transport, prompt, parse) {
 	const first = await transport.ask(prompt, null);
 	const parsed = first.error ? null : parse(first.text);
 	if (parsed) return { parsed, recovered: false };
