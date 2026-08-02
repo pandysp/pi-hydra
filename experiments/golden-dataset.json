@@ -23,6 +23,17 @@
    "patched": 6,
    "removed": 4,
    "credited": 11
+  },
+  "baseCommit": "7eedc8b14ecc85e9dd2871c32e01d7ec39a99f9a",
+  "consensus": {
+   "novel": {
+    "converged": 62,
+    "total": 67
+   },
+   "rejudge": {
+    "converged": 4,
+    "total": 5
+   }
   }
  },
  "sourceReports": 145,
@@ -69,7 +80,10 @@
    "anchors": {
     "expression": "saveJob\\(store, \\{ \\.\\.\\.job, state: \"pending\" \\}\\)",
     "declaration": "export async function sweepExpired\\(",
-    "identifier": "sweepExpired"
+    "identifier": "sweepExpired",
+    "file": "src/scheduler.js",
+    "match": "regex",
+    "state": "start"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -116,7 +130,10 @@
    "anchors": {
     "expression": "if \\(job\\.claimedBy === null\\) \\{",
     "declaration": "export async function claimNext\\(",
-    "identifier": "claimNext"
+    "identifier": "claimNext",
+    "file": "src/scheduler.js",
+    "match": "regex",
+    "state": "start"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -161,7 +178,10 @@
    "anchors": {
     "expression": "leaseExpiresAt: now \\+ LEASE_MS",
     "declaration": "export async function renewLease\\(",
-    "identifier": "renewLease"
+    "identifier": "renewLease",
+    "file": "src/scheduler.js",
+    "match": "regex",
+    "state": "start"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -204,7 +224,10 @@
    "anchors": {
     "expression": "attempts: 0, lastError",
     "declaration": "export async function requeue\\(",
-    "identifier": "requeue"
+    "identifier": "requeue",
+    "file": "src/worker.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -1121,7 +1144,10 @@
    "frame": "seed",
    "anchors": {
     "expression": "back where another worker can pick them up",
-    "identifier": "sweepExpired"
+    "identifier": "sweepExpired",
+    "match": "literal",
+    "state": "seed",
+    "file": "src/scheduler.js"
    },
    "ratified": "2026-08-02 statement narrowing, unanimous (state consensus-editorial): all v1 votes rested on the sweepExpired JSDoc, not docs/scheduling.md"
   },
@@ -1326,7 +1352,10 @@
    "anchors": {
     "expression": "Number\\(options\\.limit \\?\\? DEFAULT_PAGE_SIZE\\)",
     "declaration": "export async function\\* pages\\(",
-    "identifier": "pages"
+    "identifier": "pages",
+    "file": "src/pager.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous",
@@ -1418,7 +1447,10 @@
    "anchors": {
     "expression": "await getCustomer\\(db, row\\.customerId\\)",
     "declaration": "export async function exportOrders\\(",
-    "identifier": "exportOrders"
+    "identifier": "exportOrders",
+    "file": "src/exporter.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous",
@@ -1463,7 +1495,10 @@
    "anchors": {
     "expression": "offset \\+= pageSize",
     "declaration": "export async function\\* pages\\(",
-    "identifier": "pages"
+    "identifier": "pages",
+    "file": "src/pager.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -1512,7 +1547,10 @@
    "anchors": {
     "expression": "return \\{ ok: true, attempts, response: null",
     "declaration": "export async function withRetries\\(",
-    "identifier": "withRetries"
+    "identifier": "withRetries",
+    "file": "src/retry.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -1557,7 +1595,10 @@
    "anchors": {
     "expression": "post\\(client, \"/v1/charges\", \\{",
     "declaration": "export async function dispatchCharge\\(",
-    "identifier": "dispatchCharge"
+    "identifier": "dispatchCharge",
+    "file": "src/dispatch.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous",
@@ -1600,7 +1641,10 @@
    "anchors": {
     "expression": "lastError = new Error\\(`upstream responded \\$\\{response\\.status\\}`\\)",
     "declaration": "export async function withRetries\\(",
-    "identifier": "withRetries"
+    "identifier": "withRetries",
+    "file": "src/retry.js",
+    "match": "regex",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous",
@@ -1677,10 +1721,13 @@
    "anchors": {
     "expression": "row.amount.toFixed(2)",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": "a stored monetary amount falls on a decimal midpoint that binary floating point cannot represent exactly"
   },
   {
    "id": "EXP-c-ru08",
@@ -1722,11 +1769,14 @@
    "anchors": {
     "expression": "db.customers.get(id) ?? { id, name: \"unknown\", tier: \"none\" }",
     "identifier": "getCustomer",
-    "file": "src/db.js"
+    "file": "src/db.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unresolved",
-   "dissent": "sol holds anyHarm=false: `getCustomer` explicitly defines the missing-id fallback, and no shown contract requires referential integrity or an error on a missing customer."
+   "dissent": "sol holds anyHarm=false: `getCustomer` explicitly defines the missing-id fallback, and no shown contract requires referential integrity or an error on a missing customer.",
+   "precondition": "an order references a customer id absent from the customer table"
   },
   {
    "id": "EXP-c-ru06a",
@@ -1765,7 +1815,9 @@
    "anchors": {
     "expression": "`orders-${tenant}-${new Date(now).toISOString().slice(0, 10)}.csv`",
     "identifier": "exportFilename",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -1807,7 +1859,9 @@
    "anchors": {
     "expression": "toISOString().slice(0, 10)",
     "identifier": "exportFilename",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unresolved",
@@ -1849,7 +1903,9 @@
    "anchors": {
     "expression": "pages(db, { limit: query.limit, since: query.since })",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unresolved",
@@ -1895,7 +1951,9 @@
    "anchors": {
     "expression": "row.amount.toFixed(2)",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -1935,7 +1993,9 @@
    "anchors": {
     "expression": "totalCents += Math.round(row.amount * 100)",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -1977,7 +2037,9 @@
    "anchors": {
     "expression": "row.createdAt >= since",
     "identifier": "queryOrders",
-    "file": "src/db.js"
+    "file": "src/db.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2017,7 +2079,9 @@
    "anchors": {
     "expression": "queryOrders(db, { offset = 0, limit = 100, since = null })",
     "identifier": "queryOrders",
-    "file": "src/db.js"
+    "file": "src/db.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2056,10 +2120,13 @@
    "anchors": {
     "expression": "totalCents += Math.round(row.amount * 100)",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": "a negative amount falls on a half-cent boundary where Math.round and toFixed disagree"
   },
   {
    "id": "EXP-o-xe-g27",
@@ -2096,7 +2163,9 @@
    "anchors": {
     "expression": "lines.push(csvRow([SUMMARY_LABEL, count, \"\", (totalCents / 100).toFixed(2), \"\"]))",
     "identifier": "exportOrders",
-    "file": "src/exporter.js"
+    "file": "src/exporter.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2133,12 +2202,19 @@
    "frame": "session",
    "reachable": true,
    "anchors": {
-    "expression": "test/ contains only csv.test.js",
+    "expression": "import { csvField, csvRow } from \"../src/csv.js\";",
     "identifier": "test",
-    "file": "test/csv.test.js"
+    "file": "test/csv.test.js",
+    "match": "literal",
+    "state": "end",
+    "absent": [
+     "exportOrders",
+     "since"
+    ]
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": null
   },
   {
    "id": "EXP-o-xe-g19",
@@ -2172,12 +2248,18 @@
    "frame": "session",
    "reachable": true,
    "anchors": {
-    "expression": "no test imports exportOrders",
+    "expression": "import { csvField, csvRow } from \"../src/csv.js\";",
     "identifier": "test",
-    "file": "test/csv.test.js"
+    "file": "test/csv.test.js",
+    "match": "literal",
+    "state": "end",
+    "absent": [
+     "exportOrders"
+    ]
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": null
   },
   {
    "id": "EXP-o-xe-g17",
@@ -2213,10 +2295,13 @@
    "anchors": {
     "expression": "containing only the header row",
     "identifier": "docs",
-    "file": "docs/exports.md"
+    "file": "docs/exports.md",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": null
   },
   {
    "id": "EXP-c-ru11b",
@@ -2253,7 +2338,9 @@
    "anchors": {
     "expression": "String(value)",
     "identifier": "csvField",
-    "file": "src/csv.js"
+    "file": "src/csv.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2293,7 +2380,9 @@
    "anchors": {
     "expression": "if (!job || job.claimedBy !== worker)",
     "identifier": "complete",
-    "file": "src/scheduler.js"
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2332,10 +2421,13 @@
    "anchors": {
     "expression": "listJobs(store, \"pending\").sort((a, b) => a.createdAt - b.createdAt)",
     "identifier": "claimNext",
-    "file": "src/scheduler.js"
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": "the pending backlog is large enough for the full sort to dominate each claim tick"
   },
   {
    "id": "SCHED-c-ru13b",
@@ -2371,10 +2463,13 @@
    "anchors": {
     "expression": "const counts = stats(store)",
     "identifier": "logSummary",
-    "file": "src/worker.js"
+    "file": "src/worker.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": "logSummary runs frequently over a large job map"
   },
   {
    "id": "DISP-c-ru09b",
@@ -2417,7 +2512,9 @@
    "anchors": {
     "expression": "return { status: 200, body: { ok: true } }",
     "identifier": "post",
-    "file": "src/http.js"
+    "file": "src/http.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2460,7 +2557,9 @@
    "anchors": {
     "expression": "const next = client.responses.shift()",
     "identifier": "post",
-    "file": "src/http.js"
+    "file": "src/http.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2502,7 +2601,9 @@
    "anchors": {
     "expression": "client.sent.push({ url, body, headers })",
     "identifier": "post",
-    "file": "src/http.js"
+    "file": "src/http.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2542,7 +2643,9 @@
    "anchors": {
     "expression": "return Promise.race([started, expiry]).finally(() => clearTimeout(timer))",
     "identifier": "runAttempt",
-    "file": "src/retry.js"
+    "file": "src/retry.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "blocking",
    "consensus": "unresolved",
@@ -2583,7 +2686,9 @@
    "anchors": {
     "expression": "`${match[0]}***${match.slice(at)}`",
     "identifier": "maskEmail",
-    "file": "src/redact.js"
+    "file": "src/redact.js",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2622,11 +2727,14 @@
    "anchors": {
     "expression": "// { id: 'ch-1', delivered: true, attempts: 4 }",
     "identifier": "dispatchCharge",
-    "file": "docs/dispatch.md"
+    "file": "docs/dispatch.md",
+    "match": "literal",
+    "state": "end"
    },
    "tier": "harmful",
    "consensus": "unresolved",
-   "dissent": "analyst holds anyHarm=false: opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate."
+   "dissent": "analyst holds anyHarm=false: opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate.",
+   "precondition": null
   },
   {
    "id": "DISP-o-xd-g20",
@@ -2662,13 +2770,20 @@
    "frame": "session",
    "reachable": true,
    "anchors": {
-    "expression": "test/ contains only redact.test.js",
+    "expression": "import { maskCard, maskEmail, redactLine } from \"../src/redact.js\";",
     "identifier": "test",
-    "file": "test/redact.test.js"
+    "file": "test/redact.test.js",
+    "match": "literal",
+    "state": "end",
+    "absent": [
+     "withRetries",
+     "dispatchCharge"
+    ]
    },
    "tier": "harmful",
    "consensus": "unanimous",
-   "ruling2Merge": "folded V2-I57+V2-I58 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol"
+   "ruling2Merge": "folded V2-I57+V2-I58 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol",
+   "precondition": null
   },
   {
    "id": "DISP-o-xd-g26",
@@ -2704,13 +2819,22 @@
    "frame": "session",
    "reachable": true,
    "anchors": {
-    "expression": "maskEmail boundary cases absent from test/redact.test.js",
+    "expression": "test(\"maskEmail keeps the first character and the domain\"",
     "identifier": "test",
-    "file": "test/redact.test.js"
+    "file": "test/redact.test.js",
+    "match": "literal",
+    "state": "end",
+    "absent": [
+     "a@x.com",
+     "ADA@EXAMPLE.COM",
+     "ada@localhost",
+     "123@example.com"
+    ]
    },
    "tier": "harmful",
    "consensus": "unanimous",
-   "ruling2Merge": "folded V2-I63+V2-I64 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol"
+   "ruling2Merge": "folded V2-I63+V2-I64 into this record 2026-08-02: one issue per defective expression — the pool clusterer under-merged; every folded member was independently judged harmful through the full protocol",
+   "precondition": null
   },
   {
    "id": "DISP-c-ru10",
@@ -2746,10 +2870,13 @@
    "anchors": {
     "expression": "assert.equal(redactLine(\"attempt 1 charge ch-1\"), \"attempt 1 charge ch-1\")",
     "identifier": "redactLine",
-    "file": "test/redact.test.js"
+    "file": "test/redact.test.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precondition": null
   },
   {
    "id": "DISP-r-bd2-03",
@@ -2786,7 +2913,9 @@
    "anchors": {
     "expression": "(match) => `****${match.slice(-4)}`",
     "identifier": "maskCard",
-    "file": "src/redact.js"
+    "file": "src/redact.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous"
@@ -2830,7 +2959,10 @@
    "reachable": true,
    "precondition": "an exported value carries a bare carriage return",
    "anchors": {
-    "expression": "/\\[\\\",\\\\\\\\n\\]/"
+    "expression": "return /[\",\\n]/.test(text) ?",
+    "match": "literal",
+    "state": "seed",
+    "file": "src/csv.js"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2872,7 +3004,9 @@
    "anchors": {
     "expression": "return /[\",\\n]/.test(text) ? `\"${text.replace(/\"/g, '\"\"')}\"` : text",
     "identifier": "csvField",
-    "file": "src/csv.js"
+    "file": "src/csv.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2912,7 +3046,9 @@
    "anchors": {
     "expression": "return store.jobs.get(job.id)",
     "identifier": "saveJob",
-    "file": "src/store.js"
+    "file": "src/store.js",
+    "match": "literal",
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -3689,8 +3825,9 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "superseded 2026-08-02: independently re-raised blind (R-BE3-08) and judged fresh through the full protocol; accepted as EXP-c-ru06a (blocking) under RULINGS 1+4 — this rejection records the v1 state of the question",
-   "frame": "seed"
+   "reason": "consensus: not a real defect",
+   "frame": "seed",
+   "matchedAgain": "R-BE3-08 independently re-raised the same tenant-filter claim; the reviewed pool mapping credited its provenance here and explicitly kept the v1 rejection"
   },
   {
    "id": "EXP-o-xe-g16",
@@ -4901,5 +5038,18 @@
    "reason": "consensus: real, individuated onto SCHED-requeue-resets-attempts under RULING 2",
    "dissent": "opus holds anyHarm=true: No function shown raises attempts — sweepExpired writes `{ ...job, state: \"pending\" }` and spreads attempts unchanged, so the dissent's counterfactual fails: repairing requeue alone still leaves a crash/lease-expiry poison job at attempts 0, exported isExhausted permanently false and store.dead never written, while claimNext's oldest-first ordering re-claims that same job at the queue head forever and re-runs its handler's side effects without bound."
   }
- ]
+ ],
+ "provisional": {
+  "reason": "below the registered 95% consensus bar",
+  "convergence": {
+   "novel": {
+    "converged": 62,
+    "total": 67
+   },
+   "rejudge": {
+    "converged": 4,
+    "total": 5
+   }
+  }
+ }
 }

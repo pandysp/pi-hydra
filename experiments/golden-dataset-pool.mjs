@@ -59,17 +59,15 @@ export function taskOf(source, record) {
  * - code-review followed the artifact's scope note (the 2026-08-01 run
  *   reviewed the driver-run-scheduler tree, so its scheduler findings are
  *   session-frame; exporter/dispatcher are byte-identical to the seed);
- * - observer claims describe the trajectory they watched, but a recorded
- *   session state exists only for the scheduler — and an observer claim
- *   flagged `seeded` is about a seed-era expression. For tasks with no
- *   recorded session state the seed is the only judgeable state.
+ * - observer claims describe the trajectory they watched. All three tasks now
+ *   have recorded start/end state; `seeded` marks a seed-era expression and
+ *   every other observer claim is session-frame.
  */
 export function frameOf(source, record) {
 	const task = record.task ?? taskOf(source, record);
 	if (source === "planted" || source === "reference-review") return "seed";
 	if (source === "code-review") return task === "scheduler" ? "session" : "seed";
 	if (source === "observer") {
-		if (task !== "scheduler") return "seed";
 		return record.seeded ? "seed" : "session";
 	}
 	throw new Error(`frameOf: unknown source ${source}`);
@@ -89,6 +87,9 @@ export function loadCandidates() {
 					expression: String(defect.expression ?? ""),
 					declaration: String(defect.declaration ?? ""),
 					identifier: defect.identifier ?? null,
+					file: defect.file,
+					match: "regex",
+					state: "seed",
 				},
 				plantedId: defect.id,
 			});
@@ -144,8 +145,6 @@ const BLIND_REVIEW = (task) => `${process.env.HOME}/scratch/2026-08-02-golden-v2
 const CROSS_TASK = (task) => `experiments/artifacts/2026-08-02-cross-task-trajectory/severity-${task}.json.gz`;
 const RUNNERS_UP = "experiments/artifacts/2026-08-01-code-review-max/runners-up.json";
 
-const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /**
  * The 13 runner-up bullets, individuated under RULING 2 by the analyst
  * (2026-08-02). Several bullets bundle 2-3 defective expressions with
@@ -200,7 +199,12 @@ export function loadCandidatesV2() {
 					source: "reference-review",
 					task,
 					statement: finding.statement,
-					anchors: { expression: escapeRegex(finding.defectiveExpression).slice(0, 160) },
+					anchors: {
+						expression: String(finding.defectiveExpression).slice(0, 160),
+						file: finding.file,
+						match: "literal",
+						state: "seed",
+					},
 					site: finding.file,
 					evidence: [finding.consequence, finding.trigger].filter(Boolean).join(" — "),
 					confidence: finding.confidence ?? null,

@@ -14,12 +14,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync, mkdtempSync, readdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { TRAJECTORY_TASKS, setupTask } from "./trajectory-cost-tasks.mjs";
+import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
+import { TRAJECTORY_TASKS } from "./trajectory-cost-tasks.mjs";
+import { anchorResolution } from "./golden-dataset-frame-sources.mjs";
 
 const DATASET = JSON.parse(readFileSync(new URL("./golden-dataset.json", import.meta.url), "utf8"));
+const FRAME_SOURCES = JSON.parse(gunzipSync(readFileSync(new URL(
+	"./artifacts/2026-08-02-golden-dataset-v2/frame-sources.json.gz",
+	import.meta.url,
+))).toString());
 const TIERS = new Set(["blocking", "harmful"]);
 const PROVENANCE = new Set(["planted", "reference-review", "code-review", "observer", "promoted"]);
 const FRAMES = new Set(["seed", "session"]);
@@ -52,6 +56,9 @@ test("every record carries the full schema", () => {
 			// The audit showed anchors are what make individuation and liveness
 			// mechanically checkable; new records enter with them or not at all.
 			assert.ok(issue.anchors?.expression, `${issue.id}: post-v1 record without an anchor expression`);
+			assert.ok(issue.anchors?.file, `${issue.id}: post-v1 record without an anchor file`);
+			assert.ok(["literal", "regex"].includes(issue.anchors?.match), `${issue.id}: post-v1 record without explicit literal|regex anchor matching`);
+			assert.ok(issue.anchors?.state, `${issue.id}: post-v1 record without an anchor state`);
 			assert.equal(typeof issue.reachable, "boolean", `${issue.id}: post-v1 record without reachable`);
 			assert.ok("precondition" in issue, `${issue.id}: post-v1 record without precondition (use null when none)`);
 		}
@@ -113,32 +120,11 @@ test("the dedup mapping is total: every source report lands in exactly one recor
 	assert.equal(accepted, DATASET.sourceReports, `accepted members ${accepted} != sourceReports ${DATASET.sourceReports}`);
 });
 
-test("anchors resolve against the seeded code", () => {
-	const roots = {};
-	for (const task of TRAJECTORY_TASKS) {
-		const root = mkdtempSync(join(tmpdir(), `golden-check-${task.id}-`));
-		setupTask(task, root);
-		roots[task.id] = root;
-	}
-	const read = (root) => {
-		const out = [];
-		const walk = (dir) => {
-			for (const entry of readdirSync(dir)) {
-				const full = join(dir, entry);
-				if (statSync(full).isDirectory()) { if (entry !== "reference") walk(full); }
-				else if (/\.(js|md)$/.test(entry)) out.push(readFileSync(full, "utf8"));
-			}
-		};
-		walk(root);
-		return out.join("\n");
-	};
-	const bodies = Object.fromEntries(Object.entries(roots).map(([id, root]) => [id, read(root)]));
+test("anchors resolve against their exact file and judged frame", () => {
 	for (const issue of DATASET.issues) {
-		const expression = issue.anchors?.expression;
-		if (!expression) continue;
-		// Anchors come from the planted set, which is authored against the seed;
-		// an anchor that no longer matches means liveness cannot be computed.
-		assert.ok(new RegExp(expression).test(bodies[issue.task]), `${issue.id}: anchor /${expression}/ does not resolve in ${issue.task}`);
+		if (!issue.anchors) continue;
+		const resolved = anchorResolution(issue, FRAME_SOURCES);
+		assert.ok(resolved.ok, `${issue.id}: ${resolved.reason}`);
 	}
 });
 

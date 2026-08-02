@@ -16,8 +16,9 @@
  * - IDS are stable slugs derived from each cluster's primary member (planted
  *   id first, else the lowest reference/code-review/observer id), prefixed by
  *   task. They never encode the tier, so a re-judged tier does not move the id.
- * - ANCHORS come from the planted set only (authored against the seed); the
- *   check file resolves them against `setupTask` output.
+ * - ANCHORS for planted records come from the task definition; later issue
+ *   metadata may carry a source anchor directly. The checker resolves each
+ *   one against its declared file and temporal frame.
  *
  * Usage: node experiments/golden-dataset-assemble.mjs --state <dir> [--out experiments/golden-dataset.json]
  */
@@ -33,7 +34,7 @@ const SOURCE = { P: "planted", R: "reference-review", C: "code-review", O: "obse
 const plantedAnchors = Object.fromEntries(
 	TRAJECTORY_TASKS.flatMap((task) => task.defects.map((d) => [
 		d.id,
-		{ expression: d.expression, declaration: d.declaration, identifier: d.identifier },
+		{ expression: d.expression, declaration: d.declaration, identifier: d.identifier, file: d.file, match: "regex", state: "seed" },
 	])),
 );
 
