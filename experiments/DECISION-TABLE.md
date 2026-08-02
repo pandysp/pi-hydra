@@ -13,6 +13,14 @@ RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
 > schemas but retained internally. This is a deliberate choice under OpenAI
 > uncertainty, not a benchmark verdict; a provider text split remains open if
 > the later capstone shows ENUM's OpenAI premium does not earn its keep.
+>
+> **OPENAI PRODUCER-FIRST WORK IS IN PROGRESS.** Andreas approved decoupling raw
+> OpenAI production from scoring: exact matrices are registered before spend,
+> outputs are frozen without seeing v2 labels, and Sol may fill its one judge
+> column now. Final scoring, promotions, and design claims still require a valid
+> v2 plus Opus; repeated Sol calls never become extra consensus votes. Known-case
+> prompt tuning remains forbidden, so terse-ENUM and interrupt ablations use
+> fresh sealed material.
 
 ## READ FIRST — quality bases differ
 
@@ -559,8 +567,10 @@ There is no `GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
 ## Capstone benchmark — not run
 
 `BENCHMARK-SPEC.md` freezes the scoring design and 2–3 iteration protocol.
-The steer-only input is complete; the dated run-matrix addendum still waits on
-a valid v2 freeze. No baseline/arm table against v2 exists. Andreas selected
+The steer-only input is complete. A producer-first OpenAI amendment is now in
+progress; its exact dated matrix still lands before new producer spend, while
+Anthropic production waits for valid v2. No baseline/arm table against v2
+exists. Andreas selected
 unified ENUM-SO2 as the implementation direction before that evidence and will
 revisit a provider-specific text branch if the OpenAI result is not worth its
 measured cost premium. Raw-response review then confirmed that mixed per-finding

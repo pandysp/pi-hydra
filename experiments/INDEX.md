@@ -84,7 +84,7 @@ measured ENUM-SO2 model contract stays byte-identical.
 
 | doc | role |
 |---|---|
-| [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze). Steer-only is complete; the dated run-matrix addendum still waits on a valid v2 freeze. The capstone has not run. |
+| [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze). **IN PROGRESS:** Andreas approved producer-first OpenAI work: existing frozen rows get their first Sol judgment, fresh causal studies precede an exact dated OpenAI matrix, and raw OpenAI producer rows may freeze before v2. Scoring, promotion, and verdicts still wait for valid v2 + Sol + Opus; Anthropic production still waits for v2. |
 
 ## Superseded / historical
 

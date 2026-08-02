@@ -12,9 +12,14 @@ job"). End state: Andreas locks in the design(s).
 The SCORING DESIGN below was registered before any judged coverage
 existed, so the metric cannot be tuned toward an arm after the fact. The
 steer-only probe is now complete; it promotes MAIN-SO2 and ENUM-SO2 into
-consideration. The RUN MATRIX still depends on one pending input — a valid
-golden v2 freeze — and lands as a dated addendum to this file BEFORE any
-new producer run. Rescoring already-frozen rows needs no addendum.
+consideration. Rescoring already-frozen rows needs no addendum.
+
+On 2026-08-02 Andreas approved a producer-first OpenAI amendment: an exact,
+dated OpenAI matrix may be registered and its raw trajectories produced and
+frozen before golden v2 or Opus is available, because producer heads never see
+the dataset or judge labels. Scoring, promotion, arm selection, and any design
+verdict still require a valid frozen v2 and both Sol and Opus. Anthropic fresh
+producer cells retain the original gate and wait for the valid v2 freeze.
 
 ## Scoring design (registered 2026-08-02, before data)
 
@@ -92,7 +97,7 @@ earlier passes are kept as shakedown artifacts, quoted only for what
 they taught. The evaluator freeze above applies WITHIN an iteration;
 metric changes land between iterations, versioned and documented.
 
-## Run matrix — pending v2, then dated addendum
+## Run matrix — producer-first OpenAI amendment in progress; Anthropic pending v2
 
 - Zero-spend rescoring against v2 of every frozen trajectory run:
   scheduler (C2, enum-trajectory), cross-task exporter + dispatcher,
@@ -102,10 +107,35 @@ metric changes land between iterations, versioned and documented.
   repaired MAIN-SO2 and ENUM-SO2 steer-only candidates. Arms, n, configs, and
   spend are pre-registered here before running.
 
+### 2026-08-02 execution status
+
+**IN PROGRESS, before new provider data.** The approved sequence is:
+
+1. make the Opus-resume path replay-safe and prepare the frozen-input manifest,
+   comparison renderer with intentionally blank quality cells, and scratch v2
+   results template;
+2. complete one registered Sol judgment pass over the already-frozen OpenAI
+   trajectories, without treating repeated Sol output as independent consensus;
+3. register and run two causal OpenAI development studies on fresh, sealed
+   material: terse ENUM output and the presence versus absence of `interrupt`;
+4. use those studies only to choose which candidates deserve producer spend,
+   then append the exact dated OpenAI matrix here before running it;
+5. freeze raw producer outputs and their costs, run one Sol judgment pass, and
+   queue novel candidates as `pending-opus` rather than promoting them;
+6. after Opus returns, finish v2, add Opus judgments over the same frozen rows,
+   promote only through Sol + Opus + analyst consensus, re-score, and produce the
+   lock-in table.
+
+The producer-first wave is not an “OpenAI-only capstone result.” It is the
+OpenAI production half of the later capstone. No provisional score may be used
+as a product verdict.
+
 ## Boundaries
 
-No runtime changes in this spec's scope. No evaluator edits after
-scoring starts. No fresh Anthropic producer spend without the addendum.
-Judges are sol + opus throughout (both must credit a finding for
-promotion; coverage credit follows the two-judge flow with disagreement
-recorded, not averaged).
+No runtime changes in this spec's scope. No evaluator edits after scoring
+starts. No fresh Anthropic producer spend before the valid-v2 addendum. OpenAI
+producer spend requires its own exact dated matrix first. Judges are Sol + Opus
+throughout: an early Sol pass fills one half of that pair, never two votes. Both
+must credit a finding for promotion; coverage follows the two-judge flow with
+disagreement recorded, not averaged. Known-case prompt tuning remains forbidden;
+development variants freeze once and validate on fresh, sealed material.
