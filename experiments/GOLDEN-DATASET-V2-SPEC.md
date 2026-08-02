@@ -109,10 +109,10 @@ audit flags).
    both-judges-not-real dispatcher claims, re-entered as ordinary
    candidates and judged fresh) + Q3 runner-ups if recovered. Cluster
    under RULING 2 (`golden-dataset-pool.mjs`).
-3. **Consensus:** full three-participant protocol, all three RULINGS in
-   the rubric, seed frame (exporter/dispatcher are seed-judged by
-   construction). Convergence to the v1 bar: ≥95%, clean 2-1 stalls
-   recorded as verbatim dissent, never averaged.
+3. **Consensus:** full three-participant protocol, all four RULINGS in
+   the rubric, with each candidate routed to its recorded seed or session
+   frame. Convergence to the v1 bar: ≥95%, clean 2-1 stalls recorded as
+   verbatim dissent, never averaged.
 4. **Assemble v2:** fold in any wave-1 label changes, bump the version,
    `golden-dataset.check.mjs` green, re-score every frozen artifact
    (deterministic, $0), write GOLDEN-DATASET-V2-RESULTS.md, update
@@ -124,6 +124,53 @@ outside all prior pools on the scheduler. If the exporter+dispatcher
 reviews surface **fewer than 5 novel accepted issues per task**, the
 thin slices were code-limited, not discovery-limited — that is reported
 as the finding, and the set is not padded to avoid it.
+
+## Recovery amendment — precision pass after the interrupted run (2026-08-02)
+
+Registered before any further judge call. The saved novel run reached 62/67
+unanimous after round 6; the saved audit rejudge reached 4/5 after round 5.
+The original protocol terminates an unchanged question after three
+deliberation rounds, so another ordinary round is forbidden. It would pressure
+stable dissent rather than add evidence.
+
+The raw reasons separate two statement defects from four genuine disagreements:
+
+- `V2-I38` bundles the no-abort expression with duplicate-charge harm owned by
+  the separate missing-idempotency record. All three participants already agree
+  that the no-abort behavior is real; they disagree only over the imported
+  consequence.
+- `V2-I52` says four documentation locations omit the per-result log. The end
+  source refutes three conjuncts; all participants eventually identified the
+  narrower, real residue that the runnable examples show a three-field result.
+
+Those two records receive one fresh precision batch under new question ids and
+the unchanged four-ruling rubric. The original rounds remain immutable. Round 1
+is independent: analyst labels are written first, sol and opus see only the
+revised statement and source, and no prior positions. If round 1 disagrees, the
+ordinary maximum of three deliberation rounds applies. The replacement text is
+fixed now:
+
+- `CL38`: “`runAttempt` races an in-flight POST against a timer but has no way
+  to cancel the losing POST, so work continues after the caller has timed out
+  and may settle after the caller has moved on.”
+- `CL52`: “The runnable `dispatchCharge` examples in docs/dispatch.md show a
+  three-field `{ id, delivered, attempts }` result even though the function and
+  the same document specify a fourth per-result `log` field.”
+
+If both converge, they replace only the statements and votes of their original
+records, preserving ids, members, provenance, anchors, and the complete old
+deliberation trail. Novel convergence then becomes 64/67 (95.5%), above the
+registered bar. `V2-I02`, `V2-I04`, and `V2-I05` are ineligible: their reasons
+show real contract/policy ambiguity, not a compound or factually overbroad
+statement, so they terminate as stable verbatim dissent.
+
+`RD04` is also ineligible for statement repair. Sol and the analyst individuate
+attempt accounting onto `SCHED-requeue-resets-attempts`; Opus additionally
+points to lease-expiry accounting, already recorded as `SCHED-o-g05`. That is a
+genuine ownership disagreement, not a malformed source claim. It terminates
+under the original rule as unresolved majority-false with Opus's dissent kept
+verbatim. The 95% Wave 2 bar applies to the 67 novel clusters; no denominator,
+threshold, rubric, or settled label changes here.
 
 ## Boundaries
 

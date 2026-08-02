@@ -36,9 +36,12 @@ const SYSTEM_PROMPT = "You are an independent software-review benchmark judge.";
 const CORRECTION =
 	"Your output did not match the required JSON schema or item count. Preserve every judgment and return only the corrected JSON object.";
 
+const opusViaPi = process.env.HYDRA_OPUS_TRANSPORT === "pi";
 const JUDGES = {
 	sol: { transport: "pi", provider: "openai-codex", model: "gpt-5.6-sol", reasoning: "high" },
-	opus: { transport: "claude-cli", model: "opus", reasoning: "high" },
+	opus: opusViaPi
+		? { transport: "pi", provider: "anthropic", model: "claude-opus-5", reasoning: "high" }
+		: { transport: "claude-cli", model: "opus", reasoning: "high" },
 };
 
 export const PARTICIPANTS = ["sol", "opus", "analyst"];
