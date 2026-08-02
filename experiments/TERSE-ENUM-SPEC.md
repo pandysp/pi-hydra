@@ -1,5 +1,12 @@
 # Terse enumeration — pre-registration (2026-08-01, before data)
 
+> **Historical, not run.** This document registered an Anthropic
+> recorded-payload replay before ENUM-SO2 became the product contract. That run
+> never happened and is no longer the active route. The fresh OpenAI study is
+> registered in `OPENAI-PROTOCOL-STUDY-SPEC.md`; it seals new cases before the
+> candidate wording and keeps this original hypothesis intact without treating
+> old known cases as fresh evidence.
+
 ## The lever
 
 ENUM's entire premium over MAIN is OUTPUT VOLUME, not deliberation:
