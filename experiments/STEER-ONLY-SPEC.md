@@ -103,6 +103,54 @@ plan-window metered, deliberate and pre-registered per standing
 constraint. If quota truncates a cell, the partial cell is frozen and
 marked partial; no silent downsizing.
 
+## Addendum — the SO2 wording repair (2026-08-02, pre-registered before its run)
+
+The SO run measured MAIN-SO silent 20/20 (results doc, H3). Andreas's
+directive on that datapoint: "If it goes silent then the prompt is
+wrong. ... The model must understand that steer is a perfectly
+acceptable and in fact only way to deliver a message to the driver.
+But don't prompt overly verbose here." Also ruled: a steer does NOT
+interrupt the driver — it folds in at the driver's next checkpoint —
+so the H3 "false-interrupt" framing above is retired (see results doc).
+
+Tripwire identified in the SO texts: the collapsed sentence keeps an
+act-on bar ("Steer anything the agent should act on") beside the
+interrupt ladder, and nothing states that steer is the normal and only
+channel to the agent. The measured SO cells stand as the wrong-prompt
+datapoint — the wording, not the label set, is the mechanism under
+test now.
+
+New variants (in `steer-only-variants.mjs`, guards assert the act-on
+bar is gone): MAIN-SO2 and ENUM-SO2 replace the collapsed routing
+sentence with exactly: "Steer to deliver a message to the agent,
+whether it can wait or not. Steering is the normal and only way to
+reach the agent and folds in at its next checkpoint." (+83 chars vs
+parent). No urgency threshold language. F2 gets no SO2 — it never went
+silent and its steer rule carries no interrupt-style framing.
+
+Cells: {MAIN, MAIN-SO2, ENUM, ENUM-SO2} × {opus-high, opus-xhigh} ×
+n=10, same point, same runner; originals re-run for same-run pairing.
+~80 calls, ~$2.3 expected; probe total stays under the $8 cap.
+
+- **H5: MAIN-SO2 delivers again.** Holds if MAIN-SO2 routes ≥6/10
+  deliveries per config with steer carrying the former-queue content;
+  refuted if ≥8/10 none persists (then wording was not the mechanism).
+- **H6: what delivering costs MAIN-SO2 — two-sided.** If thinking on
+  its steer rows lands in MAIN's own steer band (~500–1300), the
+  selection-commitment coupling holds and steer-only MAIN pays MAIN's
+  normal price; if it skips while steering, the coupling is wording-
+  bound too. Report the distribution either way.
+- **H7: ENUM-SO2 keeps the zero.** Same threshold as H1 (≥8/10 skips,
+  mean <50, both configs).
+
+Runtime correction sites (report-only survey, for after design
+lock-in): `utils.ts:394` ("steer" is for an agent correction needed
+before current work continues), `utils.ts:401-402` ("Steer only to
+correct the agent between turns"), `utils.ts:433` and `:446` (footer:
+steer bound to incorrect/unsafe/incomplete/unverified work). All
+describe steer as correction-gated; none says it is the normal
+channel that folds in at the next checkpoint.
+
 ## Deliverables
 
 `STEER-ONLY-RESULTS.md` (per-cell tables, H1–H4 verdicts, and the

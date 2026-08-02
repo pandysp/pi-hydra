@@ -105,6 +105,59 @@ export const VARIANTS = {
 	"ENUM-SO": ENUM_SO,
 };
 
+// --- SO2: the wording repair (spec addendum, 2026-08-02) ------------------------
+// MAIN-SO went silent 20/20. Andreas's diagnosis: "If it goes silent then the
+// prompt is wrong... The model must understand that steer is a perfectly
+// acceptable and in fact only way to deliver a message to the driver." The
+// tripwire in SO is the surviving act-on bar ("anything the agent should act
+// on") beside the interrupt ladder, with nothing saying steer is the normal
+// channel. SO2 replaces the collapsed routing sentence with two plain ones:
+// steer delivers, it is the only channel, it folds in at the next checkpoint.
+// No urgency threshold language. F2 gets no SO2: it never went silent and its
+// steer rule carries no interrupt-style framing.
+
+const SO2_ROUTING =
+	"Steer to deliver a message to the agent, whether it can wait or not. Steering is the normal and only way to reach the agent and folds in at its next checkpoint.";
+
+export const MAIN_SO2 = replaceOnce(
+	replaceOnce(
+		MAIN,
+		'{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}',
+		'{"action":"noop|print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}',
+		"main-so2/enum",
+	),
+	"Queue if useful but waitable. Steer to correct the agent between turns.",
+	SO2_ROUTING,
+	"main-so2/routing",
+);
+
+export const ENUM_SO2 = replaceOnce(
+	replaceOnce(
+		MAIN_ENUM,
+		'{"findings":[{"action":"print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
+		'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
+		"enum-so2/enum",
+	),
+	"Queue if useful but waitable. Steer to correct the agent between turns.",
+	SO2_ROUTING,
+	"enum-so2/routing",
+);
+
+export const SO2_VARIANTS = {
+	MAIN,
+	"MAIN-SO2": MAIN_SO2,
+	ENUM: MAIN_ENUM,
+	"ENUM-SO2": ENUM_SO2,
+};
+
+for (const [id, text] of Object.entries({ "MAIN-SO2": MAIN_SO2, "ENUM-SO2": ENUM_SO2 })) {
+	if (/queue/i.test(text)) throw new Error(`${id}: the word "queue" survives the edit`);
+	if (!/interrupt/.test(text)) throw new Error(`${id}: interrupt was removed — that is a different experiment`);
+	if (!/steer/i.test(text)) throw new Error(`${id}: steer is missing`);
+	if (/should act on/.test(text)) throw new Error(`${id}: the act-on bar survives — the repair did not land`);
+}
+if (MAIN_SO2 === MAIN_SO || ENUM_SO2 === ENUM_SO) throw new Error("an SO2 variant is byte-identical to its SO parent");
+
 // The word must be gone from the model's view, not merely de-emphasised: a
 // surviving "queue" anywhere would leave the label available and void the test.
 for (const [id, text] of Object.entries({ "MAIN-SO": MAIN_SO, "F2-SO": F2_SO, "ENUM-SO": ENUM_SO })) {
@@ -120,8 +173,11 @@ if (new Set(Object.values(VARIANTS)).size !== Object.keys(VARIANTS).length) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-	process.stdout.write(`${JSON.stringify(VARIANTS, null, 2)}\n`);
-	process.stderr.write(`MAIN-SO ${MAIN_SO.length} chars (${MAIN_SO.length - MAIN.length} vs MAIN ${MAIN.length})\n`);
-	process.stderr.write(`F2-SO   ${F2_SO.length} chars (${F2_SO.length - F2.length} vs F2 ${F2.length})\n`);
-	process.stderr.write(`ENUM-SO ${ENUM_SO.length} chars (${ENUM_SO.length - MAIN_ENUM.length} vs ENUM ${MAIN_ENUM.length})\n`);
+	const so2 = process.argv.includes("--so2");
+	process.stdout.write(`${JSON.stringify(so2 ? SO2_VARIANTS : VARIANTS, null, 2)}\n`);
+	process.stderr.write(`MAIN-SO  ${MAIN_SO.length} chars (${MAIN_SO.length - MAIN.length} vs MAIN ${MAIN.length})\n`);
+	process.stderr.write(`F2-SO    ${F2_SO.length} chars (${F2_SO.length - F2.length} vs F2 ${F2.length})\n`);
+	process.stderr.write(`ENUM-SO  ${ENUM_SO.length} chars (${ENUM_SO.length - MAIN_ENUM.length} vs ENUM ${MAIN_ENUM.length})\n`);
+	process.stderr.write(`MAIN-SO2 ${MAIN_SO2.length} chars (${MAIN_SO2.length - MAIN.length} vs MAIN)\n`);
+	process.stderr.write(`ENUM-SO2 ${ENUM_SO2.length} chars (${ENUM_SO2.length - MAIN_ENUM.length} vs ENUM)\n`);
 }
