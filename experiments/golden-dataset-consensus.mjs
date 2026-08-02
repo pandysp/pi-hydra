@@ -37,9 +37,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { argOf } from "./lib.mjs";
-import { AXES, PARTICIPANTS, agreed, askJudge } from "./severity-consensus.mjs";
+import { AXES, PARTICIPANTS, agreed, askJudgeDetailed } from "./severity-consensus.mjs";
 import { codeContext } from "./severity-pool-probe.mjs";
 import { TRAJECTORY_TASKS, setupTask } from "./trajectory-cost-tasks.mjs";
 import { mkdtempSync, readdirSync, statSync } from "node:fs";
@@ -242,18 +242,57 @@ async function main() {
 		}
 		return out;
 	};
+	const atomicJson = (path, value) => {
+		const temporary = `${path}.${process.pid}.tmp`;
+		writeFileSync(temporary, JSON.stringify(value, null, 1));
+		renameSync(temporary, path);
+	};
+	const collectCheckpointed = async (name, batches, promptFor, progress) => {
+		const path = `${stateDir}/judge-round${round}-${name}.json`;
+		const checkpoint = existsSync(path)
+			? JSON.parse(readFileSync(path, "utf8"))
+			: { round, judge: name, judgments: {}, batches: [], failures: [] };
+		for (const batch of batches) {
+			const prompt = promptFor(batch);
+			const promptHash = sha(prompt);
+			const ids = batch.items.map((item) => item.id);
+			const saved = checkpoint.batches.find((item) => item.promptHash === promptHash && ids.every((id) => item.ids.includes(id)));
+			if (saved) {
+				Object.assign(checkpoint.judgments, saved.judgments);
+				process.stderr.write(`  ${name}: resumed ${ids.length} from ${path}\n`);
+				continue;
+			}
+			try {
+				const result = await askJudgeDetailed(name, prompt, ids, timeoutMs);
+				Object.assign(checkpoint.judgments, result.labels);
+				checkpoint.batches.push({
+					key: batch.key,
+					ids,
+					promptHash,
+					judge: result.judge,
+					attempts: result.attempts,
+					judgments: result.labels,
+				});
+				atomicJson(path, checkpoint);
+				process.stderr.write(progress(checkpoint.judgments, ids));
+			} catch (error) {
+				checkpoint.failures.push({ key: batch.key, ids, promptHash, error: error.message, attempts: error.attempts ?? [] });
+				atomicJson(path, checkpoint);
+				throw error;
+			}
+		}
+		return checkpoint.judgments;
+	};
 
 	let positions;
 	if (round === 1) {
-		const collect = async (name) => {
-			const merged = {};
-			for (const batch of batchesFor(issues)) {
-				const got = await askJudge(name, roundOnePrompt(batch.items, sources[batch.key]), batch.items.map((b) => b.id), timeoutMs);
-				Object.assign(merged, got);
-				process.stderr.write(`  ${name}: ${Object.keys(merged).length}/${issues.length}\n`);
-			}
-			return merged;
-		};
+		const batches = batchesFor(issues);
+		const collect = (name) => collectCheckpointed(
+			name,
+			batches,
+			(batch) => roundOnePrompt(batch.items, sources[batch.key]),
+			(merged) => `  ${name}: ${Object.keys(merged).length}/${issues.length}\n`,
+		);
 		positions = { sol: await collect("sol"), opus: await collect("opus"), analyst };
 	} else {
 		const prior = state.rounds[round - 1];
@@ -264,19 +303,22 @@ async function main() {
 			return;
 		}
 		process.stderr.write(`deliberating ${open.length} open issue(s)\n`);
+		const batches = batchesFor(issues.filter((i) => open.includes(i.id)));
 		const collect = async (name) => {
-			const merged = { ...prior.positions[name] };
-			for (const batch of batchesFor(issues.filter((i) => open.includes(i.id)))) {
-				const items = batch.items.map((c) => ({ ...c, mine: prior.positions[name][c.id] }));
-				const others = Object.fromEntries(batch.items.map((c) => [
-					c.id,
-					PARTICIPANTS.filter((p) => p !== name).map((p) => prior.positions[p][c.id]),
-				]));
-				const got = await askJudge(name, deliberationPrompt(items, sources[batch.key], others), batch.items.map((b) => b.id), timeoutMs);
-				Object.assign(merged, got);
-				process.stderr.write(`  ${name}: ${batch.items.length} deliberated\n`);
-			}
-			return merged;
+			const changed = await collectCheckpointed(
+				name,
+				batches,
+				(batch) => {
+					const items = batch.items.map((c) => ({ ...c, mine: prior.positions[name][c.id] }));
+					const others = Object.fromEntries(batch.items.map((c) => [
+						c.id,
+						PARTICIPANTS.filter((p) => p !== name).map((p) => prior.positions[p][c.id]),
+					]));
+					return deliberationPrompt(items, sources[batch.key], others);
+				},
+				(_merged, batchIds) => `  ${name}: ${batchIds.length} deliberated\n`,
+			);
+			return { ...prior.positions[name], ...changed };
 		};
 		positions = { sol: await collect("sol"), opus: await collect("opus"), analyst };
 	}
@@ -285,7 +327,7 @@ async function main() {
 	state.rounds[round] = { positions, converged, open: ids.filter((id) => !converged.includes(id)) };
 	state.issuesPath = issuesPath;
 	state.ids = ids;
-	writeFileSync(statePath, JSON.stringify(state, null, 1));
+	atomicJson(statePath, state);
 
 	process.stdout.write(`round ${round}: ${converged.length}/${ids.length} converged\n`);
 	if (state.rounds[round].open.length > 0) {
@@ -297,7 +339,7 @@ async function main() {
 				others: Object.fromEntries(PARTICIPANTS.map((p) => [p, positions[p][id]])),
 			};
 		}
-		writeFileSync(`${stateDir}/open-round${round}.json`, JSON.stringify(packets, null, 1));
+		atomicJson(`${stateDir}/open-round${round}.json`, packets);
 		process.stdout.write(`open: ${state.rounds[round].open.join(", ")}\npackets: ${stateDir}/open-round${round}.json\n`);
 	}
 	process.stdout.write(`state hash: ${sha(JSON.stringify(positions)).slice(0, 16)}\n`);

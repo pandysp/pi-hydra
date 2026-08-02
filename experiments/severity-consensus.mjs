@@ -215,15 +215,37 @@ Return ONLY:
 }
 
 export async function askJudge(name, prompt, expectedIds, timeoutMs) {
+	return (await askJudgeDetailed(name, prompt, expectedIds, timeoutMs)).labels;
+}
+
+export async function askJudgeDetailed(name, prompt, expectedIds, timeoutMs) {
 	const spec = JUDGES[name];
 	const transport = spec.transport === "pi" ? await piTransport(spec) : claudeCliTransport(spec, timeoutMs);
+	const attempts = [];
 	let attempt = await transport.ask(prompt, null);
+	attempts.push({ text: attempt.text, error: attempt.error });
+	if (attempt.error) {
+		const failure = new Error(`${name}: ${attempt.error}`);
+		failure.attempts = attempts;
+		throw failure;
+	}
 	try {
-		return parseLabels(attempt.text, expectedIds);
+		return { labels: parseLabels(attempt.text, expectedIds), attempts, judge: { name, ...spec } };
 	} catch (error) {
-		if (attempt.error) throw new Error(`${name}: ${attempt.error}`);
 		const retry = await transport.ask(prompt, attempt);
-		return parseLabels(retry.text, expectedIds);
+		attempts.push({ text: retry.text, error: retry.error });
+		if (retry.error) {
+			const failure = new Error(`${name}: ${retry.error}`);
+			failure.attempts = attempts;
+			throw failure;
+		}
+		try {
+			return { labels: parseLabels(retry.text, expectedIds), attempts, judge: { name, ...spec } };
+		} catch (retryError) {
+			const failure = new Error(`${name}: ${retry.error ?? retryError.message}`);
+			failure.attempts = attempts;
+			throw failure;
+		}
 	}
 }
 
