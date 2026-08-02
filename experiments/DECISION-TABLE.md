@@ -7,9 +7,12 @@ RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
 > **CURRENT STATUS.** Golden v1 (`4ea27b0018705940`) is the valid ruler: 46
 > active issues, 17 blocking. Golden v2 is only a local provisional candidate
 > (`2b0a85843c9be981`): 75 active, 28 blocking, consensus below its registered
-> bar, checker 5/8. The capstone benchmark against v2 has not run. No arm or
-> provider contract is locked in. Finish and freeze v2, add the registered run
-> matrix, then run 2–3 look-at-the-data iterations before deciding.
+> bar; its mechanical checker now passes 8/8. The capstone benchmark against v2
+> has not run. On 2026-08-02 Andreas nevertheless made the product choice:
+> ENUM-SO2 for both providers, with queue removed from model-facing prompts and
+> schemas but retained internally. This is a deliberate choice under OpenAI
+> uncertainty, not a benchmark verdict; a provider text split remains open if
+> the later capstone shows ENUM's OpenAI premium does not earn its keep.
 
 ## READ FIRST — quality bases differ
 
@@ -543,19 +546,21 @@ by single issues while the pool holds eight blockers nobody surfaces.
 Heterogeneous lenses (his "different heads") and coverage-first contracts
 are the levers that could reach it.
 
-## Golden dataset v2 — interrupted, not a ruler (2026-08-02)
+## Golden dataset v2 — provisional, not a ruler (2026-08-02)
 
 Local checkpoint `d96123b` contains provisional version
 `2b0a85843c9be981`: 75 active issues (28 blocking, 47 harmful) and 61 recorded
 rejections across scheduler, exporter and dispatcher. It must not be cited as
-golden v2. Novel consensus is 62/67, rejudge consensus 4/5, and
-`golden-dataset.check.mjs` passes only 5/8 invariants; schema,
-rejected-reason vocabulary and anchor resolution still fail. There is no
-`GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
+golden v2. Novel consensus is 62/67 and remaining consensus work is unfinished.
+The recovery repaired full-schema coverage, rejection-reason vocabulary and
+frame-aware anchor resolution; `golden-dataset.check.mjs` now passes 8/8.
+There is no `GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
 
 ## Capstone benchmark — not run
 
 `BENCHMARK-SPEC.md` freezes the scoring design and 2–3 iteration protocol.
 The steer-only input is complete; the dated run-matrix addendum still waits on
-a valid v2 freeze. No baseline/arm table against v2 and no design lock-in
-exist.
+a valid v2 freeze. No baseline/arm table against v2 exists. Andreas selected
+unified ENUM-SO2 as the implementation direction before that evidence and will
+revisit a provider-specific text branch if the OpenAI result is not worth its
+measured cost premium.

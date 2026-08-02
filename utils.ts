@@ -375,6 +375,10 @@ export interface ObservationProtocolOptions {
 
 const LEGACY_DECISION_SHAPE =
 	'{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
+const STEER_ONLY_DECISION_SHAPE =
+	'{"action":"noop|print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
+const ENUMERATED_DECISION_SHAPE =
+	'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}';
 
 function actingDeliveryProtocol(afterChange: AfterChangeAction | undefined): string {
 	if (afterChange === "print") {
@@ -391,7 +395,7 @@ function toolAllowance(tools: string[] | undefined): string {
 }
 
 function completionProtocol(head: string): string {
-	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. Choose by who must act and when: "print" is a user-only note when the agent need not act; "queue" is for agent action that can wait until its next turn; "steer" is for an agent correction needed before current work continues; "interrupt" is only for an emergency that must abort the run. Don't prefix message with [${head}].`;
+	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. Choose by recipient: "print" is a user-only note when the agent need not act; "steer" delivers to the agent whether it can wait or not, and folds in at its next checkpoint; "interrupt" is only for an emergency that must abort the run. Steering is the normal and only way to reach the agent. Don't prefix message with [${head}].`;
 }
 
 function actingDecisionProtocol(head: string, afterChange: AfterChangeAction | undefined): string {
@@ -399,7 +403,7 @@ function actingDecisionProtocol(head: string, afterChange: AfterChangeAction | u
 }
 
 function judgingDecisionProtocol(head: string, steerTarget: "correct the agent" | "deliver a lens finding"): string {
-	return `Deliver no feedback unless something warrants it. Print a note the user sees but the agent does not. Queue feedback that is useful but can wait. Steer only to ${steerTarget} between turns. Interrupt only for emergencies that must stop the line. No work tools, no "let me check...", no follow-up turn, and no unsupported claims. ${completionProtocol(head)}`;
+	return `Deliver no feedback unless something warrants it. Print a note the user sees but the agent does not. Steer to ${steerTarget}, whether it can wait or not. Interrupt only for emergencies that must stop the line. No work tools, no "let me check...", no follow-up turn, and no unsupported claims. ${completionProtocol(head)}`;
 }
 
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
@@ -409,6 +413,7 @@ function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string
 	return ` Hydra snapshot at observation start: active heads are ${activeHeads.join(", ") || "none"}; later hydra tool results supersede this snapshot.`;
 }
 
+/** Frozen footer-experiment rendering; production uses enumeratedDeliveryContext. */
 function deliveryContextFacts(context: DeliveryContext): string {
 	return `Delivery context (factual data, not a repetition policy): ${JSON.stringify(context)}. lastByThisHead is this head's most recent delivery accepted by the runtime; depending on its route, it may have reached the user or durable session state rather than the driver, and it may be absent when this fork's snapshot is older. pending messages are held in a live Pi queue and have not reached the driver yet. Use these facts under the lens's own judgment about whether, what, and how to deliver.`;
 }
@@ -420,20 +425,132 @@ function factualDeliveryContext(context: DeliveryContext): string {
 	return `${deliveryContextFacts(context)} Reply with exactly DELIVERY: none when no feedback is warranted. ${EVIDENCE_GUIDANCE}`;
 }
 
-function actingDeliveryContext(context: DeliveryContext | undefined): string {
-	return context === undefined ? "" : ` ${deliveryContextFacts(context)} ${EVIDENCE_GUIDANCE}`;
+/**
+ * The model-facing delivery record intentionally omits the internal route
+ * label. `queue` remains a runtime capability, but an old queued receipt must
+ * not reintroduce that retired choice into the steer-only contract. Recipient
+ * preserves the fact the head needs for follow-up judgment without relabelling
+ * an old delivery as something it was not.
+ */
+function enumeratedDeliveryContext(context: DeliveryContext): string {
+	const recipient = (delivery: Action): "user" | "agent" => (delivery === "print" ? "user" : "agent");
+	const visible = {
+		lastByThisHead:
+			context.lastByThisHead === null
+				? null
+				: {
+						recipient: recipient(context.lastByThisHead.delivery),
+						message: context.lastByThisHead.message,
+					},
+		pending: context.pending.map((item) => ({
+			head: item.head,
+			recipient: recipient(item.delivery),
+			message: item.message,
+		})),
+	};
+	return `Delivery context (factual data, not a repetition policy): ${JSON.stringify(visible)}. lastByThisHead is this head's most recent delivery accepted by the runtime. pending messages have not reached the driver yet. Use these facts under the lens's own judgment about whether and what to deliver. ${EVIDENCE_GUIDANCE}`;
 }
 
+function enumeratedDecisionProtocol(head: string): string {
+	return `Reply with one JSON object, nothing else:
+${ENUMERATED_DECISION_SHAPE}
+
+List every finding the lens surfaces, each as its own entry with its own action; empty findings array if none. Do not rank them or pick one. Print a note the user sees but the agent does not. Steer to deliver a message to the agent, whether it can wait or not. Steering is the normal and only way to reach the agent and folds in at its next checkpoint. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${head}].`;
+}
+
+/** ENUM-SO2 contract plus factual delivery state in the split OpenAI handoff. */
+export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
+	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it. Review the visible trajectory. You have no work tools.
+
+${enumeratedDeliveryContext(context)}
+
+${enumeratedDecisionProtocol(head)}`;
+}
+
+/** ENUM-SO2 contract plus factual delivery state in the combined Anthropic handoff. */
+export function buildEnumeratedJudgeObservationPrompt(
+	head: string,
+	instruction: string,
+	context: DeliveryContext,
+): string {
+	return `<system-reminder>Side watcher. You have no work tools. Review the visible trajectory through the lens below. Follow the lens in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it.
+
+LENS: ${instruction}
+
+${enumeratedDeliveryContext(context)}
+
+${enumeratedDecisionProtocol(head)}</system-reminder>`;
+}
+
+export interface EnumeratedDecisionResult {
+	decision: Decision | null;
+	error: string | null;
+}
+
+const ENUMERATED_ACTIONS = ["print", "steer", "interrupt"] as const;
+
 /**
- * Tool-free completion for judge-only heads. The lens stays in the ordinary
- * user message while this provider-elevated envelope contains only protocol
- * and factual delivery state.
+ * Parse ENUM-SO2 and mechanically route the complete batch at the most urgent
+ * action selected by the head. Every message survives; the runtime does not
+ * select which findings deserve delivery.
  */
+export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult {
+	const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	let value: unknown;
+	try {
+		value = JSON.parse((fenced ? fenced[1] : text).trim());
+	} catch {
+		return { decision: null, error: "completion must be one JSON object" };
+	}
+	if (typeof value !== "object" || value === null || !Array.isArray((value as { findings?: unknown }).findings)) {
+		return { decision: null, error: "completion requires a findings array" };
+	}
+	const findings: Decision[] = [];
+	for (const [index, item] of (value as { findings: unknown[] }).findings.entries()) {
+		if (typeof item !== "object" || item === null) {
+			return { decision: null, error: `finding ${index + 1} must be an object` };
+		}
+		const candidate = item as { action?: unknown; reason?: unknown; message?: unknown };
+		if (typeof candidate.action !== "string" || !(ENUMERATED_ACTIONS as readonly string[]).includes(candidate.action)) {
+			return { decision: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
+		}
+		const message = typeof candidate.message === "string" ? candidate.message.trim().slice(0, 500) : "";
+		if (message.length === 0) {
+			return { decision: null, error: `finding ${index + 1} requires a non-empty message` };
+		}
+		findings.push({
+			action: candidate.action as (typeof ENUMERATED_ACTIONS)[number],
+			reason: typeof candidate.reason === "string" ? candidate.reason.slice(0, 200) : "",
+			message,
+		});
+	}
+	if (findings.length === 0) {
+		return { decision: { action: "noop", reason: "no findings", message: "" }, error: null };
+	}
+	const urgency = (action: Action): number => ENUMERATED_ACTIONS.indexOf(action as (typeof ENUMERATED_ACTIONS)[number]);
+	const top = findings.reduce((selected, finding) =>
+		urgency(finding.action) > urgency(selected.action) ? finding : selected,
+	);
+	return {
+		decision: {
+			action: top.action,
+			reason: top.reason,
+			message: findings.map((finding) => finding.message).join(" | "),
+		},
+		error: null,
+	};
+}
+
+function actingDeliveryContext(context: DeliveryContext | undefined): string {
+	return context === undefined ? "" : ` ${enumeratedDeliveryContext(context)}`;
+}
+
+/** Frozen footer experiment builder. Production uses the enumerated builder. */
 export function buildJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
 	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Review the visible trajectory. You have no work tools. ${factualDeliveryContext(context)} Otherwise write exactly one concise lens finding as natural text, then on a new final line write DELIVERY: followed by print, queue, steer, or interrupt. Choose by who must act and when. For feedback about work currently underway, use steer when leaving it unresolved would leave that work incorrect, unsafe, incomplete, or unverified; the fact that it could be addressed on a later turn does not make it queue. Use print only when the agent need not act, queue only for genuinely deferrable follow-up, and interrupt only for an emergency that must abort the run. No tools, no follow-up turn, and no unsupported claims. Don't prefix the finding with [${head}].`;
 }
 
-/** Combined-user analogue for providers without the split-role handoff. */
+/** Frozen combined-user footer analogue retained for experiment replay. */
 export function buildJudgeObservationPrompt(
 	head: string,
 	instruction: string,
@@ -511,10 +628,12 @@ export function buildAnthropicObservationPrompt(
 LENS: ${instruction}
 
 When done, reply with one JSON object, nothing else:
-${LEGACY_DECISION_SHAPE}
+${STEER_ONLY_DECISION_SHAPE}
 
-${postChange} Otherwise noop unless feedback is warranted. Print only when the user should see a note but the agent need not act. Queue agent action that can wait. Steer an agent correction needed before current work continues. Interrupt only for emergencies. Don't prefix message with [${head}].</system-reminder>`;
+${postChange} Otherwise noop unless feedback is warranted. Print only when the user should see a note but the agent need not act. Steer to deliver to the agent whether it can wait or not; steering folds in at its next checkpoint. Interrupt only for emergencies. Don't prefix message with [${head}].</system-reminder>`;
 	}
+	// Frozen control used by historical experiments. Production judge-only
+	// heads use buildEnumeratedJudgeObservationPrompt instead.
 	return `<system-reminder>Side watcher. You have no work tools. Review the trajectory through the lens below.
 
 LENS: ${instruction}

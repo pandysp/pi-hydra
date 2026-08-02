@@ -17,13 +17,13 @@ run end:  agent_end              ─► RUN-END: payload + M(marker) appended (f
   ↓
 runAgentLoop(); onPayload splices pi-ai's own serialization onto the captured bytes
   ↓
-provider completion: typed hydra call (OpenAI) / validated JSON (Anthropic)
+provider completion: enumerated judge JSON / acting typed call or JSON
   ↓
 apply declared delivery after a successful write/edit
   ↓
 none      → log internally as noop
 print     → ctx.ui.notify (renders in the TUI, never enters the agent's context)
-queue     → pi.sendMessage({ deliverAs: "followUp" })
+queue     → pi.sendMessage({ deliverAs: "followUp" })  [internal compatibility only]
 steer     → pi.sendUserMessage({ deliverAs: "steer" })
 interrupt → ctx.abort() + pi.sendUserMessage({ deliverAs: "followUp" })
 ```
@@ -122,11 +122,13 @@ Byte-parity itself was verified separately on every captured pair of the session
 
 ## Acting heads
 
-By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable work set, down to `[]` for a judge-only head. The `hydra` return action remains available in every case. The mechanism extends the replay; it does not replace it:
+By default a head may run tool calls before its decision; a head file's `tools:` frontmatter narrows the executable work set, down to `[]` for a judge-only head. Acting heads retain the `hydra` return action; judge-only heads return the enumerated JSON contract directly. The mechanism extends the replay; it does not replace it:
 
 **The head owns policy; the envelope owns mechanism.** A robust acting head states a positive contract: purpose, the trajectory condition that warrants action, the work, completion, and delivery. The envelope does not infer those from the head name and contains no docs/tuner/foreman branches. It supplies authority, tool allowance, action semantics, and serialization only. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot captured when its observation is scheduled; later `hydra` results supersede it. Heads without that explicit capability receive no state inventory.
 
-**Completion has one semantic contract and two measured transports.** On OpenAI every non-self-removing observation must call `hydra` exactly once with `action: "complete_observation"`, a typed delivery, and a message. The call must be alone in its assistant turn, so all fallible work has completed before "done" can be accepted. A malformed call becomes the ordinary pi tool error the model sees and can correct. On Anthropic the head instead returns one compact decision object whose `action` is `noop|print|queue|steer|interrupt`. Hydra validates that object, but the model—not a tool call—produces it; malformed output warns and becomes `noop`. Native Anthropic completion calls were rejected after A/B testing: even with a flat schema and no retry turns, they roughly doubled judge-only latency and more than doubled cost at low thinking, without a reliable quality gain. `manage_heads` and all acting work remain real tools on both providers.
+**Judge completion is one enumerated contract across both providers.** A judge-only head returns `{"findings":[...]}` with one independently labelled entry per finding and an empty list for silence. OpenAI receives the raw lens plus a developer envelope; Anthropic receives one combined prompt. Hydra preserves every message and mechanically routes the batch at its most urgent model-selected action (`print < steer < interrupt`). Malformed output fails open to `noop` without a recovery call, matching the measured ENUM arm.
+
+**Acting completion keeps its two measured transports.** On OpenAI every non-self-removing acting observation must call `hydra` exactly once with `action: "complete_observation"`, a typed delivery, and a message. The call must be alone in its assistant turn, so all fallible work has completed before "done" can be accepted. A malformed call becomes the ordinary pi tool error the model sees and can correct. On Anthropic the acting head instead returns one compact decision object whose `action` is `noop|print|steer|interrupt`. Hydra validates that object, but the model—not a tool call—produces it; malformed output warns and becomes `noop`. The old queue parser and router remain for compatibility, but no prompt or advertised schema offers queue. `manage_heads` and all acting work remain real tools on both providers.
 
 The final paired OpenAI A/B covered luna, terra, and sol at low through xhigh: 144 review pairs and 96 acting pairs. Typed completion was valid in 144/144 reviews versus 142/144 for JSON and used exactly one call each, eliminating 23 control retry turns. Semantic review accuracy was effectively flat (42/144 versus 40/144), as were mean latency (6.68 versus 6.71 s); the larger tool contract coincided with 16.7% higher cost. Acting accuracy was 95/96 versus 96/96, with one real Terra foreman miss retained. Terminal self-removal stayed 24/24 and fell from two calls and 5.61 s mean to one call and 3.09 s. The complete KPI table and the symmetric correction of one evaluator synonym are in the [experiment log](../experiments/README.md#enforceable-completion-ab-july-2026).
 
@@ -134,11 +136,11 @@ The final paired OpenAI A/B covered luna, terra, and sol at low through xhigh: 1
 
 **Head management carries its own receipt.** `manage_heads` takes an idempotent add/remove operation, one head, and a required explanation. When an observer actually changes the set, the runtime prints `Added|Removed <head>` plus that explanation immediately; failed and idempotent calls print nothing. The driver sees its own tool result and gets no duplicate notification. Successful self-removal is inherently terminal, so it prints and exits in one call. Removing or adding another head is followed by the ordinary completion action. These rules are caller- and state-based, not foreman-specific.
 
-**The loop is pi's own, and it is the only path.** Every observation runs `runAgentLoop` from pi-agent-core (a first-class extension import; the loader aliases it in both bundle modes) rather than a hand-rolled imitation: argument validation, tool errors, parallel-vs-sequential execution policy, and abort discipline stay pi's code and evolve with it. A judge-only head is the zero-work-tool case of the same path and normally completes in one provider call. The same reuse approach applies to M's serialization.
+**Acting loops are pi's own.** Every acting observation runs `runAgentLoop` from pi-agent-core (a first-class extension import; the loader aliases it in both bundle modes) rather than a hand-rolled imitation: argument validation, tool errors, parallel-vs-sequential execution policy, and abort discipline stay pi's code and evolve with it. Judge-only heads make one direct provider call with no executable tools. The same reuse approach applies to M's serialization.
 
 **Every loop call replays the captured prefix.** The loop's own built context is discarded by the `onPayload` merge, so iteration N's request is the byte-true driver prefix plus the observation tail (`[M?, handoff, turn 1, results 1, ..., turn N-1]`). The driver prefix stays a pure cache read on every iteration; measured live, read stayed at the full committed prefix while only tail content was written.
 
-**Tool parity comes from the replay itself.** The model can only call tools in the replayed payload's tools array, which is the driver's active set by construction. hydra executes the seven standard tools (constructed from pi's exported factories at the driver's cwd), filtered down to the head file's `tools:` list when one is given, plus its own shared tool. Inside that tool, `complete_observation` is universal while `manage_heads` requires omitted tools or an explicit `hydra` allowance. A call outside the allowance, or to anything hydra cannot execute (another extension's tool, MCP), gets an error result and the head proceeds. write/edit serialize same-file mutations through pi's process-wide queue, shared with the driver because the loader aliases pi-coding-agent to its bundled instance.
+**Tool parity comes from the replay itself.** The replayed prefix carries the driver's active tool schemas byte-for-byte. Acting observations execute the seven standard tools (constructed from pi's exported factories at the driver's cwd), filtered down to the head file's `tools:` list when one is given, plus hydra's shared tool. Inside that tool, `complete_observation` is the acting return channel while `manage_heads` requires omitted tools or an explicit `hydra` allowance. Judge-only heads execute no tools despite seeing the cached schemas. A call outside an acting head's allowance, or to anything hydra cannot execute (another extension's tool, MCP), gets an error result and the head proceeds. write/edit serialize same-file mutations through pi's process-wide queue, shared with the driver because the loader aliases pi-coding-agent to its bundled instance.
 
 **The cache marker advances with the loop.** Cache writes happen only at explicit breakpoints, the budget is four per request, and the driver's payload already spends all four, so the merge only ever moves the deepest message-level marker: onto M for a run-end fork's first call (the pre-warm bet, unchanged), then onto the tail's last markable block once loop turns exist. Each loop turn is written once (plain ephemeral, deliberately without the driver's TTL: the next iteration is seconds away) and read thereafter, instead of re-paid as input every iteration. The prefix+M entry from the first call keeps serving the driver. Anthropic's serving stack was also observed auto-extending entries to the last assistant block on this traffic class without any marker; the explicit advance reproduces those economics within documented semantics instead of relying on observed but undocumented behavior.
 
@@ -176,7 +178,7 @@ npm test           # vitest on the pure helpers
 
 There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `utils.ts` holds the pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.
 
-Smoke-test the delivery pipeline with the hidden diagnostic heads: `/hydra-heads test` forces a `queue` decision, `/hydra-heads test-interrupt` forces an `interrupt`. They are one-shot: after firing once, the set reverts to the last product heads. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
+Smoke-test the delivery pipeline with the hidden diagnostic heads: `/hydra-heads test` forces a `steer` decision, `/hydra-heads test-interrupt` forces an `interrupt`. They are one-shot: after firing once, the set reverts to the last product heads. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
 
 ## Verifying cache parity
 
@@ -241,5 +243,5 @@ hydra began as [andon](../archive/README.md), a bash and tmux contraption around
 | Observation state | JSON file in `~/.local/state/andon-observer/` | session custom entries via `pi.appendEntry("hydra-call", ...)` |
 | Delivery | `tmux send-keys` | `pi.sendMessage` / `pi.sendUserMessage` |
 | Polling | JSONL mtime watch loop | driver commit events (`message_start`) + `agent_end` |
-| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | factual delivery state from the ledger in the prompt — the head decides; queued feedback becomes part of the replayed context by design, since the head sees exactly what the driver sees |
+| Self-feedback prevention | `recent_decisions` injected into prompt (caused hallucination loops) | factual delivery state from the ledger in the prompt — the head decides; pending feedback becomes part of the replayed context by design, since the head sees exactly what the driver sees |
 | Status display | none / external log | TUI footer with live hit ratio + cost |

@@ -15,6 +15,15 @@ was refuted before running.
 | [DECISION-TABLE.md](DECISION-TABLE.md) | **The entry point.** Every arm, cost and quality, per config, with each block labelled by measurement basis. Carries the retractions. |
 | [RUN-LEDGER.md](RUN-LEDGER.md) | Every completed or reconstructed run through the steer-only probe: date, script, commit, corpus, rows, spend and artifact paths. Generated — edit `RUN-LEDGER.jsonl`. The interrupted v2 build is not a completed run and remains outside the ledger. |
 
+## Product decision (2026-08-02)
+
+Andreas selected one ENUM-SO2 judge contract for Anthropic and OpenAI and
+retired `queue` from model-facing prompts and schemas. The extension keeps its
+queue parser and router dormant for compatibility. This is an explicit product
+choice made before the unfinished v2 capstone, not a claim that ENUM already
+wins on OpenAI; a provider text split remains the fallback if later evidence
+shows the OpenAI premium does not buy enough recall.
+
 ## The contract screens (which API surface)
 
 | doc | verdict |
@@ -62,7 +71,7 @@ was refuted before running.
 |---|---|
 | [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
 | [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
-| [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | **INTERRUPTED / PROVISIONAL** at local checkpoint `d96123b`: candidate version `2b0a85843c9be981`, 75 active (28 blocking), consensus below its registered bar, checker 5/8. No v2 results or freeze exists; resume rather than restart. |
+| [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | **PROVISIONAL** candidate version `2b0a85843c9be981`: 75 active (28 blocking), consensus below its registered bar. Recovery repaired the schema/build mechanics and the checker now passes 8/8, but no v2 results or freeze exists; resume consensus rather than restart. |
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |

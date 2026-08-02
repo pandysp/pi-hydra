@@ -10,6 +10,8 @@ import {
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
+	buildEnumeratedJudgeObservationEnvelope,
+	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
 	buildJudgeObservationEnvelope,
@@ -30,6 +32,7 @@ import {
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
+	parseEnumeratedDecision,
 	parseFooterDecision,
 	parseHeadFile,
 	parseHeadList,
@@ -79,10 +82,11 @@ describe("hydra tool protocol", () => {
 	it("advertises one flat schema with the two public actions", () => {
 		const schema = hydraToolParameters as {
 			required?: string[];
-			properties?: { action?: { enum?: string[] } };
+			properties?: { action?: { enum?: string[] }; delivery?: { enum?: string[] } };
 		};
 		expect(schema.required).toEqual(["action", "message"]);
 		expect(schema.properties?.action?.enum).toEqual(["manage_heads", "complete_observation"]);
+		expect(schema.properties?.delivery?.enum).toEqual(["none", "print", "steer", "interrupt"]);
 	});
 
 	it("enforces action-specific fields at runtime", () => {
@@ -101,6 +105,15 @@ describe("hydra tool protocol", () => {
 				message: "",
 			}),
 		).toEqual({ action: "complete_observation", delivery: "none", message: "" });
+		// Queue is intentionally dormant rather than deleted: old or internal
+		// callers still validate even though the model-facing schema omits it.
+		expect(
+			validateHydraToolParams({
+				action: "complete_observation",
+				delivery: "queue",
+				message: "legacy follow-up",
+			}),
+		).toEqual({ action: "complete_observation", delivery: "queue", message: "legacy follow-up" });
 		expect(() => validateHydraToolParams({ action: "manage_heads", message: "missing fields" })).toThrow(
 			"requires operation and head",
 		);
@@ -135,7 +148,8 @@ describe("hydra tool protocol", () => {
 	it("defines delivery by who must act and when", () => {
 		const description = hydraToolDescription("/heads");
 		expect(description).toContain("print` only when the agent need not act");
-		expect(description).toContain("steer` when the agent must correct current work");
+		expect(description).toContain("steer` is the normal and only way to reach the agent");
+		expect(description).not.toContain("queue");
 	});
 });
 
@@ -394,6 +408,7 @@ describe("buildObservationPrompt", () => {
 	it("spells out a narrowed allowance", () => {
 		const prompt = buildObservationPrompt("docs", "Keep notes.", ["read", "write"]);
 		expect(prompt).toContain("only these tools: read, write");
+		expect(prompt).not.toContain("queue");
 	});
 
 	it("permits everything when tools are omitted", () => {
@@ -418,7 +433,7 @@ describe("buildObservationPrompt", () => {
 });
 
 describe("buildAnthropicObservationPrompt", () => {
-	it("keeps Anthropic judge completion in one JSON response", () => {
+	it("keeps the frozen Anthropic judge control in one JSON response", () => {
 		const prompt = buildAnthropicObservationPrompt("quality", "Judge.", []);
 		expect(prompt).toContain("one JSON object");
 		expect(prompt).toContain('"action":"noop|print|queue|steer|interrupt"');
@@ -429,10 +444,15 @@ describe("buildAnthropicObservationPrompt", () => {
 	it("retains acting tools and programmatic management receipts", () => {
 		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
 			activeHeads: ["foreman", "quality"],
+			deliveryContext: {
+				lastByThisHead: { delivery: "queue", message: "Old internal delivery." },
+				pending: [],
+			},
 		});
 		expect(prompt).toContain("active heads are foreman, quality");
 		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
 		expect(prompt).toContain("removing your own head completes the observation");
+		expect(prompt).not.toContain("queue");
 	});
 });
 
@@ -464,10 +484,15 @@ describe("buildObservationEnvelope", () => {
 		const envelope = buildObservationEnvelope("crew", ["hydra", "read"], {
 			afterChange: "print",
 			activeHeads: ["quality", "security"],
+			deliveryContext: {
+				lastByThisHead: null,
+				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
+			},
 		});
 		expect(envelope).toContain('complete with delivery "print"');
 		expect(envelope).toContain("manage_heads change prints its own receipt automatically");
 		expect(envelope).toContain("active heads are quality, security");
+		expect(envelope).not.toContain("queue");
 	});
 
 	it("does not expose active state without explicit hydra capability", () => {
@@ -546,6 +571,69 @@ describe("tool-free judge completion", () => {
 		expect(correction).toContain("cached driver request");
 		expect(correction).toContain("unavailable to this observation");
 		expect(correction).toContain("DELIVERY: print|queue|steer|interrupt");
+	});
+});
+
+describe("enumerated steer-only judge completion", () => {
+	const context = {
+		lastByThisHead: { delivery: "queue" as const, message: "Fix the redirect." },
+		pending: [{ head: "quality", delivery: "queue" as const, message: "Cover the adjacent mutation bug." }],
+	};
+
+	it("renders the same ENUM-SO2 contract for split and combined provider handoffs", () => {
+		const envelope = buildEnumeratedJudgeObservationEnvelope("security", context);
+		const prompt = buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context);
+		for (const text of [envelope, prompt]) {
+			expect(text).toContain(
+				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
+			);
+			expect(text).toContain("List every finding the lens surfaces");
+			expect(text).toContain("Do not rank them or pick one");
+			expect(text).toContain("Steering is the normal and only way to reach the agent and folds in at its next checkpoint");
+			expect(text.toLowerCase()).not.toContain("queue");
+		}
+		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).not.toContain("Fix security issues.");
+		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain('"recipient":"agent"');
+	});
+
+	it("parses an empty findings list as noop", () => {
+		expect(parseEnumeratedDecision('{"findings":[]}')).toEqual({
+			decision: { action: "noop", reason: "no findings", message: "" },
+			error: null,
+		});
+	});
+
+	it("routes the whole batch at its most urgent model-selected action", () => {
+		expect(
+			parseEnumeratedDecision(
+				JSON.stringify({
+					findings: [
+						{ action: "print", reason: "user owns it", message: "Rotate the external credential." },
+						{ action: "steer", reason: "current defect", message: "Run the migration before merging." },
+					],
+				}),
+			),
+		).toEqual({
+			decision: {
+				action: "steer",
+				reason: "current defect",
+				message: "Rotate the external credential. | Run the migration before merging.",
+			},
+			error: null,
+		});
+	});
+
+	it("accepts a fenced object but rejects hidden queue and malformed findings", () => {
+		expect(parseEnumeratedDecision('```json\n{"findings":[]}\n```').decision?.action).toBe("noop");
+		expect(
+			parseEnumeratedDecision('{"findings":[{"action":"queue","reason":"later","message":"Do it later."}]}'),
+		).toMatchObject({ decision: null, error: 'finding 1 has invalid action "queue"' });
+		expect(parseEnumeratedDecision('{"findings":[{"action":"steer","reason":"missing message"}]}')).toMatchObject({
+			decision: null,
+			error: "finding 1 requires a non-empty message",
+		});
 	});
 });
 

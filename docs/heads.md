@@ -1,6 +1,6 @@
 # Heads
 
-A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and completes with one of five deliveries (none, print, queue, steer, interrupt). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
+A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and reports findings through print, steer, or interrupt (or stays quiet). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
 
 ## Head files
 
@@ -64,7 +64,7 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head, which returns its decision through the footer contract on both providers (see below). For acting heads, the `hydra` action `complete_observation` remains available on OpenAI because it is the return channel, not a work capability, and Anthropic returns the corresponding decision as compact JSON. On both providers, `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
+`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head, which enumerates its findings in one JSON object on both providers (see below). For acting heads, the `hydra` action `complete_observation` remains available on OpenAI because it is the return channel, not a work capability, and Anthropic returns the corresponding decision as compact JSON. On both providers, `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
 
 Authoring guidance for heads that act:
 
@@ -77,21 +77,28 @@ Tracked mutations for `after-change` are successful `write` and `edit` calls. He
 
 ## Decisions: when findings land
 
-On OpenAI, every observation ends with one `hydra` call:
+An acting OpenAI head ends with one `hydra` call:
 
 ```json
 {"action":"complete_observation","delivery":"none","message":""}
 ```
 
-The call must be alone in its tool-call turn, after fallible work has completed. This makes completion causally last: a parallel write failure cannot be hidden by an already accepted decision. `message` is exactly empty for `none` and non-empty for the other deliveries; invalid combinations are tool errors, not text that hydra guesses how to repair. Anthropic instead returns `{"action":"noop|print|queue|steer|interrupt","reason":"…","message":"…"}` after its work. Hydra validates that object, but cannot enforce its production with a tool; malformed output becomes `noop`. Judge-only heads (`tools: []`) use neither shape: on both providers they write one natural-text finding and end with a final `DELIVERY: print|queue|steer|interrupt` line (or a standalone `DELIVERY: none`), which hydra parses under the same validation. The splits are deliberate and benchmarked, not part of the head-authoring API.
+The call must be alone in its tool-call turn, after fallible work has completed. This makes completion causally last: a parallel write failure cannot be hidden by an already accepted decision. `message` is exactly empty for `none` and non-empty for the other deliveries; invalid combinations are tool errors, not text that hydra guesses how to repair. An acting Anthropic head instead returns `{"action":"noop|print|steer|interrupt","reason":"…","message":"…"}` after its work. Hydra validates that object, but cannot enforce its production with a tool; malformed output becomes `noop`.
+
+A judge-only head uses the measured ENUM-SO2 contract on both providers:
+
+```json
+{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}
+```
+
+It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own action. Hydra preserves all messages and routes the combined batch at the most urgent chosen action (`print < steer < interrupt`). OpenAI carries this contract in a developer envelope beside the raw lens; Anthropic carries both in one prompt.
 
 - `none`: nothing to report. Nothing is delivered anywhere; `/hydra-stats` labels this internal outcome `noop`.
 - `print`: a note to you. The message renders in the TUI and never enters the agent's context. A watch-only head simply always prints.
-- `queue`: the finding waits until the run ends, then joins the context of the agent's next turn.
-- `steer`: the finding is injected as a real user message between turns of the current run, so the agent corrects course while still working.
+- `steer`: the normal and only agent-directed route. The finding folds into the agent's context as a real user message at its next checkpoint, whether it can wait or not.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
 
-Queue against steer is a choice about timing: queue when the feedback can wait for the run to finish, steer when the agent should correct course now. Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
 
 ## Heads that manage heads
 

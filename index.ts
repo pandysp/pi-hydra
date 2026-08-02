@@ -79,7 +79,6 @@ import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delive
 import type { DeliveryGateway } from "./delivery";
 import type { PersistedDelivery } from "./delivery-types";
 import {
-	completionFromHydraToolCalls,
 	hydraToolDescription,
 	hydraToolParameters,
 	isTerminalHydraAction,
@@ -89,15 +88,14 @@ import type { ManageHeadsParams } from "./protocol";
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
+	buildEnumeratedJudgeObservationEnvelope,
+	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
-	buildJudgeObservationEnvelope,
-	buildJudgeObservationPrompt,
 	buildObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	decisionFromLoopStopReason,
-	footerFormatCorrection,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
@@ -106,7 +104,7 @@ import {
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
-	parseFooterDecision,
+	parseEnumeratedDecision,
 	parseHeadFile,
 	parseHeadList,
 	parseShutdownGrace,
@@ -131,7 +129,7 @@ const MAX_TOOL_ITERATIONS = 25;
 // smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
 // completions and the picker.
 const DIAGNOSTIC_PROMPTS = {
-	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "queue", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
+	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "steer", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
 	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Call the hydra tool exactly once with action "complete_observation", delivery "interrupt", and message "hydra interrupt fired; if you see this in your context, interrupt delivery works". Do nothing else.</system-reminder>`,
 } as const;
 
@@ -208,9 +206,9 @@ interface Observation extends ObservationSeed {
 	// Split handoff: provider-elevated protocol inserted directly after the raw
 	// lens user message. Undefined means the combined-user handoff.
 	envelope?: string;
-	// Judge-only heads use the measured tool-free footer. Acting heads retain
-	// their provider's established terminal channel (typed tool or JSON).
-	completionMode?: "tool" | "json" | "footer";
+	// Judge-only heads use the measured enumerated JSON contract. Acting heads
+	// retain their provider's established terminal channel (typed tool or JSON).
+	completionMode?: "tool" | "json" | "enum";
 }
 
 interface FeedbackDetails {
@@ -485,12 +483,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return usesSplitObservationHandoff(handoffOverride, ctx.model?.api)
 				? {
 						prompt: instruction,
-						envelope: buildJudgeObservationEnvelope(name, deliveryContext),
-						completionMode: "footer",
+						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext),
+						completionMode: "enum",
 					}
 				: {
-						prompt: buildJudgeObservationPrompt(name, instruction, deliveryContext),
-						completionMode: "footer",
+						prompt: buildEnumeratedJudgeObservationPrompt(name, instruction, deliveryContext),
+						completionMode: "enum",
 					};
 		}
 		if (ctx.model?.api === "anthropic-messages") {
@@ -728,8 +726,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		adoptHeadSet([...heads.values()].filter((head) => head.autostart).map((head) => head.name).sort());
 	}
 
-	// One observation's outcome. A judging head has no work tools but still
-	// receives hydra as its typed return channel.
+	// One observation's outcome. Judge-only heads return enumerated JSON;
+	// acting heads complete through their provider's established channel.
 	interface ObserveOutcome {
 		response: AssistantMessage;
 		usages: ObservationUsage[];
@@ -871,7 +869,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const t0 = Date.now();
 		const outcome =
-			job.completionMode === "footer"
+			job.completionMode === "enum"
 				? await runJudgeObservation(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
 				: await runObservationLoop(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
 		if (!outcome || signal.aborted || job.branchGeneration !== branchGeneration) {
@@ -917,15 +915,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		if (!decision) {
 			const reason =
-				job.completionMode === "footer"
-					? "unparseable delivery footer"
+				job.completionMode === "enum"
+					? "unparseable enumerated decision"
 					: job.completionMode === "json"
 						? "unparseable Anthropic decision"
 						: "missing completion tool call";
 			warnOnce(
 				job.ctx,
-				job.completionMode === "footer"
-					? `hydra: ${job.head} answered with an unparseable delivery footer after one format correction; recorded as noop`
+				job.completionMode === "enum"
+					? `hydra: ${job.head} answered with an unparseable findings list; recorded as noop`
 					: job.completionMode === "json"
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
 					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
@@ -948,7 +946,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			durationMs: Date.now() - t0,
 			hitRatio: summary.hitRatio,
 			rawResponse:
-				job.completionMode === "footer"
+				job.completionMode === "enum"
 					? text.length > 200
 						? `${text.slice(0, 200)}…`
 						: text
@@ -985,9 +983,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
 	}
 
-	// Judge-only heads make one provider call with no executable tools. A
-	// malformed footer gets exactly one narrow format-recovery call; semantic
-	// review is never restarted or silently inferred by the runtime.
+	// Judge-only heads make one provider call with no executable tools. ENUM's
+	// measured fail-open contract records malformed output as noop; it never
+	// spends a recovery turn or silently infers a partial list.
 	async function runJudgeObservation(
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses">,
@@ -1032,7 +1030,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 
 		let response: AssistantMessage;
-		let iterations = 1;
 		try {
 			response = await call([...baseMessages, prompt]);
 			if (signal.aborted || response.stopReason === "error" || response.stopReason === "aborted") {
@@ -1041,37 +1038,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				}
 				return null;
 			}
-			const typed = completionFromHydraToolCalls(response.content);
-			let parsed = typed
-				? { decision: decisionFromCompletion(typed.delivery, typed.message), error: null }
-				: parseFooterDecision(
-						response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
-					);
-			if (!parsed.decision) {
-				const correction: Message = {
-					role: "user",
-					content: [{ type: "text", text: footerFormatCorrection(parsed.error ?? "invalid completion") }],
-					timestamp: Date.now(),
-				};
-				iterations++;
-				response = await call([...baseMessages, prompt, response, correction]);
-				if (signal.aborted || response.stopReason === "error" || response.stopReason === "aborted") {
-					if (!signal.aborted) {
-						notifyUser(job.ctx, `hydra: format recovery failed: ${response.errorMessage ?? response.stopReason}`, "error");
-					}
-					return null;
-				}
-				const recoveredTyped = completionFromHydraToolCalls(response.content);
-				parsed = recoveredTyped
-					? { decision: decisionFromCompletion(recoveredTyped.delivery, recoveredTyped.message), error: null }
-					: parseFooterDecision(
-							response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
-						);
-			}
+			const parsed = parseEnumeratedDecision(
+				response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
+			);
 			return {
 				response,
 				usages,
-				iterations,
+				iterations: 1,
 				toolsUsed: [],
 				completion: parsed.decision,
 				selfRemoved: false,

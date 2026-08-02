@@ -17,9 +17,9 @@ export const hydraToolParameters = Type.Object(
 		operation: Type.Optional(StringEnum(["add", "remove"] as const, { description: "manage_heads only" })),
 		head: Type.Optional(Type.String({ minLength: 1, description: "manage_heads only: the head name" })),
 		delivery: Type.Optional(
-			StringEnum(["none", "print", "queue", "steer", "interrupt"] as const, {
+			StringEnum(["none", "print", "steer", "interrupt"] as const, {
 				description:
-					"complete_observation only: none=no feedback; print=user only; queue=agent later; steer=agent now; interrupt=emergency abort",
+					"complete_observation only: none=no feedback; print=user only; steer=normal agent delivery at its next checkpoint; interrupt=emergency abort",
 			}),
 		),
 		message: Type.String({
@@ -40,6 +40,7 @@ export interface ManageHeadsParams {
 
 export interface CompleteObservationParams {
 	action: "complete_observation";
+	/** Queue remains accepted internally for compatibility but is not advertised. */
 	delivery: "none" | "print" | "queue" | "steer" | "interrupt";
 	message: string;
 }
@@ -108,8 +109,8 @@ export function hydraToolDescription(userHeadDir: string): string {
 		"for an active head. Keep feedback concise, ideally under 240 characters.",
 		"Use `none` for no feedback;",
 		"`print` only when the",
-		"agent need not act; `queue` when agent action can wait; `steer` when the",
-		"agent must correct current work before continuing; and `interrupt` only",
+		"agent need not act; `steer` is the normal and only way to reach the agent",
+		"and folds in at its next checkpoint; and `interrupt` is reserved",
 		"for an emergency that must abort the run. Heads are markdown files in",
 		`${userHeadDir} (user) and .pi/hydra (project):`,
 		"frontmatter `name:` and `description:` are required; `tools:` is omitted",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
 import type { DeliveryGateway } from "./delivery";
 import type { PersistedDelivery } from "./delivery-types";
+import { parseEnumeratedDecision } from "./utils";
 
 function harness(idle = false) {
 	const sentUsers: Array<{ content: string; deliverAs?: string }> = [];
@@ -88,6 +89,27 @@ describe("delivery ledger and router", () => {
 			pending: [],
 		});
 		expect(runtime.persisted).toHaveLength(1);
+	});
+
+	it("delivers every enumerated message at the batch's most urgent chosen action", () => {
+		const parsed = parseEnumeratedDecision(
+			JSON.stringify({
+				findings: [
+					{ action: "print", reason: "user", message: "Rotate the credential." },
+					{ action: "steer", reason: "agent", message: "Run the migration." },
+				],
+			}),
+		);
+		expect(parsed.error).toBeNull();
+		const ledger = new DeliveryLedger();
+		const runtime = harness(false);
+		expect(routeFeedback(ledger, runtime.gateway, parsed.decision!, "security", false)).toBe("steer");
+		expect(runtime.sentUsers).toEqual([
+			{
+				content: "[security] Rotate the credential. | Run the migration.",
+				deliverAs: "steer",
+			},
+		]);
 	});
 
 	it("tracks a streaming follow-up until its custom message reaches the driver", () => {
