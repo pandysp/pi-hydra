@@ -7,8 +7,13 @@ scenario — the strongest ground-truth candidates in the program and the
 only source covering all three seeded tasks.
 
 Frozen here because the run wrote only to ~/scratch, which auto-prunes at
-14 days. The ~14 verified runners-up live in the agent's report, not in
-this JSON — a documented gap for golden-set v2.
+14 days.
+
+**Addition 2026-08-02 (GOLDEN-DATASET-V2-SPEC wave 1 Q3):** the verified
+runners-up — previously only in the reviewing agent's report and recorded
+here as a gap — are now frozen verbatim in `runners-up.json` (13 bullets;
+"~14" was an approximation), with transcript provenance inside. They enter
+the v2 pool as code-review candidates.
 
 Provenance caveat: on the driver branch the driver's own
 docs/scheduling.md enumerates the planted defects, so the two scheduler
