@@ -211,7 +211,7 @@ Return ONLY:
 {"judgments":[{"id":"<id>","blocking":true|false,"anyHarm":true|false,"reason":"<one sentence: what in the source decides it>"}]}`;
 }
 
-async function askJudge(name, prompt, expectedIds, timeoutMs) {
+export async function askJudge(name, prompt, expectedIds, timeoutMs) {
 	const spec = JUDGES[name];
 	const transport = spec.transport === "pi" ? await piTransport(spec) : claudeCliTransport(spec, timeoutMs);
 	let attempt = await transport.ask(prompt, null);
