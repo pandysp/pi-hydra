@@ -27,11 +27,13 @@ export const CAPSTONE_INPUTS = [
 	"experiments/artifacts/2026-08-02-cross-task-trajectory/payloads-dispatcher-2026-08-02.tar.gz",
 	"experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz",
 	"experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz",
+	"experiments/artifacts/2026-08-02-openai-trajectory/judge-sol.json.gz",
 	"experiments/trajectory-cost-tasks.mjs",
 	"experiments/trajectory-ground-truth.mjs",
 	"experiments/golden-dataset-score.mjs",
 	"experiments/BENCHMARK-SPEC.md",
 	"experiments/CAPSTONE-JUDGE-SPEC.md",
+	"experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
 	"experiments/capstone-trajectory-judge-protocol.mjs",
 	"experiments/capstone-trajectory-judge.mjs",
 ];

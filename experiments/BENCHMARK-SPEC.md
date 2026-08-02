@@ -114,10 +114,12 @@ metric changes land between iterations, versioned and documented.
 1. **COMPLETE:** make the Opus-resume path replay-safe and prepare the
    frozen-input manifest, comparison renderer with intentionally blank quality
    cells, and scratch v2 results template;
-2. **IN PROGRESS:** complete one registered Sol judgment pass over the
-   already-frozen OpenAI trajectories under `CAPSTONE-JUDGE-SPEC.md`, without
-   treating repeated Sol output as independent consensus;
-3. register and run two causal OpenAI development studies on fresh, sealed
+2. **COMPLETE, ONE JUDGE ONLY:** the registered Sol pass over frozen OpenAI
+   trajectories judged 107/119 findings in 29 clean batches; 12 terminal
+   findings are explicitly unjudgeable because the old artifact omitted their
+   final-assistant evidence. See `OPENAI-TRAJECTORY-SOL-PASS.md`. This is not
+   consensus or a provisional score;
+3. **IN PROGRESS:** register and run two causal OpenAI development studies on fresh, sealed
    material: terse ENUM output and the presence versus absence of `interrupt`;
 4. use those studies only to choose which candidates deserve producer spend,
    then append the exact dated OpenAI matrix here before running it;
@@ -130,6 +132,13 @@ metric changes land between iterations, versioned and documented.
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used
 as a product verdict.
+
+The first raw review also registered a versioned evaluator follow-up: broad
+atomic claims must not earn specific catalog consequences they do not state.
+The v1 Sol pass remains immutable; Opus answers its identical questions first,
+then the flagged multi-match subset is re-judged under the sharper iteration-2
+rule. This is the evaluator-freeze rule working as intended, not an in-place
+repair aimed at an arm.
 
 ## Boundaries
 

@@ -579,3 +579,12 @@ into at most one user-only print and one agent steer/interrupt delivery. The
 agent batch interrupts only when one of its own findings chose interrupt. This
 is a product routing decision, not a new producer result; prompt hashes and the
 frozen arm evidence do not change.
+
+The first registered Sol trajectory-judgment pass is now complete over 107 of
+119 frozen OpenAI findings; 12 terminal findings are explicitly unjudgeable
+because the old artifact omitted their final-assistant evidence. This is one
+judge column, not a score: Opus, valid v2, and final issue grouping are absent.
+Raw review also registered an iteration-2 matching refinement for broad claims
+that otherwise inherit specific unstated consequences. The immutable v1 pass
+produced no promotion and no arm verdict; see
+`OPENAI-TRAJECTORY-SOL-PASS.md`.

@@ -11,13 +11,18 @@
   "files": [
     {
       "path": "experiments/BENCHMARK-SPEC.md",
-      "bytes": 7703,
-      "sha256": "a3e0cb4bf5e78c319bf2c8fb9c70ddf7c7168e60e1a42f6bc73a882bd2ab7367"
+      "bytes": 8268,
+      "sha256": "fde36b64c4dd8a5664f14ba6a25cfd7ac8fa5435b25a2c1a1176868f649182d5"
     },
     {
       "path": "experiments/CAPSTONE-JUDGE-SPEC.md",
       "bytes": 4890,
       "sha256": "af2d0c979b8cdc2b60ce31f518f37fc082e71b5d932e158b2e5ff97290dced01"
+    },
+    {
+      "path": "experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
+      "bytes": 3707,
+      "sha256": "a39de88c20647c2fb1c0b067ad916f4153ff0160312cead6f521714c7d42ced1"
     },
     {
       "path": "experiments/artifacts/2026-08-01-enum-trajectory/adapted.jsonl.gz",
@@ -93,6 +98,11 @@
       "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/severity-exporter.json.gz",
       "bytes": 18757,
       "sha256": "161af68565e39767663ec7f70fe68213c57b34b22291bd0b3d7c3c23c45243e0"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-openai-trajectory/judge-sol.json.gz",
+      "bytes": 35170,
+      "sha256": "49dbab198408c97f950f23b91d7399840eea980b9f7deaf54b74bc8d5ba2be45"
     },
     {
       "path": "experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz",
