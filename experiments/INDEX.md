@@ -1,6 +1,6 @@
 # experiments/ — index
 
-48 documents. This is the map. `README.md` documents the original cache
+49 documents. This is the map. `README.md` documents the original cache
 probes only and predates almost all of this; start here instead.
 
 Convention: every measurement has a SPEC (pre-registered before data) and
@@ -64,6 +64,12 @@ was refuted before running.
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |
+
+## The capstone benchmark
+
+| doc | role |
+|---|---|
+| [BENCHMARK-SPEC.md](BENCHMARK-SPEC.md) | Scoring design REGISTERED before data (lexicographic blocking rule, 2:1 weighted-recall convenience column, evaluator freeze); run matrix lands as an addendum after the v2 freeze and the steer-only verdict |
 
 ## Superseded / historical
 
