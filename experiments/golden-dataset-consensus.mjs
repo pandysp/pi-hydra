@@ -48,6 +48,76 @@ import { join, relative } from "node:path";
 
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 
+function atomicJson(path, value) {
+	const temporary = `${path}.${process.pid}.tmp`;
+	writeFileSync(temporary, JSON.stringify(value, null, 1));
+	renameSync(temporary, path);
+}
+
+/**
+ * Resume-safe judge boundary. Each successful batch is written atomically as
+ * soon as it returns. A later judge failure therefore cannot erase or rerun a
+ * completed Sol batch, and retrying the invocation asks only for prompt hashes
+ * that have no saved successful batch.
+ *
+ * `ask` is injectable only at the external-provider boundary so the integration
+ * test can reproduce an Opus failure without spending or depending on provider
+ * availability.
+ */
+export async function collectCheckpointedBatches({
+	name,
+	round,
+	stateDir,
+	batches,
+	promptFor,
+	progress = () => "",
+	timeoutMs,
+	ask = askJudgeDetailed,
+}) {
+	const path = `${stateDir}/judge-round${round}-${name}.json`;
+	const checkpoint = existsSync(path)
+		? JSON.parse(readFileSync(path, "utf8"))
+		: { round, judge: name, judgments: {}, batches: [], failures: [] };
+	for (const batch of batches) {
+		const prompt = promptFor(batch);
+		const promptHash = sha(prompt);
+		const ids = batch.items.map((item) => item.id);
+		const saved = checkpoint.batches.find(
+			(item) => item.promptHash === promptHash && ids.every((id) => item.ids.includes(id)),
+		);
+		if (saved) {
+			Object.assign(checkpoint.judgments, saved.judgments);
+			process.stderr.write(`  ${name}: resumed ${ids.length} from ${path}\n`);
+			continue;
+		}
+		try {
+			const result = await ask(name, prompt, ids, timeoutMs);
+			Object.assign(checkpoint.judgments, result.labels);
+			checkpoint.batches.push({
+				key: batch.key,
+				ids,
+				promptHash,
+				judge: result.judge,
+				attempts: result.attempts,
+				judgments: result.labels,
+			});
+			atomicJson(path, checkpoint);
+			process.stderr.write(progress(checkpoint.judgments, ids));
+		} catch (error) {
+			checkpoint.failures.push({
+				key: batch.key,
+				ids,
+				promptHash,
+				error: error.message,
+				attempts: error.attempts ?? [],
+			});
+			atomicJson(path, checkpoint);
+			throw error;
+		}
+	}
+	return checkpoint.judgments;
+}
+
 /**
  * RULING 1 is stated as a judging instruction because it decides real labels:
  * the first consensus run stalled 2-1 on exactly this question (`renewLease`
@@ -242,57 +312,18 @@ async function main() {
 		}
 		return out;
 	};
-	const atomicJson = (path, value) => {
-		const temporary = `${path}.${process.pid}.tmp`;
-		writeFileSync(temporary, JSON.stringify(value, null, 1));
-		renameSync(temporary, path);
-	};
-	const collectCheckpointed = async (name, batches, promptFor, progress) => {
-		const path = `${stateDir}/judge-round${round}-${name}.json`;
-		const checkpoint = existsSync(path)
-			? JSON.parse(readFileSync(path, "utf8"))
-			: { round, judge: name, judgments: {}, batches: [], failures: [] };
-		for (const batch of batches) {
-			const prompt = promptFor(batch);
-			const promptHash = sha(prompt);
-			const ids = batch.items.map((item) => item.id);
-			const saved = checkpoint.batches.find((item) => item.promptHash === promptHash && ids.every((id) => item.ids.includes(id)));
-			if (saved) {
-				Object.assign(checkpoint.judgments, saved.judgments);
-				process.stderr.write(`  ${name}: resumed ${ids.length} from ${path}\n`);
-				continue;
-			}
-			try {
-				const result = await askJudgeDetailed(name, prompt, ids, timeoutMs);
-				Object.assign(checkpoint.judgments, result.labels);
-				checkpoint.batches.push({
-					key: batch.key,
-					ids,
-					promptHash,
-					judge: result.judge,
-					attempts: result.attempts,
-					judgments: result.labels,
-				});
-				atomicJson(path, checkpoint);
-				process.stderr.write(progress(checkpoint.judgments, ids));
-			} catch (error) {
-				checkpoint.failures.push({ key: batch.key, ids, promptHash, error: error.message, attempts: error.attempts ?? [] });
-				atomicJson(path, checkpoint);
-				throw error;
-			}
-		}
-		return checkpoint.judgments;
-	};
-
 	let positions;
 	if (round === 1) {
 		const batches = batchesFor(issues);
-		const collect = (name) => collectCheckpointed(
+		const collect = (name) => collectCheckpointedBatches({
 			name,
+			round,
+			stateDir,
 			batches,
-			(batch) => roundOnePrompt(batch.items, sources[batch.key]),
-			(merged) => `  ${name}: ${Object.keys(merged).length}/${issues.length}\n`,
-		);
+			promptFor: (batch) => roundOnePrompt(batch.items, sources[batch.key]),
+			progress: (merged) => `  ${name}: ${Object.keys(merged).length}/${issues.length}\n`,
+			timeoutMs,
+		});
 		positions = { sol: await collect("sol"), opus: await collect("opus"), analyst };
 	} else {
 		const prior = state.rounds[round - 1];
@@ -305,10 +336,12 @@ async function main() {
 		process.stderr.write(`deliberating ${open.length} open issue(s)\n`);
 		const batches = batchesFor(issues.filter((i) => open.includes(i.id)));
 		const collect = async (name) => {
-			const changed = await collectCheckpointed(
+			const changed = await collectCheckpointedBatches({
 				name,
+				round,
+				stateDir,
 				batches,
-				(batch) => {
+				promptFor: (batch) => {
 					const items = batch.items.map((c) => ({ ...c, mine: prior.positions[name][c.id] }));
 					const others = Object.fromEntries(batch.items.map((c) => [
 						c.id,
@@ -316,8 +349,9 @@ async function main() {
 					]));
 					return deliberationPrompt(items, sources[batch.key], others);
 				},
-				(_merged, batchIds) => `  ${name}: ${batchIds.length} deliberated\n`,
-			);
+				progress: (_merged, batchIds) => `  ${name}: ${batchIds.length} deliberated\n`,
+				timeoutMs,
+			});
 			return { ...prior.positions[name], ...changed };
 		};
 		positions = { sol: await collect("sol"), opus: await collect("opus"), analyst };

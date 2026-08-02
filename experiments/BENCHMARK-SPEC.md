@@ -111,9 +111,9 @@ metric changes land between iterations, versioned and documented.
 
 **IN PROGRESS, before new provider data.** The approved sequence is:
 
-1. make the Opus-resume path replay-safe and prepare the frozen-input manifest,
-   comparison renderer with intentionally blank quality cells, and scratch v2
-   results template;
+1. **COMPLETE:** make the Opus-resume path replay-safe and prepare the
+   frozen-input manifest, comparison renderer with intentionally blank quality
+   cells, and scratch v2 results template;
 2. complete one registered Sol judgment pass over the already-frozen OpenAI
    trajectories, without treating repeated Sol output as independent consensus;
 3. register and run two causal OpenAI development studies on fresh, sealed

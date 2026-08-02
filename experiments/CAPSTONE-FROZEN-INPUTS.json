@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "status": "provisional-v2; regenerate after consensus and freeze",
+  "dataset": {
+    "path": "experiments/golden-dataset.json",
+    "version": "2b0a85843c9be981",
+    "sha256": "4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0",
+    "active": 75,
+    "blocking": 28
+  },
+  "files": [
+    {
+      "path": "experiments/BENCHMARK-SPEC.md",
+      "bytes": 7652,
+      "sha256": "cced26d290dd1f2054203cc7cc759f2f9e2675d8c6d6e852e6a4c68edf1b6b5b"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-enum-trajectory/adapted.jsonl.gz",
+      "bytes": 19410,
+      "sha256": "700d21b32f66088ed4bdafa456b300d6dc9fa0ee4f91658a3c1376bae0d5b1a8"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-enum-trajectory/confirmations.jsonl.gz",
+      "bytes": 253,
+      "sha256": "72dc9b20cd90799953990cc559828dfad2a4e7f26c561141b74a76a0261144e7"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-enum-trajectory/rows.jsonl.gz",
+      "bytes": 24412,
+      "sha256": "42b4acd42454c0cd3ed6b26ca42b3fefc213db613147c15dd7f4b73a5c34ab0c"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-enum-trajectory/severity.json.gz",
+      "bytes": 18410,
+      "sha256": "860e75a29c720d4e61724c87c3dc8f7362b3ec8b4f32f19d1f0cb089ffaf4046"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-trajectory-pilot/payloads.tar.gz",
+      "bytes": 543048,
+      "sha256": "585bfec64d6f35eefd6fdffb0cb8037b80ae9ca437621241fa27a09a610d1f2f"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/adapted-dispatcher.jsonl.gz",
+      "bytes": 22390,
+      "sha256": "d209da6e00b97391308641fe9ee3d8c61f344fbd379892b7d6d0356391d38dd4"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/adapted-exporter.jsonl.gz",
+      "bytes": 17377,
+      "sha256": "2e692f65b7e465409837998d4f7af5c74ee96b6c3a3a28232169d8aad527103c"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/confirmations-dispatcher.jsonl.gz",
+      "bytes": 239,
+      "sha256": "a2eed53cbba11ce15f9499a470661849e24accc1a83d527038f1bd0770fc0bbd"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/confirmations-exporter.jsonl.gz",
+      "bytes": 231,
+      "sha256": "ff0868bc8ba4e31a8d4d61ae1bc429fae468ae9c98a956c215a3a611eab85228"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/payloads-2026-08-01.tar.gz",
+      "bytes": 686122,
+      "sha256": "ee7abd27eb316a5ece5f0ea28ce4ae59368bcc67fe1e7a5c358625bf30cfe22d"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/payloads-dispatcher-2026-08-02.tar.gz",
+      "bytes": 607449,
+      "sha256": "5d3ba5356c3096166f83bac648189e06b296b9665bfed7b0736c396bc48e4c0f"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/rows-dispatcher.jsonl.gz",
+      "bytes": 27840,
+      "sha256": "8756d14d3b385b0f730806c6ba6274df625cf52b724041211e886b48dc2addac"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/rows-exporter.jsonl.gz",
+      "bytes": 20707,
+      "sha256": "a0a6c0fb4a74763a0cb4892b3e63a95b0de848e0ab40ef8666ce6f8c5204aba3"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/severity-dispatcher.json.gz",
+      "bytes": 28867,
+      "sha256": "a250bee3f59416ca7381ab0c33291cac19ec7120f41d48da904c6e0275fadbf4"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-cross-task-trajectory/severity-exporter.json.gz",
+      "bytes": 18757,
+      "sha256": "161af68565e39767663ec7f70fe68213c57b34b22291bd0b3d7c3c23c45243e0"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz",
+      "bytes": 1475023,
+      "sha256": "369e5b1e1afc73611e9bcc0ff8a07d3cb5cde47db4f79a323b51c058d5074278"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz",
+      "bytes": 36685,
+      "sha256": "a6766a5aae4e0f6233ff1fb0fce54e3fd4aeb4e5551d071d8bf2d840ade6865b"
+    },
+    {
+      "path": "experiments/golden-dataset-score.mjs",
+      "bytes": 4951,
+      "sha256": "471d20c5512aee3a96962daf7c0621af88b809f75ea63333b594ffaec9452ef4"
+    },
+    {
+      "path": "experiments/trajectory-cost-tasks.mjs",
+      "bytes": 28681,
+      "sha256": "88bc2bc6b32e2a0cae9777067a2043dd556234333dee7aa48a4d9b1c1fa6c7ca"
+    },
+    {
+      "path": "experiments/trajectory-ground-truth.mjs",
+      "bytes": 21259,
+      "sha256": "11ccf74529c8870b8da8f09ddee7c63bbe19c61e2a0901265f5e9212d20194cf"
+    }
+  ]
+}
