@@ -1,6 +1,7 @@
 # Fresh OpenAI protocol studies — case freeze (2026-08-02)
 
-Status: **case corpus frozen before candidate wording. No provider calls yet.**
+Status: **cases and exact matrix registered in separate checkpoints. No
+provider calls yet.**
 
 ## Why
 
@@ -42,6 +43,8 @@ instruction is authored. Once committed, cases and labels are immutable for
 this study. A discovered case flaw is reported; it is not repaired after seeing
 model output.
 
+Case-freeze checkpoint: `95a8f4d`.
+
 ## Registered shape before wording
 
 - Provider/model: OpenAI Codex, `gpt-5.6-sol`.
@@ -75,6 +78,67 @@ producer rows freeze. It is not a second consensus vote, cannot promote novel
 findings, and cannot replace Opus. All unmatched supported findings remain
 `pending-opus`.
 
+That pass is frozen before producer output in
+`openai-protocol-study-judge-protocol.mjs`: arm, tier, sample, and action are
+hidden; transcript evidence is closed-world; support, material extras,
+registered-issue matches, and actionability are separate fields; and a generic
+mechanism cannot inherit a specific unstated consequence. The runner uses one
+`gpt-5.6-sol` xhigh pass in batches of at most eight, preserves each raw reply,
+resumes by batch id, and stops at $6 or three consecutive errors.
+
 No wording changes after output, no known-case tuning, no answer keys in the
 prompt, and no evaluator change that rescues an arm. Exact prompts, hashes,
 matrix size, and stop rules must be appended here before the first call.
+
+## Exact pre-spend matrix and prompts
+
+Status: **REGISTERED; still no provider calls.**
+
+The control is the exact current `buildEnumeratedJudgeObservationEnvelope`
+rendering with an empty factual delivery context. OpenAI receives the unchanged
+quality lens as the user item and this contract as the following developer
+item, matching production's split handoff.
+
+The terse arm makes exactly two rendering edits:
+
+- `reason` cap 120 → 80 characters and `message` cap 240 → 120;
+- append: “Keep each reason and message to one short sentence. State the
+  concrete defect and consequence; omit preambles, code restatement, hedging,
+  and prose transitions.”
+
+The no-interrupt arm makes exactly two deletions:
+
+- remove `interrupt` from the per-finding action enum;
+- remove “Interrupt only for emergencies that must stop the line.”
+
+No replacement threshold is added. The surviving rule already says that
+`steer` delivers to the agent whether the finding can wait or not. The fourth
+arm mechanically applies the no-interrupt deletion to the terse arm; it tests
+whether the two individually simple changes interact.
+
+| arm | SHA-256 of lens + envelope | envelope chars |
+|---|---|---:|
+| ENUM-SO2 | `220a85efb36be699c5645a8691551582adbf46c6cd0e67e37c56e17f2ee7c196` | 1,736 |
+| ENUM-SO2-TERSE | `292e933183ba794328f811ed46832845596520ae5b0e93a5177fd61ec0500406` | 1,896 |
+| ENUM-SO2-NOINT | `40072e33d55708ff15a1755ccc2c736c91d5c63d8c41268de0db533bcba7ab68` | 1,670 |
+| ENUM-SO2-TERSE-NOINT | `9afbdd2f40eda4faa432bb813b4c2b26cb820ff5e9b4e0ec1d00d7849fa6a2d7` | 1,830 |
+
+Exact matrix: 9 cases × 2 configs (`sol-high`, `sol-xhigh`) × 2 samples ×
+4 arms = **144 producer calls**. Order is deterministic-shuffled within the
+registered blocks. Rows are append-only and resume by exact cell key. The run
+stops at the $8 producer ceiling, after three consecutive provider errors, or
+on any header/hash/credential drift.
+
+Pre-spend dry run:
+
+```bash
+node experiments/openai-protocol-study.mjs --dry-run
+```
+
+Registered execution path:
+
+```bash
+mkdir -p ~/scratch/2026-08-02-openai-protocol-studies
+node experiments/openai-protocol-study.mjs \
+  --output ~/scratch/2026-08-02-openai-protocol-studies/rows.jsonl
+```

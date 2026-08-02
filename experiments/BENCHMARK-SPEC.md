@@ -119,8 +119,11 @@ metric changes land between iterations, versioned and documented.
    findings are explicitly unjudgeable because the old artifact omitted their
    final-assistant evidence. See `OPENAI-TRAJECTORY-SOL-PASS.md`. This is not
    consensus or a provisional score;
-3. **IN PROGRESS:** register and run two causal OpenAI development studies on fresh, sealed
-   material: terse ENUM output and the presence versus absence of `interrupt`;
+3. **IN PROGRESS:** the two causal OpenAI development studies are registered
+   on fresh, sealed material: terse ENUM output and the presence versus absence
+   of `interrupt`. `OPENAI-PROTOCOL-STUDY-SPEC.md` freezes 9 cases × 2 configs ×
+   2 samples × 4 causal/interaction arms = 144 calls, exact prompt hashes, and
+   the pre-output Sol diagnostic judge. No provider call has run yet;
 4. use those studies only to choose which candidates deserve producer spend,
    then append the exact dated OpenAI matrix here before running it;
 5. freeze raw producer outputs and their costs, run one Sol judgment pass, and

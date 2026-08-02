@@ -11,8 +11,8 @@
   "files": [
     {
       "path": "experiments/BENCHMARK-SPEC.md",
-      "bytes": 8268,
-      "sha256": "fde36b64c4dd8a5664f14ba6a25cfd7ac8fa5435b25a2c1a1176868f649182d5"
+      "bytes": 8487,
+      "sha256": "6e2c545c685369bab9cbc008155b51ba796b9174c55a81eff50fe26af81d8749"
     },
     {
       "path": "experiments/CAPSTONE-JUDGE-SPEC.md",

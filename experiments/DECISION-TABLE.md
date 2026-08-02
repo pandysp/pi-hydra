@@ -588,3 +588,11 @@ Raw review also registered an iteration-2 matching refinement for broad claims
 that otherwise inherit specific unstated consequences. The immutable v1 pass
 produced no promotion and no arm verdict; see
 `OPENAI-TRAJECTORY-SOL-PASS.md`.
+
+The fresh OpenAI protocol study is now registered but has not produced data.
+Its nine cases were committed in `95a8f4d` before the exact terse and
+no-interrupt prompts existed. The final pre-spend matrix has four arms
+(control, terse, no-interrupt, and their mechanical combination), sol-high and
+sol-xhigh, two samples, 144 calls, and fixed prompt hashes. The no-interrupt
+study explicitly cannot erase the product tradeoff: even a perfect steer reply
+cannot abort an already-running destructive action.
