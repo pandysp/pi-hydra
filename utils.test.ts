@@ -600,12 +600,12 @@ describe("enumerated steer-only judge completion", () => {
 
 	it("parses an empty findings list as noop", () => {
 		expect(parseEnumeratedDecision('{"findings":[]}')).toEqual({
-			decision: { action: "noop", reason: "no findings", message: "" },
+			decisions: [{ action: "noop", reason: "no findings", message: "" }],
 			error: null,
 		});
 	});
 
-	it("routes the whole batch at its most urgent model-selected action", () => {
+	it("separates user-only findings from agent-directed findings", () => {
 		expect(
 			parseEnumeratedDecision(
 				JSON.stringify({
@@ -616,22 +616,52 @@ describe("enumerated steer-only judge completion", () => {
 				}),
 			),
 		).toEqual({
-			decision: {
-				action: "steer",
-				reason: "current defect",
-				message: "Rotate the external credential. | Run the migration before merging.",
-			},
+			decisions: [
+				{
+					action: "print",
+					reason: "user owns it",
+					message: "Rotate the external credential.",
+				},
+				{
+					action: "steer",
+					reason: "current defect",
+					message: "Run the migration before merging.",
+				},
+			],
+			error: null,
+		});
+	});
+
+	it("groups agent findings and interrupts only when one of them requests it", () => {
+		expect(
+			parseEnumeratedDecision(
+				JSON.stringify({
+					findings: [
+						{ action: "steer", reason: "fix", message: "Run the migration." },
+						{ action: "interrupt", reason: "emergency", message: "Stop the destructive command." },
+						{ action: "steer", reason: "verify", message: "Re-run the checks." },
+					],
+				}),
+			),
+		).toEqual({
+			decisions: [
+				{
+					action: "interrupt",
+					reason: "fix | emergency | verify",
+					message: "Run the migration. | Stop the destructive command. | Re-run the checks.",
+				},
+			],
 			error: null,
 		});
 	});
 
 	it("accepts a fenced object but rejects hidden queue and malformed findings", () => {
-		expect(parseEnumeratedDecision('```json\n{"findings":[]}\n```').decision?.action).toBe("noop");
+		expect(parseEnumeratedDecision('```json\n{"findings":[]}\n```').decisions?.[0]?.action).toBe("noop");
 		expect(
 			parseEnumeratedDecision('{"findings":[{"action":"queue","reason":"later","message":"Do it later."}]}'),
-		).toMatchObject({ decision: null, error: 'finding 1 has invalid action "queue"' });
+		).toMatchObject({ decisions: null, error: 'finding 1 has invalid action "queue"' });
 		expect(parseEnumeratedDecision('{"findings":[{"action":"steer","reason":"missing message"}]}')).toMatchObject({
-			decision: null,
+			decisions: null,
 			error: "finding 1 requires a non-empty message",
 		});
 	});

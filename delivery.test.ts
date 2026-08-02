@@ -91,7 +91,7 @@ describe("delivery ledger and router", () => {
 		expect(runtime.persisted).toHaveLength(1);
 	});
 
-	it("delivers every enumerated message at the batch's most urgent chosen action", () => {
+	it("delivers enumerated user and agent findings to their chosen recipients", () => {
 		const parsed = parseEnumeratedDecision(
 			JSON.stringify({
 				findings: [
@@ -103,11 +103,55 @@ describe("delivery ledger and router", () => {
 		expect(parsed.error).toBeNull();
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
-		expect(routeFeedback(ledger, runtime.gateway, parsed.decision!, "security", false)).toBe("steer");
+		const deliveries = parsed.decisions!.map((item) =>
+			routeFeedback(ledger, runtime.gateway, item, "security", false),
+		);
+		expect(deliveries).toEqual(["print", "steer"]);
+		expect(runtime.notices).toEqual([
+			{
+				message: "hydra [security] Rotate the credential.",
+				level: "info",
+			},
+		]);
 		expect(runtime.sentUsers).toEqual([
 			{
-				content: "[security] Rotate the credential. | Run the migration.",
+				content: "[security] Run the migration.",
 				deliverAs: "steer",
+			},
+		]);
+		expect(ledger.contextFor("security")).toEqual({
+			lastByThisHead: { delivery: "print", message: "Rotate the credential." },
+			pending: [{ head: "security", delivery: "steer", message: "Run the migration." }],
+		});
+	});
+
+	it("delivers one agent batch and aborts when any agent finding is an emergency", () => {
+		const parsed = parseEnumeratedDecision(
+			JSON.stringify({
+				findings: [
+					{ action: "print", reason: "user", message: "Rotate the credential." },
+					{ action: "steer", reason: "fix", message: "Run the migration." },
+					{ action: "interrupt", reason: "emergency", message: "Stop the destructive command." },
+				],
+			}),
+		);
+		const ledger = new DeliveryLedger();
+		const runtime = harness(false);
+		expect(parsed.decisions).toHaveLength(2);
+		expect(
+			parsed.decisions!.map((item) => routeFeedback(ledger, runtime.gateway, item, "security", false)),
+		).toEqual(["print", "interrupt"]);
+		expect(runtime.aborted()).toBe(true);
+		expect(runtime.notices).toEqual([
+			{
+				message: "hydra [security] Rotate the credential.",
+				level: "info",
+			},
+		]);
+		expect(runtime.sentUsers).toEqual([
+			{
+				content: "[security] Run the migration. | Stop the destructive command.",
+				deliverAs: "followUp",
 			},
 		]);
 	});

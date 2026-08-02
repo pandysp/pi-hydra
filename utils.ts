@@ -483,16 +483,17 @@ ${enumeratedDecisionProtocol(head)}</system-reminder>`;
 }
 
 export interface EnumeratedDecisionResult {
-	decision: Decision | null;
+	decisions: Decision[] | null;
 	error: string | null;
 }
 
 const ENUMERATED_ACTIONS = ["print", "steer", "interrupt"] as const;
 
 /**
- * Parse ENUM-SO2 and mechanically route the complete batch at the most urgent
- * action selected by the head. Every message survives; the runtime does not
- * select which findings deserve delivery.
+ * Parse ENUM-SO2 into at most two recipient-preserving batches: one user-only
+ * print and one agent-directed steer/interrupt. Every message survives exactly
+ * once. An interrupt escalates only the agent batch; it never pulls a print
+ * finding into the agent's context.
  */
 export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult {
 	const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -500,23 +501,23 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	try {
 		value = JSON.parse((fenced ? fenced[1] : text).trim());
 	} catch {
-		return { decision: null, error: "completion must be one JSON object" };
+		return { decisions: null, error: "completion must be one JSON object" };
 	}
 	if (typeof value !== "object" || value === null || !Array.isArray((value as { findings?: unknown }).findings)) {
-		return { decision: null, error: "completion requires a findings array" };
+		return { decisions: null, error: "completion requires a findings array" };
 	}
 	const findings: Decision[] = [];
 	for (const [index, item] of (value as { findings: unknown[] }).findings.entries()) {
 		if (typeof item !== "object" || item === null) {
-			return { decision: null, error: `finding ${index + 1} must be an object` };
+			return { decisions: null, error: `finding ${index + 1} must be an object` };
 		}
 		const candidate = item as { action?: unknown; reason?: unknown; message?: unknown };
 		if (typeof candidate.action !== "string" || !(ENUMERATED_ACTIONS as readonly string[]).includes(candidate.action)) {
-			return { decision: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
+			return { decisions: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
 		}
 		const message = typeof candidate.message === "string" ? candidate.message.trim().slice(0, 500) : "";
 		if (message.length === 0) {
-			return { decision: null, error: `finding ${index + 1} requires a non-empty message` };
+			return { decisions: null, error: `finding ${index + 1} requires a non-empty message` };
 		}
 		findings.push({
 			action: candidate.action as (typeof ENUMERATED_ACTIONS)[number],
@@ -525,18 +526,27 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 		});
 	}
 	if (findings.length === 0) {
-		return { decision: { action: "noop", reason: "no findings", message: "" }, error: null };
+		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null };
 	}
-	const urgency = (action: Action): number => ENUMERATED_ACTIONS.indexOf(action as (typeof ENUMERATED_ACTIONS)[number]);
-	const top = findings.reduce((selected, finding) =>
-		urgency(finding.action) > urgency(selected.action) ? finding : selected,
-	);
+	const batch = (action: "print" | "steer" | "interrupt", selected: Decision[]): Decision => ({
+		action,
+		reason: selected
+			.map((finding) => finding.reason)
+			.filter(Boolean)
+			.join(" | "),
+		message: selected.map((finding) => finding.message).join(" | "),
+	});
+	const prints = findings.filter((finding) => finding.action === "print");
+	const agent = findings.filter((finding) => finding.action === "steer" || finding.action === "interrupt");
+	const decisions: Decision[] = [];
+	if (prints.length > 0) {
+		decisions.push(batch("print", prints));
+	}
+	if (agent.length > 0) {
+		decisions.push(batch(agent.some((finding) => finding.action === "interrupt") ? "interrupt" : "steer", agent));
+	}
 	return {
-		decision: {
-			action: top.action,
-			reason: top.reason,
-			message: findings.map((finding) => finding.message).join(" | "),
-		},
+		decisions,
 		error: null,
 	};
 }

@@ -563,4 +563,9 @@ The steer-only input is complete; the dated run-matrix addendum still waits on
 a valid v2 freeze. No baseline/arm table against v2 exists. Andreas selected
 unified ENUM-SO2 as the implementation direction before that evidence and will
 revisit a provider-specific text branch if the OpenAI result is not worth its
-measured cost premium.
+measured cost premium. Raw-response review then confirmed that mixed per-finding
+actions are common: the runtime therefore partitions ENUM output by recipient
+into at most one user-only print and one agent steer/interrupt delivery. The
+agent batch interrupts only when one of its own findings chose interrupt. This
+is a product routing decision, not a new producer result; prompt hashes and the
+frozen arm evidence do not change.

@@ -22,7 +22,11 @@ retired `queue` from model-facing prompts and schemas. The extension keeps its
 queue parser and router dormant for compatibility. This is an explicit product
 choice made before the unfinished v2 capstone, not a claim that ENUM already
 wins on OpenAI; a provider text split remains the fallback if later evidence
-shows the OpenAI premium does not buy enough recall.
+shows the OpenAI premium does not buy enough recall. After inspecting the raw
+ENUM deliveries, Andreas also selected recipient-preserving runtime triage:
+one user-only `print` batch plus one agent `steer`/`interrupt` batch, rather
+than the harness's urgency-max precedent. This changes delivery only; the
+measured ENUM-SO2 model contract stays byte-identical.
 
 ## The contract screens (which API surface)
 

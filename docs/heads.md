@@ -91,7 +91,7 @@ A judge-only head uses the measured ENUM-SO2 contract on both providers:
 {"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}
 ```
 
-It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own action. Hydra preserves all messages and routes the combined batch at the most urgent chosen action (`print < steer < interrupt`). OpenAI carries this contract in a developer envelope beside the raw lens; Anthropic carries both in one prompt.
+It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own action. Hydra preserves every message exactly once: all `print` findings become one user-only note, while all `steer` and `interrupt` findings become one agent message. That agent message interrupts only if one of its findings chose `interrupt`; otherwise it steers. A response therefore creates at most two deliveries and never leaks a user-only finding into the agent's context. OpenAI carries this contract in a developer envelope beside the raw lens; Anthropic carries both in one prompt.
 
 - `none`: nothing to report. Nothing is delivered anywhere; `/hydra-stats` labels this internal outcome `noop`.
 - `print`: a note to you. The message renders in the TUI and never enters the agent's context. A watch-only head simply always prints.

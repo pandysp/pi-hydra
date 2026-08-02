@@ -171,7 +171,11 @@ interface HydraCall {
 	// which mislabels the few pre-field codex sessions (e.g. the 2026-07-15
 	// demo) — a display heuristic, acceptable for historical entries only.
 	api?: string;
+	// Historical readers use `action`; new enumerated observations may produce
+	// one user-only group plus one agent group, recorded here without hiding
+	// either delivery. `action` remains the most urgent group for compatibility.
 	action: Action;
+	actions?: Action[];
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -733,7 +737,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		usages: ObservationUsage[];
 		iterations: number;
 		toolsUsed: string[];
-		completion: Decision | null;
+		decisions: Decision[] | null;
 		selfRemoved: boolean;
 		fileStateChanged: boolean;
 		loopStopReason: ObservationLoopStopReason;
@@ -880,7 +884,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			usages,
 			iterations,
 			toolsUsed,
-			completion,
+			decisions: outcomeDecisions,
 			selfRemoved,
 			fileStateChanged,
 			loopStopReason,
@@ -900,20 +904,22 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// that no longer exists for a second completion would be both slower
 		// and racy. Other OpenAI paths use typed completion; Anthropic parses
 		// its measured compact-JSON fallback below.
-		let decision = completion;
-		if (!decision && selfRemoved) {
-			decision = { action: "noop", reason: "completed by self-removal", message: "" };
+		let decisions = outcomeDecisions;
+		if ((!decisions || decisions.length === 0) && selfRemoved) {
+			decisions = [{ action: "noop", reason: "completed by self-removal", message: "" }];
 		}
-		if (!decision && job.completionMode === "json") {
-			decision = parseDecision(text);
+		if ((!decisions || decisions.length === 0) && job.completionMode === "json") {
+			const parsed = parseDecision(text);
+			decisions = parsed ? [parsed] : null;
 		}
-		if (decision && job.completionMode === "json") {
-			decision = applyAfterChangeDelivery(decision, job.afterChange, fileStateChanged);
+		if (decisions && decisions.length > 0 && job.completionMode === "json") {
+			decisions = [applyAfterChangeDelivery(decisions[0], job.afterChange, fileStateChanged)];
 		}
-		if (!decision) {
-			decision = decisionFromLoopStopReason(loopStopReason);
+		if (!decisions || decisions.length === 0) {
+			const stopped = decisionFromLoopStopReason(loopStopReason);
+			decisions = stopped ? [stopped] : null;
 		}
-		if (!decision) {
+		if (!decisions || decisions.length === 0) {
 			const reason =
 				job.completionMode === "enum"
 					? "unparseable enumerated decision"
@@ -928,8 +934,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
 					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
 			);
-			decision = { action: "noop", reason, message: "" };
+			decisions = [{ action: "noop", reason, message: "" }];
 		}
+		const primaryDecision = decisions.reduce((selected, candidate) => {
+			const urgency: Record<Action, number> = { noop: 0, print: 1, queue: 2, steer: 3, interrupt: 4 };
+			return urgency[candidate.action] > urgency[selected.action] ? candidate : selected;
+		});
 
 		const call: HydraCall = {
 			timestamp: Date.now(),
@@ -937,7 +947,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			head: job.head,
 			kind: job.kind,
 			api: model.api,
-			action: decision.action,
+			action: primaryDecision.action,
+			actions: decisions.length > 1 ? decisions.map((decision) => decision.action) : undefined,
 			input: summary.input,
 			output: summary.output,
 			cacheRead: summary.cacheRead,
@@ -950,11 +961,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					? text.length > 200
 						? `${text.slice(0, 200)}…`
 						: text
-					: completion !== null
+					: outcomeDecisions !== null
 					? JSON.stringify({
 							action: "complete_observation",
-							delivery: completion.action === "noop" ? "none" : completion.action,
-							message: completion.message,
+							delivery: outcomeDecisions[0].action === "noop" ? "none" : outcomeDecisions[0].action,
+							message: outcomeDecisions[0].message,
 						})
 					: text.length > 200
 						? `${text.slice(0, 200)}…`
@@ -980,7 +991,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		// A decision formed on an outdated snapshot may steer but no longer
 		// abort: the driver has already moved on.
-		routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
+		for (const decision of decisions) {
+			routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
+		}
 	}
 
 	// Judge-only heads make one provider call with no executable tools. ENUM's
@@ -1046,7 +1059,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				usages,
 				iterations: 1,
 				toolsUsed: [],
-				completion: parsed.decision,
+				decisions: parsed.decisions,
 				selfRemoved: false,
 				fileStateChanged: false,
 				loopStopReason: null,
@@ -1254,7 +1267,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			usages,
 			iterations: loopGuard.iterations,
 			toolsUsed,
-			completion: toolState.completion,
+			decisions: toolState.completion ? [toolState.completion] : null,
 			selfRemoved: toolState.selfRemoved,
 			fileStateChanged: toolState.fileStateChanged,
 			loopStopReason,
@@ -1867,14 +1880,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
-				counts[call.action]++;
+				for (const action of call.actions?.length ? call.actions : [call.action]) {
+					counts[action]++;
+				}
 				totalDuration += call.durationMs;
 			}
 			const recent = calls
 				.slice(-10)
 				.map(
 					(call) =>
-						`  turn ${call.turnIndex} ${call.head}${call.kind ? ` [${call.kind}]` : ""} ${call.action}${
+						`  turn ${call.turnIndex} ${call.head}${call.kind ? ` [${call.kind}]` : ""} ${
+							call.actions?.length ? call.actions.join("+") : call.action
+						}${
 							call.iterations ? ` (${call.iterations} turns: ${[...new Set(call.toolsUsed ?? [])].join(",") || "no tools"})` : ""
 						}  hit=${call.hitRatio.toFixed(1)}%  $${call.cost.toFixed(4)}  ${call.durationMs}ms`,
 				)
@@ -1888,7 +1905,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total cache write: ${write.toLocaleString()} tokens`,
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
-					`  decisions: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
+					`  delivery groups: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,
