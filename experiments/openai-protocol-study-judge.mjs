@@ -90,7 +90,13 @@ function readExisting(path) {
 }
 
 export function stableJudgeHeader(header) {
-	const { ts: _ts, codeCommit: _codeCommit, codeDirty: _codeDirty, ...stable } = header;
+	const {
+		ts: _ts,
+		codeCommit: _codeCommit,
+		codeCommitDate: _codeCommitDate,
+		codeDirty: _codeDirty,
+		...stable
+	} = header;
 	return stable;
 }
 

@@ -6,6 +6,7 @@ describe("OpenAI protocol judge runner continuation", () => {
 		const first = stableJudgeHeader({
 			kind: "header",
 			codeCommit: "old",
+			codeCommitDate: "old-date",
 			codeDirty: null,
 			ts: 1,
 			judge: { id: "sol", batchSize: 8 },
@@ -14,6 +15,7 @@ describe("OpenAI protocol judge runner continuation", () => {
 		const resumed = stableJudgeHeader({
 			kind: "header",
 			codeCommit: "new",
+			codeCommitDate: "new-date",
 			codeDirty: "dirty",
 			ts: 2,
 			judge: { id: "sol", batchSize: 8 },
