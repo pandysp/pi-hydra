@@ -54,7 +54,8 @@
     "identifier": "sweepExpired"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-claim-toctou",
@@ -100,7 +101,8 @@
     "identifier": "claimNext"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-lease-caller-clock",
@@ -144,7 +146,8 @@
     "identifier": "renewLease"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-requeue-resets-attempts",
@@ -186,7 +189,8 @@
     "identifier": "requeue"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d05",
@@ -218,7 +222,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d06",
@@ -250,7 +255,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d07",
@@ -282,7 +288,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d08",
@@ -314,7 +321,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-07",
@@ -348,7 +356,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d11",
@@ -380,7 +389,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g14",
@@ -414,7 +424,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d14",
@@ -446,7 +457,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-08",
@@ -480,7 +492,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d18",
@@ -512,7 +525,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d19",
@@ -544,7 +558,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d20",
@@ -577,7 +592,8 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unresolved",
-   "dissent": "sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`."
+   "dissent": "sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`.",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d22",
@@ -609,7 +625,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d24",
@@ -641,7 +658,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d25",
@@ -673,7 +691,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d29",
@@ -705,7 +724,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d32",
@@ -737,7 +757,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d33",
@@ -769,7 +790,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d34",
@@ -801,7 +823,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d35",
@@ -833,7 +856,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d37",
@@ -866,7 +890,8 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unresolved",
-   "dissent": "sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry."
+   "dissent": "sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry.",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d39",
@@ -898,7 +923,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d41",
@@ -930,7 +956,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d44",
@@ -962,7 +989,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-13",
@@ -996,7 +1024,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-14",
@@ -1030,7 +1059,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-15",
@@ -1064,7 +1094,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g02",
@@ -1096,7 +1127,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "SCHED-o-g05",
@@ -1128,7 +1160,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g07",
@@ -1160,7 +1193,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g08",
@@ -1170,6 +1204,7 @@
     "O-g08"
    ],
    "provenance": [
+    "code-review",
     "observer"
    ],
    "votes": {
@@ -1192,7 +1227,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g11",
@@ -1224,7 +1260,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g16",
@@ -1256,7 +1293,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "session"
   },
   {
    "id": "EXP-unbounded-page-size",
@@ -1296,7 +1334,8 @@
     "identifier": "pages"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "EXP-c-11",
@@ -1328,7 +1367,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "EXP-n-plus-one-customer",
@@ -1368,7 +1408,8 @@
     "identifier": "exportOrders"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "EXP-offset-drift",
@@ -1410,7 +1451,8 @@
     "identifier": "pages"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "EXP-c-12",
@@ -1442,7 +1484,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "DISP-swallowed-failure",
@@ -1484,7 +1527,8 @@
     "identifier": "withRetries"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "DISP-no-idempotency-key",
@@ -1526,7 +1570,8 @@
     "identifier": "dispatchCharge"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "DISP-retries-client-errors",
@@ -1566,7 +1611,8 @@
     "identifier": "withRetries"
    },
    "tier": "harmful",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   },
   {
    "id": "DISP-c-03",
@@ -1598,7 +1644,8 @@
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "active",
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "frame": "seed"
   }
  ],
  "rejected": [
@@ -1631,7 +1678,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d13",
@@ -1662,7 +1710,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d16",
@@ -1693,7 +1742,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d17",
@@ -1724,7 +1774,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d21",
@@ -1755,7 +1806,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-c-06",
@@ -1786,7 +1838,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d23",
@@ -1817,7 +1870,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d26",
@@ -1848,7 +1902,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d27",
@@ -1879,7 +1934,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d28",
@@ -1910,7 +1966,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d30",
@@ -1941,7 +1998,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d31",
@@ -1972,7 +2030,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "seed"
   },
   {
    "id": "SCHED-r-d36",
@@ -2003,7 +2062,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d38",
@@ -2034,7 +2094,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d40",
@@ -2065,7 +2126,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d42",
@@ -2096,7 +2158,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-r-d43",
@@ -2127,7 +2190,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g03",
@@ -2158,7 +2222,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: real, individuated onto SCHED-expired-keeps-claim under RULING 2",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g06",
@@ -2189,7 +2254,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g12",
@@ -2220,7 +2286,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g15",
@@ -2251,7 +2318,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g17",
@@ -2282,7 +2350,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g18",
@@ -2313,7 +2382,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g19",
@@ -2344,7 +2414,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "SCHED-o-g20",
@@ -2375,7 +2446,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "session"
   },
   {
    "id": "EXP-c-04",
@@ -2406,7 +2478,8 @@
    },
    "firstSeen": "2026-08-02-golden-dataset-v1",
    "status": "retired",
-   "reason": "consensus: not a real defect"
+   "reason": "consensus: not a real defect",
+   "frame": "seed"
   }
  ]
 }

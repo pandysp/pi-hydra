@@ -58,7 +58,7 @@ function finalPositions(stateDir) {
  * for its issue ids, ITS final positions are authoritative and the main run's
  * are discarded — they were judged against the wrong source.
  */
-export function assemble(stateDir, seedStateDir = null) {
+export function assemble(stateDir, seedStateDir = null, runId = "2026-08-02-golden-dataset-v1") {
 	const issues = JSON.parse(readFileSync(`${stateDir}/issues.json`, "utf8")).issues;
 	const main = finalPositions(stateDir);
 	const participants = ["sol", "opus", "analyst"];
@@ -91,17 +91,29 @@ export function assemble(stateDir, seedStateDir = null) {
 			members: issue.members ?? [],
 			provenance: [...new Set((issue.members ?? []).map((m) => SOURCE[m[0]]))].sort(),
 			votes,
-			firstSeen: "2026-08-02-golden-dataset-v1",
+			firstSeen: runId,
 			status: "active",
 		};
+		// Fields the audit added to the schema: the frame the issue was judged
+		// under, and the RULING 1/4 metadata recorded by the analyst on the
+		// issue before assembly (source facts, not judge outputs).
+		if (issue.frame) record.frame = issue.frame;
+		if (issue.reachable !== undefined) record.reachable = issue.reachable;
+		if (issue.precondition !== undefined) record.precondition = issue.precondition;
 		const planted = (issue.members ?? []).filter((m) => m.startsWith("P-")).map((m) => m.slice(2));
 		if (planted.length > 0) {
 			record.planted = planted;
 			record.anchors = plantedAnchors[planted[0]];
 		}
+		if (issue.anchors && !record.anchors) record.anchors = issue.anchors;
 
 		if (!majority(harmFlags)) {
-			rejected.push({ ...record, status: "retired", reason: "consensus: not a real defect", ...(unanimous(harmFlags) ? {} : { dissent: dissenters("anyHarm", false).join(" | ") }) });
+			// Two-value rejection vocabulary (v1 audit): a claim rejected because
+			// its content already lives on another record is not "not real".
+			const reason = issue.individuatedInto
+				? `consensus: real, individuated onto ${issue.individuatedInto} under RULING 2`
+				: "consensus: not a real defect";
+			rejected.push({ ...record, status: "retired", reason, ...(unanimous(harmFlags) ? {} : { dissent: dissenters("anyHarm", false).join(" | ") }) });
 			continue;
 		}
 		record.tier = majority(blockFlags) ? "blocking" : "harmful";
@@ -138,13 +150,70 @@ export function assemble(stateDir, seedStateDir = null) {
 	};
 }
 
+/**
+ * Merge a newly assembled batch (and/or an edits file) onto an existing
+ * dataset — the v2+ path: base records pass through with explicit, visible
+ * edits; new records append; version and counts recompute. Edits shape:
+ *   { patch: {id: {field: value, ...}},      // field overwrites, incl. status
+ *     remove: [id, ...],                     // record replaced by a re-judge
+ *     addMembers: {id: [srcId, ...]} }       // coverage credit from the pool
+ * Nothing here judges anything: every tier/status entering through `patch`
+ * must come from a consensus state, and the edits file is committed evidence.
+ */
+export function mergeDatasets(base, addition, edits = {}) {
+	const patch = edits.patch ?? {};
+	const remove = new Set(edits.remove ?? []);
+	const addMembers = edits.addMembers ?? {};
+	const apply = (record) => {
+		const out = { ...record, ...(patch[record.id] ?? {}) };
+		if (addMembers[record.id]) {
+			out.members = [...(out.members ?? []), ...addMembers[record.id]];
+			out.provenance = [...new Set([...(out.provenance ?? []), ...addMembers[record.id].map((m) => SOURCE[m[0]])])].sort();
+		}
+		return out;
+	};
+	const carried = [...base.issues, ...base.rejected].filter((r) => !remove.has(r.id)).map(apply);
+	const appended = [...(addition?.issues ?? []), ...(addition?.rejected ?? [])];
+	const all = [...carried, ...appended];
+	const ids = all.map((r) => r.id);
+	const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+	if (dupes.length > 0) throw new Error(`id collision in merge: ${[...new Set(dupes)].join(", ")}`);
+	const unknownEdits = [...Object.keys(patch), ...remove, ...Object.keys(addMembers)].filter(
+		(id) => ![...base.issues, ...base.rejected].some((r) => r.id === id),
+	);
+	if (unknownEdits.length > 0) throw new Error(`edits reference unknown ids: ${[...new Set(unknownEdits)].join(", ")}`);
+	const issues = all.filter((r) => r.status === "active");
+	const rejected = all.filter((r) => r.status !== "active");
+	const canonical = JSON.stringify(issues.map((i) => [i.id, i.task, i.statement, i.tier]).sort());
+	return {
+		version: createHash("sha256").update(canonical).digest("hex").slice(0, 16),
+		builtFrom: {
+			base: base.version,
+			addition: addition?.builtFrom ?? null,
+			edits: { patched: Object.keys(patch).length, removed: remove.size, credited: Object.keys(addMembers).length },
+		},
+		sourceReports: issues.reduce((n, i) => n + (i.members ?? []).length, 0),
+		candidateTotal: all.reduce((n, i) => n + (i.members ?? []).length, 0),
+		issues,
+		rejected,
+	};
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const args = process.argv.slice(2);
 	const stateDir = argOf(args, "--state", "");
 	const seedStateDir = argOf(args, "--seed-state", "") || null;
+	const runId = argOf(args, "--run-id", "2026-08-02-golden-dataset-v1");
+	const basePath = argOf(args, "--base", "");
+	const editsPath = argOf(args, "--edits", "");
 	const out = argOf(args, "--out", "experiments/golden-dataset.json");
-	if (!stateDir) throw new Error("--state <dir> is required");
-	const dataset = assemble(stateDir, seedStateDir);
+	if (!stateDir && !basePath) throw new Error("--state <dir> is required (or --base for a merge)");
+	let dataset = stateDir ? assemble(stateDir, seedStateDir, runId) : null;
+	if (basePath) {
+		const base = JSON.parse(readFileSync(basePath, "utf8"));
+		const edits = editsPath ? JSON.parse(readFileSync(editsPath, "utf8")) : {};
+		dataset = mergeDatasets(base, dataset, edits);
+	}
 	writeFileSync(out, `${JSON.stringify(dataset, null, 1)}\n`);
 	const tiers = { blocking: 0, harmful: 0 };
 	for (const i of dataset.issues) tiers[i.tier] += 1;

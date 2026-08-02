@@ -22,15 +22,21 @@ import { TRAJECTORY_TASKS, setupTask } from "./trajectory-cost-tasks.mjs";
 const DATASET = JSON.parse(readFileSync(new URL("./golden-dataset.json", import.meta.url), "utf8"));
 const TIERS = new Set(["blocking", "harmful"]);
 const PROVENANCE = new Set(["planted", "reference-review", "code-review", "observer", "promoted"]);
+const FRAMES = new Set(["seed", "session"]);
+// Records first seen in the v1 build are grandfathered on the fields the v1
+// pipeline never wrote (anchors beyond the planted ten, reachable,
+// precondition). Everything judged after the audit carries them.
+const V1_RUN = "2026-08-02-golden-dataset-v1";
 
 test("every record carries the full schema", () => {
 	assert.ok(Array.isArray(DATASET.issues) && DATASET.issues.length > 0, "issues must be a non-empty array");
 	for (const issue of DATASET.issues) {
-		for (const field of ["id", "task", "statement", "tier", "provenance", "votes", "firstSeen", "status"]) {
+		for (const field of ["id", "task", "statement", "tier", "provenance", "votes", "firstSeen", "status", "frame"]) {
 			assert.ok(issue[field] !== undefined && issue[field] !== null, `${issue.id ?? "?"}: missing ${field}`);
 		}
 		assert.ok(TIERS.has(issue.tier), `${issue.id}: tier ${issue.tier} outside {blocking, harmful}`);
 		assert.ok(issue.status === "active" || issue.status === "retired", `${issue.id}: bad status`);
+		assert.ok(FRAMES.has(issue.frame), `${issue.id}: frame ${issue.frame} outside {seed, session}`);
 		assert.ok(Array.isArray(issue.provenance) && issue.provenance.length > 0, `${issue.id}: provenance must be a non-empty array`);
 		for (const source of issue.provenance) assert.ok(PROVENANCE.has(source), `${issue.id}: unknown provenance ${source}`);
 		// A record whose tier nobody voted on is an opinion, not a datum.
@@ -38,6 +44,33 @@ test("every record carries the full schema", () => {
 			assert.ok(issue.votes[participant], `${issue.id}: no ${participant} vote recorded`);
 		}
 		assert.ok(String(issue.statement).length > 20, `${issue.id}: statement too short to identify a defect`);
+		if (issue.reachable !== undefined) assert.equal(typeof issue.reachable, "boolean", `${issue.id}: reachable must be boolean`);
+		if (issue.precondition !== undefined && issue.precondition !== null) {
+			assert.equal(typeof issue.precondition, "string", `${issue.id}: precondition must be a string or null`);
+		}
+		if (issue.firstSeen !== V1_RUN) {
+			// The audit showed anchors are what make individuation and liveness
+			// mechanically checkable; new records enter with them or not at all.
+			assert.ok(issue.anchors?.expression, `${issue.id}: post-v1 record without an anchor expression`);
+			assert.equal(typeof issue.reachable, "boolean", `${issue.id}: post-v1 record without reachable`);
+			assert.ok("precondition" in issue, `${issue.id}: post-v1 record without precondition (use null when none)`);
+		}
+	}
+});
+
+test("rejected records carry their schema and their reasons", () => {
+	assert.ok(Array.isArray(DATASET.rejected), "rejected must be an array");
+	for (const record of DATASET.rejected) {
+		for (const field of ["id", "task", "statement", "members", "provenance", "votes", "firstSeen", "status", "reason", "frame"]) {
+			assert.ok(record[field] !== undefined && record[field] !== null, `${record.id ?? "?"}: rejected record missing ${field}`);
+		}
+		assert.equal(record.status, "retired", `${record.id}: rejected record must be retired`);
+		assert.ok(FRAMES.has(record.frame), `${record.id}: frame ${record.frame} outside {seed, session}`);
+		assert.match(
+			String(record.reason),
+			/^consensus: (not a real defect|real, individuated onto [A-Z]+-[a-z0-9-]+ under RULING 2)$/,
+			`${record.id}: rejection reason outside the two-value vocabulary`,
+		);
 	}
 });
 
@@ -62,15 +95,22 @@ test("no planted defect was silently dropped by clustering", () => {
 	assert.deepEqual(missing, [], `planted defects missing from the set: ${missing.join(", ")}`);
 });
 
-test("the dedup mapping is total: every source report lands in exactly one issue", () => {
+test("the dedup mapping is total: every source report lands in exactly one record, active or rejected", () => {
+	// The v1 audit found the previous form of this test blind in two ways: it
+	// walked only the accepted records (a member dropped INTO rejection passed),
+	// and it compared against a count field in the same file (a dropped member
+	// plus an edited count passed). Totality now spans both arrays and checks
+	// both recorded counts.
 	const seen = new Map();
-	for (const issue of DATASET.issues) {
-		for (const member of issue.members ?? []) {
-			assert.ok(!seen.has(member), `${member} appears in ${seen.get(member)} and ${issue.id}`);
-			seen.set(member, issue.id);
+	for (const record of [...DATASET.issues, ...DATASET.rejected]) {
+		for (const member of record.members ?? []) {
+			assert.ok(!seen.has(member), `${member} appears in ${seen.get(member)} and ${record.id}`);
+			seen.set(member, record.id);
 		}
 	}
-	assert.equal(seen.size, DATASET.sourceReports, `mapping covers ${seen.size} of ${DATASET.sourceReports} source reports`);
+	assert.equal(seen.size, DATASET.candidateTotal, `mapping covers ${seen.size} of ${DATASET.candidateTotal} pooled reports`);
+	const accepted = DATASET.issues.reduce((n, i) => n + (i.members ?? []).length, 0);
+	assert.equal(accepted, DATASET.sourceReports, `accepted members ${accepted} != sourceReports ${DATASET.sourceReports}`);
 });
 
 test("anchors resolve against the seeded code", () => {

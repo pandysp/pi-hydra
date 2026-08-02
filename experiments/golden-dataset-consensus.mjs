@@ -14,10 +14,12 @@
  *    against the seed measures the prompt, not the judgment: that is the bug
  *    that broke the first consensus round-1 run). Exporter and dispatcher were
  *    never touched by a driver, so their seeded files ARE their session state.
- * 2. **The three RULINGS are in the rubric**, not applied afterwards, so labels
+ * 2. **The four RULINGS are in the rubric**, not applied afterwards, so labels
  *    are produced under them rather than adjusted to them.
- * 3. **Batching is per task**, so a prompt never carries a codebase none of its
- *    issues are about.
+ * 3. **Batching is per task AND frame** (`--source auto`, the default, reads
+ *    each issue's `frame` field — the v2 mechanical routing; explicit
+ *    --source seed|session replays old protocols), so a prompt never carries
+ *    a codebase or state none of its issues are about.
  *
  * Round-per-invocation, like the protocol it reuses: the analyst's labels for
  * round N must exist BEFORE the judges are called, and that file is the
@@ -51,7 +53,7 @@ const sha = (text) => createHash("sha256").update(text).digest("hex");
  * deliberation reasons then; stating it here closes the design-doc TODO so
  * labels are produced under it from round 1.
  */
-export const RULINGS = `THREE BINDING CONVENTIONS. Apply them; do not re-litigate them.
+export const RULINGS = `FOUR BINDING CONVENTIONS. Apply them; do not re-litigate them.
 
 REACHABILITY. Judge the harm as if the code path RUNS. Exported, documented
 public API counts as reachable BY DEFINITION — a library's callers are not in
@@ -68,7 +70,16 @@ later edit repaired it — the repair ends the defect's liveness window, it does
 not make the claim not-real. "Not present in the final state" is NOT grounds
 for rejecting an issue about an earlier state. Symmetrically, an issue about a
 later-written artifact is judged against the state in which that artifact
-exists.`;
+exists.
+
+CALLER-SIDE PRECONDITIONS. Rate the tier under the interaction the issue's
+statement names, provided the public contract shown does not forbid that
+interaction. "A caller mutates a record it fetched" or "a caller passes an
+argument the signature accepts" is part of judging as-if-executed, exactly as
+reachability is — do not discount a defect because its harm needs a legal
+caller action that has not happened yet in this repository. Discount ONLY a
+precondition the shown contract explicitly forbids (a documented "do not
+mutate", a stated invariant the caller would have to break).`;
 
 export const RUBRIC = `Two independent yes/no questions per issue. Do NOT grade on a scale.
 
@@ -166,14 +177,30 @@ async function main() {
 	const rowsPath = argOf(args, "--rows", `${process.env.HOME}/scratch/2026-08-01-hydra-c2-trajectory/rows.jsonl`);
 	const timeoutMs = Number.parseInt(argOf(args, "--cli-timeout-ms", "900000"), 10);
 	const batchSize = Number.parseInt(argOf(args, "--batch-size", "10"), 10);
-	const sourceMode = argOf(args, "--source", "session");
+	const sourceMode = argOf(args, "--source", "auto");
 	if (!stateDir) throw new Error("--state <dir> is required");
 
 	const issues = JSON.parse(readFileSync(issuesPath, "utf8")).issues;
 	const ids = issues.map((i) => i.id);
 	const rows = readFileSync(rowsPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-	const tasks = [...new Set(issues.map((i) => i.task))];
-	const sources = Object.fromEntries(tasks.map((t) => [t, sourceForTask(t, rows, sourceMode)]));
+
+	// Frame routing is per candidate, not per batch (the v1 symptom-filter
+	// repair missed two records — GOLDEN-DATASET-DESIGN.md RULING 3 addendum).
+	// "auto" follows each issue's own frame field; an explicit --source
+	// seed|session still overrides globally for replaying old protocols.
+	const frameFor = (issue) => {
+		if (sourceMode !== "auto") return sourceMode;
+		if (issue.frame !== "seed" && issue.frame !== "session") {
+			throw new Error(`${issue.id}: no frame field — --source auto needs frame on every issue`);
+		}
+		return issue.frame;
+	};
+	for (const issue of issues) issue._frame = frameFor(issue);
+	const taskFrames = [...new Set(issues.map((i) => `${i.task}:${i._frame}`))].map((key) => key.split(":"));
+	const sources = Object.fromEntries(taskFrames.map(([task, frame]) => [
+		`${task}:${frame}`,
+		sourceForTask(task, rows, frame),
+	]));
 
 	const statePath = `${stateDir}/consensus.json`;
 	const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : { rounds: {} };
@@ -188,9 +215,10 @@ async function main() {
 
 	const batchesFor = (subset) => {
 		const out = [];
-		for (const task of tasks) {
-			const forTask = subset.filter((i) => i.task === task);
-			for (let i = 0; i < forTask.length; i += batchSize) out.push({ task, items: forTask.slice(i, i + batchSize) });
+		for (const [task, frame] of taskFrames) {
+			const key = `${task}:${frame}`;
+			const forGroup = subset.filter((i) => i.task === task && i._frame === frame);
+			for (let i = 0; i < forGroup.length; i += batchSize) out.push({ key, items: forGroup.slice(i, i + batchSize) });
 		}
 		return out;
 	};
@@ -200,7 +228,7 @@ async function main() {
 		const collect = async (name) => {
 			const merged = {};
 			for (const batch of batchesFor(issues)) {
-				const got = await askJudge(name, roundOnePrompt(batch.items, sources[batch.task]), batch.items.map((b) => b.id), timeoutMs);
+				const got = await askJudge(name, roundOnePrompt(batch.items, sources[batch.key]), batch.items.map((b) => b.id), timeoutMs);
 				Object.assign(merged, got);
 				process.stderr.write(`  ${name}: ${Object.keys(merged).length}/${issues.length}\n`);
 			}
@@ -224,7 +252,7 @@ async function main() {
 					c.id,
 					PARTICIPANTS.filter((p) => p !== name).map((p) => prior.positions[p][c.id]),
 				]));
-				const got = await askJudge(name, deliberationPrompt(items, sources[batch.task], others), batch.items.map((b) => b.id), timeoutMs);
+				const got = await askJudge(name, deliberationPrompt(items, sources[batch.key], others), batch.items.map((b) => b.id), timeoutMs);
 				Object.assign(merged, got);
 				process.stderr.write(`  ${name}: ${batch.items.length} deliberated\n`);
 			}
