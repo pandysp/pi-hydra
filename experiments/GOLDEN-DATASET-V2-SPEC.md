@@ -206,7 +206,8 @@ node experiments/golden-dataset-v2-freeze-stage.mjs \
 
 The staging command is zero-call and fails closed on a dirty worktree, a
 provisional dataset, novel consensus below 95%, either missing precision
-replacement, any checker result other than 8/8, incomplete source state, or a
+replacement, consensus round/count metadata that disagrees with the saved
+states, any checker result other than 8/8, incomplete source state, or a
 pre-existing output directory. It copies the logical bytes of the dataset,
 results, rubric/build/checker code, frame sources, pool, calibration, every
 saved consensus checkpoint and raw judge response into one flat source directory and

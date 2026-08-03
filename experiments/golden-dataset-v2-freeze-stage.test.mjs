@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
 	assertFinalDataset,
+	assertConsensusStateMatches,
 	buildFreezeInputPlan,
 	REPO_INPUTS,
 	stageFreezeInputs,
@@ -23,9 +24,21 @@ const finalDataset = () => ({
 	rejected: [{}],
 	builtFrom: {
 		consensus: { novel: { converged: 64, total: 67 } },
-		addition: { precision: { converged: 2, total: 2 } },
+		addition: {
+			novel: { finalRound: 6, converged: 62, total: 67 },
+			precision: { finalRound: 2, converged: 2, total: 2 },
+			rejudge: { finalRound: 5, converged: 4, total: 5 },
+		},
 	},
 });
+
+function writeConsensus(stateRoot, directory, finalRound, converged, total) {
+	const ids = Array.from({ length: total }, (_, index) => `${directory}-${index}`);
+	write(join(stateRoot, directory, "consensus.json"), `${JSON.stringify({
+		ids,
+		rounds: { [finalRound]: { converged: ids.slice(0, converged), open: ids.slice(converged) } },
+	})}\n`);
+}
 
 describe("golden v2 final freeze stage", () => {
 	it("collects every registered input and preserves logical gzip bytes with hashes", () => {
@@ -61,5 +74,16 @@ describe("golden v2 final freeze stage", () => {
 		const incomplete = finalDataset();
 		incomplete.builtFrom.addition.precision.converged = 1;
 		expect(() => assertFinalDataset(incomplete)).toThrow(/precision/);
+	});
+
+	it("requires the frozen consensus states to match the dataset's recorded final rounds", () => {
+		const stateRoot = mkdtempSync(join(tmpdir(), "golden-v2-consensus-"));
+		writeConsensus(stateRoot, "consensus-novel", 6, 62, 67);
+		writeConsensus(stateRoot, "consensus-precision", 2, 2, 2);
+		writeConsensus(stateRoot, "consensus-rejudge", 5, 4, 5);
+		expect(() => assertConsensusStateMatches(finalDataset(), stateRoot)).not.toThrow();
+
+		writeConsensus(stateRoot, "consensus-precision", 2, 1, 2);
+		expect(() => assertConsensusStateMatches(finalDataset(), stateRoot)).toThrow(/records 2 converged but state has 1/);
 	});
 });

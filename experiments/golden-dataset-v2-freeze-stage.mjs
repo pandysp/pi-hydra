@@ -103,6 +103,33 @@ export function assertFinalDataset(dataset) {
 	}
 }
 
+export function assertConsensusStateMatches(dataset, stateRoot) {
+	const addition = dataset.builtFrom?.addition;
+	for (const [key, directory] of [
+		["novel", "consensus-novel"],
+		["precision", "consensus-precision"],
+		["rejudge", "consensus-rejudge"],
+	]) {
+		const expected = addition?.[key];
+		if (!expected) throw new Error(`dataset is missing builtFrom.addition.${key}`);
+		const path = join(stateRoot, directory, "consensus.json");
+		if (!existsSync(path)) throw new Error(`${directory}/consensus.json is missing`);
+		const state = JSON.parse(readFileSync(path, "utf8"));
+		const round = state.rounds?.[expected.finalRound];
+		if (!round) throw new Error(`${directory}: final round ${expected.finalRound} is absent`);
+		if (state.ids?.length !== expected.total) {
+			throw new Error(`${directory}: dataset records ${expected.total} questions but state has ${state.ids?.length ?? "none"}`);
+		}
+		if (round.converged?.length !== expected.converged) {
+			throw new Error(`${directory}: dataset records ${expected.converged} converged but state has ${round.converged?.length ?? "none"}`);
+		}
+		const terminal = [...(round.converged ?? []), ...(round.open ?? [])].sort();
+		if (JSON.stringify(terminal) !== JSON.stringify([...state.ids].sort())) {
+			throw new Error(`${directory}: final converged/open partition does not cover the registered ids exactly`);
+		}
+	}
+}
+
 export function stageFreezeInputs({ entries, output, dataset, codeCommit, checkerOutput }) {
 	assertFinalDataset(dataset);
 	if (existsSync(output)) throw new Error(`freeze stage already exists: ${output}`);
@@ -150,6 +177,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const codeCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 	const dataset = JSON.parse(readFileSync(join(repo, "experiments/golden-dataset.json"), "utf8"));
 	assertFinalDataset(dataset);
+	assertConsensusStateMatches(dataset, stateRoot);
 	const checkerOutput = execFileSync("node", ["experiments/golden-dataset.check.mjs"], { cwd: repo, encoding: "utf8" });
 	if (!/8\/8 checks passed/.test(checkerOutput)) throw new Error("dataset checker did not report 8/8");
 	const provenance = stageFreezeInputs({
