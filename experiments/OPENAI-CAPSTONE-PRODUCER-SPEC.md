@@ -1,6 +1,8 @@
 # OpenAI capstone producer matrix (registered 2026-08-03)
 
-Status: **REGISTERED BEFORE SPEND. No provider call has run.**
+Status: **COMPLETE AND FROZEN.** This document preserves the pre-spend
+registration; measured outcomes are in
+`OPENAI-CAPSTONE-PRODUCER-RESULTS.md`.
 
 ## Purpose and boundary
 
@@ -97,3 +99,19 @@ payloads with hashes, and render cost-only rows while quality remains blank.
 Then run one blinded Sol pass under `CAPSTONE-JUDGE-SPEC.md`. Supported
 unmatched claims remain `pending-opus`; no extra Sol call can turn them into
 consensus. Opus later answers the same frozen questions after access returns.
+
+## Execution record (appended after completion)
+
+All six registered cells completed: 131 driver turns, 260 paired-arm observer
+calls, six cell starts and ends, and no cell error. One dispatcher/sol-xhigh
+driver turn failed with `WebSocket error`; its zero-prefix observer point stays
+in charged spend and is excluded from cost comparison and quality judging.
+Producer spend was $12.9608, below the $20 ceiling.
+
+The frozen producer artifact is
+`artifacts/2026-08-03-openai-capstone-producer/`. The one registered Sol pass
+then judged exactly 264 eligible findings in 109 accepted batches. Two empty
+transport failures resumed only their unanswered points; no correction answer
+or extra vote was accepted. See `OPENAI-CAPSTONE-PRODUCER-RESULTS.md` for the
+raw-audited cost and one-judge diagnostic, with quality columns intentionally
+blank pending Opus and valid v2.

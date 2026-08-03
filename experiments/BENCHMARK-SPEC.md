@@ -129,8 +129,10 @@ metric changes land between iterations, versioned and documented.
    dated OpenAI producer matrix. `OPENAI-CAPSTONE-PRODUCER-SPEC.md` freezes three
    tasks × two Sol tiers, paired MAIN-SO2 and ENUM-SO2 observers, six live
    drivers, exact split-handoff hashes, concurrency 1, and a $20 ceiling;
-5. freeze raw producer outputs and their costs, run one Sol judgment pass, and
-   queue novel candidates as `pending-opus` rather than promoting them;
+5. **COMPLETE, ONE JUDGE ONLY:** all six producer cells, raw rows, costs, and
+   payloads are frozen. The registered Sol pass judged 264/264 eligible
+   findings; every supported unmatched claim remains `pending-opus`. See
+   `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`;
 6. after Opus returns, finish v2, add Opus judgments over the same frozen rows,
    promote only through Sol + Opus + analyst consensus, re-score, and produce the
    lock-in table.
@@ -148,13 +150,19 @@ repair aimed at an arm.
 
 ### Registered OpenAI production wave (2026-08-03)
 
-Status: **REGISTERED; no provider calls at registration.** Matrix id
+Status: **COMPLETE; registration below predates every provider call.** Matrix id
 `2026-08-03-openai-capstone-producer-v1`, SHA-256
 `0913b5090b046a0b67e30564ac15e86e4a2c127351e5a8118f3d2b005cdbf44d`.
 The exact command, task seeds, provider-specific prompt hashes, resume rules,
 and spend boundary are in `OPENAI-CAPSTONE-PRODUCER-SPEC.md`. Only MAIN-SO2 and
 unchanged production ENUM-SO2 proceed; the fresh terse and no-interrupt arms
 were rejected before this spend.
+
+Post-run record: all six cells completed for $12.9608. The frozen cost result
+favours MAIN-SO2 in every cell; across all comparable observations MAIN costs
+$0.0253/observation and 52.1% of driver cost against ENUM's $0.0356 and 77.0%.
+The one-Sol diagnostic is complete, but no quality or design verdict exists
+until Opus judges the same frozen findings and v2 is valid.
 
 ## Boundaries
 

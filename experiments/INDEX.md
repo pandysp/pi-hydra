@@ -1,6 +1,6 @@
 # experiments/ — index
 
-51 mapped documents (52 Markdown files including this index). This is the map.
+57 mapped documents (58 Markdown files including this index). This is the map.
 `README.md` documents the original cache probes only and predates almost all
 of this; start here instead.
 
@@ -88,7 +88,8 @@ measured ENUM-SO2 model contract stays byte-identical.
 | [CAPSTONE-JUDGE-SPEC.md](CAPSTONE-JUDGE-SPEC.md) | Registered replay-safe two-judge protocol for real trajectory deliveries. It splits every emitted finding into atomic claims, hides arm/tier labels, preserves raw responses, and treats the first Sol pass as one pending half rather than consensus. |
 | [OPENAI-TRAJECTORY-SOL-PASS.md](OPENAI-TRAJECTORY-SOL-PASS.md) | **ONE JUDGE, NOT A SCORE:** 107/119 frozen OpenAI findings judged by Sol in 29 clean batches; 12 terminal findings honestly unjudgeable from an old evidence-freeze gap now fixed. Raw review registered an iteration-2 matching refinement; all unmatched claims remain pending Opus. |
 | [OPENAI-PROTOCOL-STUDY-SPEC.md](OPENAI-PROTOCOL-STUDY-SPEC.md) → [OPENAI-PROTOCOL-STUDY-RESULTS.md](OPENAI-PROTOCOL-STUDY-RESULTS.md) | **COMPLETE:** 144 fresh OpenAI calls plus a blinded Sol pass refute both exact simplifications. Terse findings are shorter but use more output and lose recall; removing `interrupt` fixes proposed-action routing only by losing real abort capability. One invalid quiet case and one unaccepted eight-finding judge batch remain explicit. |
-| [OPENAI-CAPSTONE-PRODUCER-SPEC.md](OPENAI-CAPSTONE-PRODUCER-SPEC.md) | **REGISTERED BEFORE SPEND:** six live OpenAI driver cells across scheduler/exporter/dispatcher × sol-high/xhigh, with paired MAIN-SO2 and exact production ENUM-SO2 observers, immutable split-handoff hashes, concurrency 1, and a $20 ceiling. |
+| [OPENAI-CAPSTONE-PRODUCER-SPEC.md](OPENAI-CAPSTONE-PRODUCER-SPEC.md) → [OPENAI-CAPSTONE-PRODUCER-RESULTS.md](OPENAI-CAPSTONE-PRODUCER-RESULTS.md) | **OPENAI PRODUCER + ONE SOL PASS COMPLETE:** six live driver cells, 260 observer calls, $12.9608 producer spend, and 264/264 eligible findings judged. MAIN is cheaper in all six cells; quality remains deliberately blank pending valid v2 + Opus. |
+| [OPENAI-CAPSTONE-COMPARISON.json](OPENAI-CAPSTONE-COMPARISON.json) | Machine-readable input for the one plain capstone table. It contains measured OpenAI cost rows and intentionally no quality fields. |
 | [CAPSTONE-FROZEN-INPUTS.json](CAPSTONE-FROZEN-INPUTS.json) | Deterministic SHA-256 inventory of the provisional dataset, all frozen scheduler/exporter/dispatcher/OpenAI trajectory inputs, and the scoring definitions. Regenerate after v2 freezes. |
 | `render-capstone-table.mjs` | One plain comparison-table renderer with the registered separate cost, quality, noise, delivery, and weighted-recall columns. It intentionally renders unavailable quality as blank rather than inventing provisional values. |
 

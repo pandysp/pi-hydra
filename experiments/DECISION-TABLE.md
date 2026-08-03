@@ -14,13 +14,14 @@ RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
 > uncertainty, not a benchmark verdict; a provider text split remains open if
 > the later capstone shows ENUM's OpenAI premium does not earn its keep.
 >
-> **OPENAI PRODUCER-FIRST WORK IS IN PROGRESS.** Andreas approved decoupling raw
+> **OPENAI PRODUCER-FIRST WORK IS COMPLETE; FINAL JUDGING IS BLOCKED.** Andreas approved decoupling raw
 > OpenAI production from scoring: exact matrices are registered before spend,
 > outputs are frozen without seeing v2 labels, and Sol may fill its one judge
 > column now. Final scoring, promotions, and design claims still require a valid
 > v2 plus Opus; repeated Sol calls never become extra consensus votes. Known-case
-> prompt tuning remains forbidden, so terse-ENUM and interrupt ablations use
-> fresh sealed material.
+> prompt tuning remains forbidden. The six registered producer cells and one
+> Sol pass are now frozen; Opus, valid v2, consensus promotions, and the final
+> table remain outstanding.
 
 ## READ FIRST — quality bases differ
 
@@ -564,13 +565,12 @@ The recovery repaired full-schema coverage, rejection-reason vocabulary and
 frame-aware anchor resolution; `golden-dataset.check.mjs` now passes 8/8.
 There is no `GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
 
-## Capstone benchmark — not run
+## Capstone benchmark — OpenAI producer half complete, no verdict
 
 `BENCHMARK-SPEC.md` freezes the scoring design and 2–3 iteration protocol.
-The steer-only input is complete. A producer-first OpenAI amendment is now in
-progress; its exact dated matrix still lands before new producer spend, while
-Anthropic production waits for valid v2. No baseline/arm table against v2
-exists. Andreas selected
+The steer-only input is complete. The producer-first OpenAI amendment is now
+complete and frozen; Anthropic production still waits for valid v2. No scored
+baseline/arm table against v2 exists. Andreas selected
 unified ENUM-SO2 as the implementation direction before that evidence and will
 revisit a provider-specific text branch if the OpenAI result is not worth its
 measured cost premium. Raw-response review then confirmed that mixed per-finding
@@ -603,10 +603,18 @@ strictly unaccepted after repeatable opaque-key transcription failures. See
 `OPENAI-PROTOCOL-STUDY-RESULTS.md`. The unchanged ENUM-SO2 control is the only
 study arm admitted to the OpenAI capstone matrix.
 
-The exact OpenAI production matrix is now registered before spend in
-`OPENAI-CAPSTONE-PRODUCER-SPEC.md`: scheduler, exporter and dispatcher ×
-sol-high and sol-xhigh; one live driver per task/config; paired MAIN-SO2 and
-unchanged production ENUM-SO2 at every point; concurrency 1; $20 ceiling;
-matrix hash `0913b5090b046a0b67e30564ac15e86e4a2c127351e5a8118f3d2b005cdbf44d`.
-No quality number or design verdict exists until the frozen rows receive both
-judge columns against a valid dataset.
+The exact OpenAI production matrix was registered before spend in
+`OPENAI-CAPSTONE-PRODUCER-SPEC.md` and all six cells completed for $12.9608.
+MAIN is cheaper in every task/config cell. Across comparable rows MAIN costs
+$0.0253/observation and 52.1% of driver cost; ENUM costs $0.0356 and 77.0%.
+On the 98 strictly paired comparable points ENUM is 45.5% more expensive.
+
+ENUM nevertheless uses its actual capability: 46 of 100 delivered responses
+contain multiple findings, for 171 findings total against MAIN's 96. The one
+Sol pass judged exactly 264 eligible findings and saw a modestly broader raw
+catalog footprint for ENUM, but this is not recall or precision: Opus,
+liveness reconciliation, duplicate grouping, and valid v2 are absent. Sol's 87
+supported-unmatched claim occurrences remain pending Opus, and 42 multi-match
+claims confirm the already-registered evaluator refinement is necessary in the
+next iteration. See `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`. No quality number or
+design verdict exists until both judge columns and a valid dataset exist.
