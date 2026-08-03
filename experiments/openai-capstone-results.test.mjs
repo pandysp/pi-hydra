@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comparisonInput, isComparableObservation, summariseProducer, summariseSolCheckpoint } from "./openai-capstone-results.mjs";
+import { comparisonInput, isComparableObservation, judgmentsJsonl, summariseProducer, summariseSolCheckpoint } from "./openai-capstone-results.mjs";
 
 const base = {
 	runId: "run",
@@ -72,6 +72,10 @@ describe("OpenAI capstone results", () => {
 		const summary = summariseSolCheckpoint(state);
 		expect(summary).toMatchObject({ judgments: 1, atomicClaims: 1, supportedClaims: 1, supportedMultiMatchClaims: 0, transportFailures: 1, emptyTransportFailures: 1, malformedAcceptedBatches: 0 });
 		expect(summary.byArm["MAIN-SO2"]).toMatchObject({ findings: 1, uniqueSupportedCatalogMatches: 1 });
+		const exported = judgmentsJsonl(state).trim().split("\n").map((line) => JSON.parse(line));
+		expect(exported).toEqual([{ metric: "atomic-claims-v1", task: "scheduler", config: "sol-high", arm: "MAIN-SO2", claims: [
+			{ centralSupported: true, unsupportedExtra: false, matches: [{ issueId: "s1" }] },
+		] }]);
 		expect(summary).not.toHaveProperty("precision");
 		expect(summary).not.toHaveProperty("recall");
 	});

@@ -226,6 +226,13 @@ export function comparisonInput(producer, datasetVersion) {
 	};
 }
 
+export function judgmentsJsonl(state) {
+	return `${Object.values(state.judgments ?? {})
+		.sort((a, b) => a.sourceKey.localeCompare(b.sourceKey))
+		.map((judgment) => JSON.stringify({ metric: "atomic-claims-v1", ...judgment }))
+		.join("\n")}\n`;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const args = process.argv.slice(2);
 	const rowsPath = argOf(args, "--rows-gz", "");
@@ -244,5 +251,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	if (comparisonPath) {
 		const datasetVersion = judgeState ? `provisional ${judgeState.metadata.datasetVersion}` : "pending frozen v2";
 		writeFileSync(comparisonPath, `${JSON.stringify(comparisonInput(producer, datasetVersion), null, 2)}\n`);
+	}
+	const judgmentsPath = argOf(args, "--judgments-output", "");
+	if (judgmentsPath) {
+		if (!judgeState) throw new Error("--judgments-output requires --judge");
+		writeFileSync(judgmentsPath, judgmentsJsonl(judgeState));
 	}
 }
