@@ -10,6 +10,8 @@ Frozen producer input: `artifacts/2026-08-03-openai-capstone-producer/`.
 Frozen Sol checkpoint: `artifacts/2026-08-03-openai-capstone-sol/` (raw logical
 SHA-256
 `d19a38b219e7dabc25f35e0b07624cff94f08e74786d221a5b5c205da85ceabe`).
+The exact provisional catalog bytes for the matching Opus pass are frozen in
+`artifacts/2026-08-03-openai-capstone-judge-basis/`.
 Deterministic analysis: `openai-capstone-results.mjs`. The producer and judge
 raw text were read in full before this distillation.
 

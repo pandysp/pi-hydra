@@ -135,3 +135,13 @@ logical SHA-256 values are respectively
 and `00cf599a4c419b1a59941514eab2a669fc8bb253bee54c8582f4a82f6a36b62b`.
 This remains one judge column. It neither freezes v2 nor supplies a quality
 score.
+
+The exact provisional dataset bytes used to render the Sol catalog are also
+frozen separately under
+`artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz`
+(logical SHA-256
+`4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0`).
+This closes a replay gap: when the working dataset advances, Opus can still
+answer byte-identical questions from the frozen basis. It must not silently use
+the new catalog and call that the same pass; changed final-v2 entries instead
+enter the registered versioned follow-up.

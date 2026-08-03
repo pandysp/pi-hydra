@@ -48,6 +48,7 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 37 | 2026-08-02 | `2026-08-02-openai-protocol-study` | openai-protocol-study.mjs + openai-protocol-study-judge.mjs + openai-protocol-study-results.mjs | 581785b3bbb5d2d180627191f635e4cc0827ff6d / 134d98bd6f264053cd46f8e817d72f90dbd14ef1 | openai-protocol-study-cases.mjs (9 sealed cases) | 144 | 436 | $14.7649 | `experiments/artifacts/2026-08-02-openai-protocol-study` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-openai-protocol-study | experiments/OPENAI-PROTOCOL-STUDY-RESULTS.md | measured |
 | 38 | 2026-08-03 | `2026-08-03-openai-capstone-producer` | experiments/trajectory-cost-ab.mjs | 07f6f42eac46f5d01344157f3fa416beedd8b24c | 2026-08-03-openai-capstone-producer-v1 | 533 | 0 | $12.9608 | `experiments/artifacts/2026-08-03-openai-capstone-producer` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-producer | experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md | measured |
 | 39 | 2026-08-03 | `2026-08-03-openai-capstone-sol` | experiments/capstone-trajectory-judge.mjs | 08b27d50d0f341a8b18eac32cf7610bec329f987 | — | 0 | 264 | $0 | `experiments/artifacts/2026-08-03-openai-capstone-sol` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-sol | experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md | measured |
+| 40 | 2026-08-03 | `2026-08-03-openai-capstone-judge-basis` | experiments/capstone-trajectory-judge.mjs | f7accb848404ae9c4c5a9f91de76d24ef78e393f | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-03-openai-capstone-judge-basis` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-judge-basis | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
 
 **Program totals: 12297 producer rows, 11099 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
 
@@ -93,6 +94,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-02-openai-protocol-study`: Fresh causal OpenAI study. Exact terse and no-interrupt variants rejected; unchanged ENUM-SO2 advances. Quiet case invalid and excluded without relabeling. One quiet-case batch remains strictly unaccepted after repeatable one-character opaque-key transcription failures. Sol is one diagnostic judge only; no Opus vote, consensus, golden promotion, or capstone score.
 - `2026-08-03-openai-capstone-producer`: Registered six-cell OpenAI MAIN-SO2 vs ENUM-SO2 producer matrix; quality pending one Sol pass and Opus.
 - `2026-08-03-openai-capstone-sol`: Registered one-Sol pass over the frozen OpenAI capstone producer: 264/264 eligible findings, 109 accepted first-answer batches, 2 empty transport failures resumed unchanged, no schema correction; no consensus or quality score.
+- `2026-08-03-openai-capstone-judge-basis`: Exact provisional dataset bytes and metadata/catalog hashes used for the registered 264-finding Sol pass; frozen so Opus can receive an identical catalog after the working dataset advances.
 
 ## Reading the frozen evidence
 

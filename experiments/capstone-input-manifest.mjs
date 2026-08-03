@@ -30,6 +30,8 @@ export const CAPSTONE_INPUTS = [
 	"experiments/artifacts/2026-08-02-openai-trajectory/judge-sol.json.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-judge-basis/basis.json.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-sol/judge-sol.json.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-sol/judgments-sol.jsonl.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-sol/summary.json.gz",

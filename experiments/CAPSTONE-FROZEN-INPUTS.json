@@ -16,8 +16,8 @@
     },
     {
       "path": "experiments/CAPSTONE-JUDGE-SPEC.md",
-      "bytes": 7439,
-      "sha256": "b5487e564de5a9dd0fa7d764734b7918509b31fc40b055e7e87914a1427bead6"
+      "bytes": 7976,
+      "sha256": "af7c9e4767a76ec669416a68635f50e6600ce81d7c47158f34062fbd54850156"
     },
     {
       "path": "experiments/OPENAI-CAPSTONE-COMPARISON.json",
@@ -26,8 +26,8 @@
     },
     {
       "path": "experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md",
-      "bytes": 7736,
-      "sha256": "926dc2ef1bb2b76764a6471af3af5616c30ad065c9b7be838038d699779a6a38"
+      "bytes": 7866,
+      "sha256": "bc591ba7a5f9afb03a1682738e7ec3ee83f1ea57bc1fe679fa73425d1b4d9778"
     },
     {
       "path": "experiments/OPENAI-CAPSTONE-PRODUCER-SPEC.md",
@@ -128,6 +128,16 @@
       "path": "experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz",
       "bytes": 36685,
       "sha256": "a6766a5aae4e0f6233ff1fb0fce54e3fd4aeb4e5551d071d8bf2d840ade6865b"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-judge-basis/basis.json.gz",
+      "bytes": 482,
+      "sha256": "96a3ed4358919395f752ab7603e5eaf831a101e7d58d47d947029c2d98626592"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz",
+      "bytes": 39393,
+      "sha256": "d13bed426fca8c91f9997f4569b80ff734d6d4a010bcf2dacd0715f8ca271d12"
     },
     {
       "path": "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
