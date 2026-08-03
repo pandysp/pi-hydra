@@ -566,6 +566,11 @@ golden v2. Novel consensus is 62/67 and remaining consensus work is unfinished.
 The recovery repaired full-schema coverage, rejection-reason vocabulary and
 frame-aware anchor resolution; `golden-dataset.check.mjs` now passes 8/8.
 There is no `GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
+The final freeze is now mechanically staged by
+`golden-dataset-v2-freeze-stage.mjs`, but its fail-closed gate cannot run until
+the saved Opus precision pass completes and the non-provisional dataset and
+results document are committed. The provisional artifact remains immutable;
+the final freeze will use a new run id.
 
 ## Capstone benchmark — OpenAI producer half complete, no verdict
 

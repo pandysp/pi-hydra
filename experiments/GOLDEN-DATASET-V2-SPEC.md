@@ -191,3 +191,26 @@ reports). Plan-window discipline applies (resets ~11pm Europe/Berlin).
 Rubric fold commit; Q1 mini-verdict + protocol ruling; audit flags with
 triage table; runner-ups frozen or documented unrecoverable;
 `golden-dataset.json` v2 + results doc; re-scored decision-table blocks.
+
+## Final freeze gate (prepared 2026-08-03, not yet run)
+
+After consensus, the ordinary builder must pass without
+`--allow-provisional`, produce byte-identical output on a second invocation,
+and pass all 8 checker invariants. Commit the final dataset, results, and
+documentation first. Then build the freeze source with:
+
+```sh
+node experiments/golden-dataset-v2-freeze-stage.mjs \
+  --output ~/scratch/2026-08-03-golden-v2-final-freeze
+```
+
+The staging command is zero-call and fails closed on a dirty worktree, a
+provisional dataset, novel consensus below 95%, either missing precision
+replacement, any checker result other than 8/8, incomplete source state, or a
+pre-existing output directory. It copies the logical bytes of the dataset,
+results, rubric/build/checker code, frame sources, pool, calibration, every
+saved consensus checkpoint and raw judge response into one flat source directory and
+writes a SHA-256 provenance manifest. Only that source is eligible for the new
+`2026-08-03-golden-dataset-v2-final` freeze and ledger entry. The existing
+`2026-08-02-golden-dataset-v2` artifact is provisional recovery material and
+must not be overwritten or presented as the final freeze.

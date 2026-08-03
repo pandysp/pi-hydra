@@ -76,6 +76,7 @@ measured ENUM-SO2 model contract stays byte-identical.
 | [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
 | [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
 | [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) | **PROVISIONAL** candidate version `2b0a85843c9be981`: 75 active (28 blocking), consensus below its registered bar. Recovery repaired the schema/build mechanics and the checker now passes 8/8, but no v2 results or freeze exists; resume consensus rather than restart. |
+| `golden-dataset-v2-freeze-stage.mjs` | Zero-call final-freeze gate, prepared but not yet run. It refuses provisional/sub-threshold/incomplete data or a dirty tree, preserves every judgment and build input, and emits the hashed source for a new immutable final artifact rather than overwriting the provisional checkpoint. |
 | [GOLD-SET-SPEC.md](GOLD-SET-SPEC.md) | Earlier sketch, superseded by the design above |
 | [GOLD-SET-DRAFT-FOR-REVIEW.md](GOLD-SET-DRAFT-FOR-REVIEW.md) | Draft severity ranking of the 10 planted defects; retired as a review artefact when Andreas delegated severity to the judges |
 | [REFERENCE-REVIEW-RESULTS.md](REFERENCE-REVIEW-RESULTS.md) | 44 defects from 3 blind passes; 40 outside every prior reference set |
