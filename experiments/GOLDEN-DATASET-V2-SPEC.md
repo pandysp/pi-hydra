@@ -172,6 +172,39 @@ under the original rule as unresolved majority-false with Opus's dissent kept
 verbatim. The 95% Wave 2 bar applies to the 67 novel clusters; no denominator,
 threshold, rubric, or settled label changes here.
 
+### Precision-pass execution result — 2026-08-03
+
+Opus resumed from the saved round-1 checkpoint after the account reset; the
+runner reused Sol byte-for-byte and called only the missing Opus batch. `CL52`
+converged unanimously as non-blocking/harmful. `CL38` remained a stable 2–1
+tier dissent through the maximum three rounds: all participants agree the
+uncancelled work is real and harmful, while Sol calls it blocking by attributing
+the overlapping retry to this expression and Opus plus the analyst keep that
+duplicate-payment consequence with the separately recorded key-less retry
+defect. Final positions, verbatim:
+
+- sol: “The source says a timed-out payment POST is not cancelled while
+  remaining attempts send identical POSTs, so the original and retry can both
+  execute the charge.” (`blocking=true`, `anyHarm=true`)
+- opus: “`Promise.race` genuinely abandons an uncancelled in-flight POST, but
+  `.finally(() => clearTimeout(timer))` releases the timer and the race consumes
+  the late settlement, so the stated consequence is bounded background work
+  and a dropped result; duplicate payment execution requires the separately
+  recorded key-less retry body in `dispatch.js`.” (`blocking=false`,
+  `anyHarm=true`)
+- analyst: “the final source shows the losing POST outlives Promise.race, while
+  the second POST comes from withRetries and its non-idempotent body comes from
+  dispatchCharge; under the registered individuation rule this repaired
+  statement names only the bounded uncancelled work and discarded result, so
+  the separate expressions needed for duplicate payment do not make this
+  statement blocking” (`blocking=false`, `anyHarm=true`)
+
+The result is therefore 63/67 novel questions converged (94.0%), below the
+unchanged 95% bar. The normal builder fails closed with that exact count. No
+fourth pressure round, majority-as-unanimity conversion, issue deletion,
+post-result statement repair, or denominator padding is permitted. Golden v2
+remains provisional pending an explicit prospective protocol decision.
+
 ## Boundaries
 
 No producer runs, no driver runs, no contract changes. No deepening of

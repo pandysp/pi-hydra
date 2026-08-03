@@ -562,15 +562,19 @@ are the levers that could reach it.
 Local checkpoint `d96123b` contains provisional version
 `2b0a85843c9be981`: 75 active issues (28 blocking, 47 harmful) and 61 recorded
 rejections across scheduler, exporter and dispatcher. It must not be cited as
-golden v2. Novel consensus is 62/67 and remaining consensus work is unfinished.
+golden v2. The precision pass completed on 2026-08-03: CL52 converged, but CL38
+held a stable 2–1 tier dissent through all three allowed rounds. Novel
+consensus is now 63/67 (94.0%), below the unchanged 95% freeze bar.
 The recovery repaired full-schema coverage, rejection-reason vocabulary and
 frame-aware anchor resolution; `golden-dataset.check.mjs` now passes 8/8.
-There is no `GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry.
+The normal builder fails closed at that exact count. There is no
+`GOLDEN-DATASET-V2-RESULTS.md`, freeze or ledger entry, and no fourth pressure
+round or post-result denominator/statement adjustment is legitimate.
 The final freeze is now mechanically staged by
 `golden-dataset-v2-freeze-stage.mjs`, but its fail-closed gate cannot run until
-the saved Opus precision pass completes and the non-provisional dataset and
-results document are committed. The provisional artifact remains immutable;
-the final freeze will use a new run id.
+an explicit prospective protocol decision produces a qualifying,
+non-provisional dataset and results document. The provisional artifact remains
+immutable; any eventual final freeze will use a new run id.
 
 ## Capstone benchmark — OpenAI producer half complete, no verdict
 
