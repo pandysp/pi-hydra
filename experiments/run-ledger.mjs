@@ -129,7 +129,42 @@ const readJsonl = (path) =>
  * `rows` are producer rows with the run header already stripped; `judgments` the
  * concatenation of every judgment file.
  */
-export function reconcile(rows, judgments) {
+export function reconcile(rows, judgments, { header = null } = {}) {
+	if (header?.kind === "trajectory-matrix-header") {
+		const cellKey = (row) => `${row.trajectoryId}/${row.config}/a${row.attempt}`;
+		const cellStarts = rows.filter((row) => row.kind === "cell-start");
+		const cellEnds = rows.filter((row) => row.kind === "cell-end");
+		const cellErrors = rows.filter((row) => row.kind === "cell-error");
+		const observations = rows.filter((row) => row.kind === "observation");
+		const judgmentKeys = new Map();
+		for (const judgment of judgments) {
+			const key = `${judgment.judge}/${judgment.metric}/${judgment.sourceKey}`;
+			judgmentKeys.set(key, (judgmentKeys.get(key) ?? 0) + 1);
+		}
+		const byJudge = {};
+		for (const judgment of judgments) {
+			byJudge[judgment.judge] = (byJudge[judgment.judge] ?? 0) + 1;
+		}
+		return {
+			rows: rows.length,
+			uniqueCells: new Set(cellStarts.map(cellKey)).size,
+			duplicateRows: 0,
+			errorRows: rows.filter((row) => row.error).length,
+			finalErrorCells: new Set(cellErrors.map(cellKey)).size,
+			cellStarts: cellStarts.length,
+			cellEnds: cellEnds.length,
+			cellErrors: cellErrors.length,
+			driverTurns: rows.filter((row) => row.kind === "driver-turn").length,
+			observations: observations.length,
+			invalidObservations: observations.filter((row) => row.valid === false).length,
+			formatInvalidObservations: observations.filter((row) => row.formatValid === false).length,
+			zeroPrefixObservations: observations.filter((row) => row.prefixTokens === 0).length,
+			judgments: judgments.length,
+			judgmentsByJudge: byJudge,
+			duplicateJudgments: judgments.length - judgmentKeys.size,
+			orphanJudgments: 0,
+		};
+	}
 	const cellKey = (row) => `${row.model}/${row.case}/${row.sample}/${row.arm}`;
 	const lastByCell = new Map();
 	for (const row of rows) lastByCell.set(cellKey(row), row);
@@ -172,7 +207,7 @@ export function harnessSpend(rows) {
 		// adaptive-skip-probe) spread usage flat and carry the priced figure at
 		// the top level. Reading only the nested shape silently ledgered a $1.36
 		// study as $0, which is exactly the drift the ledger exists to prevent.
-		const cost = row.usage?.cost ?? row.rawCost ?? row.cost;
+		const cost = row.usage?.cost ?? row.rawCost ?? row.costTotal ?? row.cost;
 		if (typeof cost === "number") total += cost;
 	}
 	return Number(total.toFixed(4));
@@ -184,9 +219,11 @@ export function harnessSpend(rows) {
  * `headerMissing`.
  */
 export function measuredEntry({ runId, date, script, argv, rowsPaths = [], judgmentPaths = [], header = null, ...rest }) {
-	const rows = rowsPaths.flatMap((path) => readJsonl(path)).filter((row) => row?.kind !== "run-header");
+	const rows = rowsPaths
+		.flatMap((path) => readJsonl(path))
+		.filter((row) => !["run-header", "trajectory-matrix-header"].includes(row?.kind));
 	const judgments = judgmentPaths.flatMap((path) => readJsonl(path));
-	const counts = reconcile(rows, judgments);
+	const counts = reconcile(rows, judgments, { header });
 	return ledgerEntry({
 		runId,
 		date,
@@ -194,9 +231,9 @@ export function measuredEntry({ runId, date, script, argv, rowsPaths = [], judgm
 		argv: argv ?? [],
 		codeCommit: header?.codeCommit ?? null,
 		treeDirty: header?.treeDirty ?? null,
-		corpusName: header?.corpusName ?? null,
-		corpusHash: header?.corpusHash ?? null,
-		armFingerprints: header?.armContractHashes ?? {},
+		corpusName: header?.corpusName ?? header?.matrixId ?? null,
+		corpusHash: header?.corpusHash ?? header?.matrixHash ?? null,
+		armFingerprints: header?.armContractHashes ?? header?.armHandoffs ?? {},
 		pricesHash: header?.pricesHash ?? null,
 		counts: { ...counts, headerMissing: header === null },
 		rows: counts.rows,

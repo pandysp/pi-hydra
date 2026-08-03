@@ -62,7 +62,7 @@ import {
 	rawCost,
 } from "./costing.mjs";
 import { appendEntry, harnessSpend, ledgerEntry, readLedger, reconcile, renderMarkdown, validateEntry } from "./run-ledger.mjs";
-import { ARTIFACT_ROOT, buildManifests, formatManifest, logicalName, parseManifest, providersFor, tokenIsStale, verifyDir } from "./hydra-lab.mjs";
+import { ARTIFACT_ROOT, buildManifests, formatManifest, logicalName, parseManifest, providersFor, readFreezeHeader, tokenIsStale, verifyDir } from "./hydra-lab.mjs";
 import { GOLDEN_CASES, GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import { SCREEN_CASES } from "./delivery-context-screen-cases.mjs";
 
@@ -573,8 +573,40 @@ test("spend is summed from both row shapes, so a replay study is not ledgered as
 	assert.equal(harnessSpend([{ usage: { cost: 0.5 } }, { usage: { cost: 0.25 } }]), 0.75);
 	assert.equal(harnessSpend([{ rawCost: 0.4, cost: 0.4 }, { rawCost: 0.1, cost: 0.1 }]), 0.5);
 	assert.equal(harnessSpend([{ cost: 0.2 }, { usage: { cost: 0.3 } }, { rawCost: 0.1 }]), 0.6);
+	assert.equal(harnessSpend([{ costTotal: 0.7 }, { rawCost: 0.2, costTotal: 0.2 }]), 0.9);
 	// A row with no priced field contributes nothing rather than NaN.
 	assert.equal(harnessSpend([{ usage: {} }, { cost: null }, {}]), 0);
+});
+
+test("registered trajectory matrices reconcile cells and expose harness-invalid observations", () => {
+	const header = { kind: "trajectory-matrix-header", matrixId: "matrix-v1", matrixHash: "abc" };
+	const rows = [
+		{ kind: "cell-start", trajectoryId: "scheduler", config: "sol-high", attempt: 1 },
+		{ kind: "driver-turn", trajectoryId: "scheduler", config: "sol-high", attempt: 1, error: "WebSocket error", costTotal: 0 },
+		{ kind: "observation", trajectoryId: "scheduler", config: "sol-high", attempt: 1, valid: false, formatValid: true, prefixTokens: 100, rawCost: 0.1 },
+		{ kind: "observation", trajectoryId: "scheduler", config: "sol-high", attempt: 1, valid: true, formatValid: true, prefixTokens: 0, rawCost: 0.2 },
+		{ kind: "cell-end", trajectoryId: "scheduler", config: "sol-high", attempt: 1 },
+	];
+	const counts = reconcile(rows, [], { header });
+	assert.equal(counts.uniqueCells, 1);
+	assert.equal(counts.duplicateRows, 0);
+	assert.equal(counts.cellStarts, 1);
+	assert.equal(counts.cellEnds, 1);
+	assert.equal(counts.driverTurns, 1);
+	assert.equal(counts.observations, 2);
+	assert.equal(counts.invalidObservations, 1);
+	assert.equal(counts.zeroPrefixObservations, 1);
+	assert.equal(counts.errorRows, 1);
+});
+
+test("freeze header reader accepts a registered trajectory matrix without weakening legacy headers", () => {
+	const dir = scratch();
+	const matrixPath = join(dir, "matrix.jsonl");
+	writeFileSync(matrixPath, `${JSON.stringify({ kind: "trajectory-matrix-header", matrixId: "m", matrixHash: "h" })}\n`);
+	assert.equal(readFreezeHeader(matrixPath).matrixId, "m");
+	const legacyPath = join(dir, "legacy.jsonl");
+	writeFileSync(legacyPath, `${JSON.stringify(buildRunHeader({ codeCommit: "abc" }))}\n`);
+	assert.equal(readFreezeHeader(legacyPath).codeCommit, "abc");
 });
 
 test("the seeded ledger loads, validates, and renders", () => {

@@ -45,6 +45,21 @@ export const MIRROR_ROOT = join(homedir(), "dev", "personal", "pi-hydra-frozen-a
 
 const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
+/** The legacy producer header or the registered live-trajectory matrix header. */
+export function readFreezeHeader(path) {
+	const legacy = readRunHeader(path);
+	if (legacy) return legacy;
+	if (!existsSync(path)) return null;
+	const first = readFileSync(path, "utf8").split("\n", 1)[0];
+	if (!first) return null;
+	try {
+		const parsed = JSON.parse(first);
+		return parsed?.kind === "trajectory-matrix-header" ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Auth.
 // ---------------------------------------------------------------------------
@@ -288,7 +303,7 @@ function freeze(args) {
 	const jsonl = files.filter((name) => logicalName(name).endsWith(".jsonl"));
 	const rowFiles = jsonl.filter((name) => !JUDGMENT_FILE.test(name)).map((name) => join(source, name));
 	const judgmentFiles = jsonl.filter((name) => JUDGMENT_FILE.test(name)).map((name) => join(source, name));
-	const header = rowFiles.map((path) => readRunHeader(path)).find(Boolean) ?? null;
+	const header = rowFiles.map((path) => readFreezeHeader(path)).find(Boolean) ?? null;
 	if (!header) console.error(`[hydra-lab] no run header in ${runId} — recording headerMissing: true (legacy or pre-S5 run)`);
 
 	const entry = measuredEntry({
