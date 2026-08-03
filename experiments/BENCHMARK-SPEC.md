@@ -133,9 +133,11 @@ metric changes land between iterations, versioned and documented.
    payloads are frozen. The registered Sol pass judged 264/264 eligible
    findings; every supported unmatched claim remains `pending-opus`. See
    `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`;
-6. after Opus returns, finish and freeze valid v2, then run one Opus pass over
-   the exact provisional dataset basis frozen for the Sol questions. Form
-   Sol + Opus + analyst consensus without changing the original questions;
+6. after Opus returns, finish and freeze valid v2, then complete both pending
+   OpenAI judge columns: the older 119-finding input runs at its original
+   `369ed58` judge builder, and the fresh 264-finding input runs at its current
+   frozen builder. Both use the exact provisional dataset basis shown to Sol.
+   Form Sol + Opus + analyst consensus without changing the original questions;
    handle catalog changes from final v2 as a versioned follow-up, then promote,
    re-score, and complete the registered iterations before producing a lock-in
    table.

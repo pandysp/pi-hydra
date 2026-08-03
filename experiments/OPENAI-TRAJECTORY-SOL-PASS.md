@@ -68,3 +68,24 @@ unmatched claim was promoted from this Sol pass.
 all 107 judgments, all 12 unjudgeable records, prompt/evidence hashes, and each
 raw response. Its uncompressed SHA-256 is
 `eb9f56b6f491fcf4c81b488480cf21010f31d47761ece0bf5583ef4e96643f6f`.
+
+## Exact Opus replay basis
+
+The original scratch resume note pointed at mutable working code and the
+working dataset. That would cease to reproduce Sol after either advanced.
+Preflight on 2026-08-03 verified the durable basis instead:
+
+- judge commit `369ed58`, builder hash `df3cc0f57a725965`;
+- rows SHA-256
+  `a6766a5aae4e0f6233ff1fb0fce54e3fd4aeb4e5551d071d8bf2d840ade6865b`;
+- payload archive SHA-256
+  `369e5b1e1afc73611e9bcc0ff8a07d3cb5cde47db4f79a323b51c058d5074278`;
+- frozen provisional dataset SHA-256
+  `4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0`;
+- scheduler catalog hash `a4f32c23a111a979`.
+
+The dataset is the copy frozen under
+`artifacts/2026-08-03-openai-capstone-judge-basis/`. Run Opus from a detached
+worktree at `369ed58`; do not use the current judge implementation. This yields
+the same 119 findings, of which 107 are judgeable and the same 12 remain
+unjudgeable.

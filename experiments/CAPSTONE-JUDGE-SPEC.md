@@ -90,6 +90,17 @@ The catalog is the active scheduler slice of candidate dataset version
 `2b0a85843c9be981`. If the frozen v2 scheduler catalog differs, affected
 matches must be judged in a versioned follow-up; old judgments remain intact.
 
+Replay preflight on 2026-08-03 closed a second identity boundary for this first
+input. Opus must run the judge implementation at commit `369ed58` (builder hash
+`df3cc0f57a725965`) and the provisional dataset bytes later frozen at
+`artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz`
+(logical SHA-256
+`4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0`).
+The current working judge and working dataset are not substitutes: both have
+advanced since Sol answered. The old 119-finding input and the fresh
+264-finding input therefore need separate Opus passes on their own exact
+registered builders, even though they share these dataset bytes.
+
 ## Second registered input: 2026-08-03 OpenAI capstone producer
 
 Registered before its first Sol judge call. The producer artifact is
