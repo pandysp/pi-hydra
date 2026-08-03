@@ -58,7 +58,9 @@ export function buildCapstoneInputManifest(datasetPath = "experiments/golden-dat
 	const active = dataset.issues.filter((issue) => issue.status === "active");
 	return {
 		schemaVersion: 1,
-		status: "provisional-v2; regenerate after consensus and freeze",
+		status: dataset.provisional
+			? "provisional-v2; regenerate after consensus and freeze"
+			: "valid-v2; freeze identity verified separately",
 		dataset: {
 			path: datasetPath,
 			version: dataset.version,
