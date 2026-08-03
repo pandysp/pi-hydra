@@ -42,6 +42,9 @@
 
 import { MAIN_ENUM } from "./enumerate-variants.mjs";
 import { armHandoff } from "./arm-registry.mjs";
+import { buildEnumeratedJudgeObservationEnvelope } from "../utils.ts";
+
+export const EMPTY_DELIVERY_CONTEXT = Object.freeze({ lastByThisHead: null, pending: Object.freeze([]) });
 
 /** Provider of a trajectory config. */
 export function providerOf(spec) {
@@ -80,6 +83,24 @@ export function enumEnvelopeFrom(mainEnvelope) {
 	);
 }
 
+const SO2_ROUTING =
+	"Steer to deliver a message to the agent, whether it can wait or not. Steering is the normal and only way to reach the agent and folds in at its next checkpoint.";
+
+/** MAIN-SO2's two registered edits applied to A0's split OpenAI carrier. */
+export function mainSo2EnvelopeFrom(mainEnvelope) {
+	return replaceOnce(
+		replaceOnce(
+			mainEnvelope,
+			'{"action":"noop|print|queue|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}',
+			'{"action":"noop|print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}',
+			"main-so2-openai/grammar",
+		),
+		"Queue if useful but waitable. Steer to correct the agent between turns.",
+		SO2_ROUTING,
+		"main-so2-openai/routing",
+	);
+}
+
 /**
  * The handoff for one arm on one provider.
  *
@@ -98,6 +119,16 @@ export function handoffFor(arm, spec, { head, lens, anthropicPrompt }) {
 	if (arm === "ENUM") {
 		const main = armHandoff("screen-a0", "openai-codex", { head, lens });
 		return { prompt: main.prompt, envelope: enumEnvelopeFrom(main.envelope) };
+	}
+	if (arm === "MAIN-SO2") {
+		const main = armHandoff("screen-a0", "openai-codex", { head, lens });
+		return { prompt: main.prompt, envelope: mainSo2EnvelopeFrom(main.envelope) };
+	}
+	if (arm === "ENUM-SO2") {
+		return {
+			prompt: lens,
+			envelope: buildEnumeratedJudgeObservationEnvelope(head, EMPTY_DELIVERY_CONTEXT),
+		};
 	}
 	const registryArm = arm === "MAIN" ? "screen-a0" : arm === "F" ? "screen-footer" : arm;
 	const handoff = armHandoff(registryArm, "openai-codex", { head, lens });

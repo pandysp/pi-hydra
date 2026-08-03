@@ -70,7 +70,9 @@ import {
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
+	parseEnumeratedDecision,
 	parseFooterDecision,
+	buildEnumeratedJudgeObservationPrompt,
 	selectFinalAssistant,
 } from "../utils.ts";
 import { hydraToolDescription, hydraToolParameters } from "../protocol.ts";
@@ -84,13 +86,16 @@ import {
 	buildShippedMainObservationPrompt,
 } from "./delivery-context-evaluation.mjs";
 import { MAIN_ENUM } from "./enumerate-variants.mjs";
+import { MAIN_SO2 } from "./steer-only-variants.mjs";
 import { argOf } from "./lib.mjs";
 import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
+import { gitProvenance } from "./fingerprints.mjs";
 import { resolveModel } from "./model-catalog.mjs";
 import { selectTrajectories, setupTask, taskSeedHash } from "./trajectory-cost-tasks.mjs";
 import {
 	checkOpenAIObservationRow,
 	composeOpenAIObservationCost,
+	EMPTY_DELIVERY_CONTEXT,
 	handoffFor,
 	isCodex,
 	providerOf,
@@ -130,14 +135,25 @@ export const ARM_PROMPTS = Object.freeze({
 	// an ENUM+ probe row carry byte-identical contract text — those variants
 	// render against the same head and lens this harness uses (asserted below).
 	ENUM: MAIN_ENUM,
+	// Capstone candidates. MAIN-SO2 is the byte-frozen steer-only repair.
+	// ENUM-SO2 uses the current production combined carrier, including the same
+	// empty factual delivery context used at the first observation.
+	"MAIN-SO2": MAIN_SO2,
+	"ENUM-SO2": buildEnumeratedJudgeObservationPrompt(
+		OBSERVER_HEAD,
+		OBSERVER_LENS,
+		EMPTY_DELIVERY_CONTEXT,
+	),
 });
 
 // ENUM arrives as a pre-rendered string, so the head/lens it was rendered
 // against must match this harness's or the arm would silently carry a different
 // lens than every other arm. Checked at module load, not in a test file, because
 // a mismatch would corrupt a paid run.
-if (!ARM_PROMPTS.ENUM.includes(OBSERVER_LENS)) {
-	throw new Error("ENUM was rendered against a different lens than this harness uses");
+for (const arm of ["ENUM", "MAIN-SO2", "ENUM-SO2"]) {
+	if (!ARM_PROMPTS[arm].includes(OBSERVER_LENS)) {
+		throw new Error(`${arm} was rendered against a different lens than this harness uses`);
+	}
 }
 
 export const ARMS = Object.freeze(Object.keys(ARM_PROMPTS));
@@ -175,6 +191,25 @@ export function contractHash(arm) {
 
 export function promptHash(arm) {
 	return sha(ARM_PROMPTS[arm]).slice(0, 16);
+}
+
+export function renderedHandoff(arm, spec) {
+	return handoffFor(arm, spec, {
+		head: OBSERVER_HEAD,
+		lens: OBSERVER_LENS,
+		anthropicPrompt: ARM_PROMPTS[arm],
+	});
+}
+
+export function handoffFingerprint(arm, spec) {
+	const handoff = renderedHandoff(arm, spec);
+	return {
+		promptSha256: sha(handoff.prompt),
+		envelopeSha256: handoff.envelope === undefined ? null : sha(handoff.envelope),
+		handoffSha256: sha(JSON.stringify(handoff)),
+		promptChars: handoff.prompt.length,
+		envelopeChars: handoff.envelope?.length ?? 0,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +443,31 @@ export function parseEnumDecision(text) {
 	};
 }
 
+/** Production-strict ENUM-SO2 parsing, retaining both recipient batches. */
+export function parseEnumSo2Decision(text) {
+	const parsed = parseEnumeratedDecision(text);
+	if (!parsed.decisions) return null;
+	const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	const value = JSON.parse((fenced ? fenced[1] : text).trim());
+	const findings = value.findings;
+	const urgency = ["noop", "print", "steer", "interrupt"];
+	const top = [...parsed.decisions].sort((a, b) => urgency.indexOf(b.action) - urgency.indexOf(a.action))[0];
+	return {
+		...(top ?? { action: "noop", reason: "no findings", message: "" }),
+		findings,
+		deliveries: parsed.decisions,
+	};
+}
+
 function parseArmResponse(arm, text) {
+	if (arm === "ENUM-SO2") {
+		const decision = parseEnumSo2Decision(text);
+		return {
+			decision: decision ?? { action: "noop", reason: "unparseable response", message: "" },
+			error: decision ? null : "invalid ENUM-SO2 findings list; the JSON contract falls back to noop",
+			formatValid: decision !== null,
+		};
+	}
 	if (arm === "ENUM") {
 		const decision = parseEnumDecision(text);
 		return {
@@ -417,7 +476,16 @@ function parseArmResponse(arm, text) {
 			formatValid: decision !== null,
 		};
 	}
-	if (arm === "MAIN" || arm === "J") {
+	if (arm === "MAIN" || arm === "J" || arm === "MAIN-SO2") {
+		if (arm === "MAIN-SO2") {
+			const decision = parseDecision(text);
+			const valid = decision !== null && decision.action !== "queue";
+			return {
+				decision: valid ? decision : { action: "noop", reason: "unparseable response", message: "" },
+				error: valid ? null : "invalid MAIN-SO2 JSON; the contract falls back to noop",
+				formatValid: valid,
+			};
+		}
 		return failOpenJsonDecision(text, "unparseable JSON; the JSON contract falls back to noop");
 	}
 	const parsed = parseFooterDecision(text);
@@ -494,25 +562,102 @@ function shuffled(values) {
 	return copy;
 }
 
+export function buildTrajectoryMatrixHeader({
+	matrixId,
+	matrixDate,
+	tasks,
+	configs,
+	arms,
+	concurrency,
+	maxTurnsPerRun,
+	driverMaxTokens,
+	spendCeilingUsd,
+}) {
+	const core = {
+		kind: "trajectory-matrix-header",
+		version: 1,
+		matrixId,
+		date: matrixDate,
+		tasks: tasks.map((task) => ({ id: task.id, seedHash: taskSeedHash(task) })),
+		configs: Object.fromEntries(configs.map((config) => [config, CONFIGS[config]])),
+		arms,
+		armHandoffs: Object.fromEntries(
+			configs.map((config) => [
+				config,
+				Object.fromEntries(arms.map((arm) => [arm, handoffFingerprint(arm, CONFIGS[config])])),
+			]),
+		),
+		lensHash: lensHash(),
+		concurrency,
+		maxTurnsPerRun,
+		driverMaxTokens,
+		spendCeilingUsd,
+		spendRule: "finish the current cell; start no new cell at or above the ceiling",
+	};
+	return {
+		...core,
+		matrixHash: sha(JSON.stringify(core)),
+		...gitProvenance(),
+		ts: Date.now(),
+	};
+}
+
+function chargedSpend(path) {
+	if (!existsSync(path)) return 0;
+	return readFileSync(path, "utf8")
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line))
+		.reduce((sum, row) => sum + (typeof row.costTotal === "number" ? row.costTotal : 0), 0);
+}
+
 async function main() {
 	const args = process.argv.slice(2);
 	const outputPath = argOf(args, "--output", "");
 	const payloadDir = argOf(args, "--payload-dir", "");
+	const matrixId = argOf(args, "--matrix-id", "");
+	const matrixDate = argOf(args, "--matrix-date", "");
+	const dryRun = args.includes("--dry-run");
 	const requestedConfigs = argOf(args, "--configs", "opus-high,opus-xhigh").split(",").filter(Boolean);
 	const requestedTrajectories = argOf(args, "--trajectories", "").split(",").filter(Boolean);
 	const requestedArms = argOf(args, "--arms", ARMS.join(",")).split(",").filter(Boolean);
 	const concurrency = Number.parseInt(argOf(args, "--concurrency", "1"), 10);
 	const maxTurnsPerRun = Number.parseInt(argOf(args, "--max-turns", "8"), 10);
 	const driverMaxTokens = Number.parseInt(argOf(args, "--driver-max-tokens", "8000"), 10);
+	const spendCeilingUsd = Number.parseFloat(argOf(args, "--spend-ceiling", "Infinity"));
 
-	if (!outputPath) throw new Error("--output is required");
-	if (!payloadDir) throw new Error("--payload-dir is required (payload snapshots are the study's re-run insurance)");
+	if (!dryRun && !outputPath) throw new Error("--output is required");
+	if (!dryRun && !payloadDir) throw new Error("--payload-dir is required (payload snapshots are the study's re-run insurance)");
 	for (const config of requestedConfigs) if (!(config in CONFIGS)) throw new Error(`unknown config: ${config}`);
 	for (const arm of requestedArms) if (!ARMS.includes(arm)) throw new Error(`unknown arm: ${arm}`);
 	if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
 	if (!Number.isInteger(maxTurnsPerRun) || maxTurnsPerRun < 1) throw new Error("--max-turns must be a positive integer");
+	if (!(spendCeilingUsd > 0)) throw new Error("--spend-ceiling must be positive");
+	if (matrixId && !Number.isFinite(spendCeilingUsd)) throw new Error("a registered --matrix-id requires a finite --spend-ceiling");
+	if (matrixId && !/^\d{4}-\d{2}-\d{2}$/.test(matrixDate)) {
+		throw new Error("a registered --matrix-id requires --matrix-date YYYY-MM-DD");
+	}
+	if (Number.isFinite(spendCeilingUsd) && concurrency !== 1) {
+		throw new Error("a finite spend ceiling requires --concurrency 1 so no second cell can start concurrently");
+	}
 
 	const tasks = selectTrajectories(requestedTrajectories);
+	const matrixHeader = buildTrajectoryMatrixHeader({
+		matrixId: matrixId || null,
+		matrixDate: matrixDate || null,
+		tasks,
+		configs: requestedConfigs,
+		arms: requestedArms,
+		concurrency,
+		maxTurnsPerRun,
+		driverMaxTokens,
+		spendCeilingUsd: Number.isFinite(spendCeilingUsd) ? spendCeilingUsd : null,
+	});
+	if (dryRun) {
+		process.stdout.write(`${JSON.stringify(matrixHeader, null, 2)}\n`);
+		return;
+	}
 	mkdirSync(payloadDir, { recursive: true });
 
 	const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
@@ -528,6 +673,18 @@ async function main() {
 			throw new Error(`missing or expired ${provider} login; run pi and log in first`);
 		}
 		credentials[provider] = credential;
+	}
+
+	if (matrixId) {
+		if (existsSync(outputPath)) {
+			const rows = readFileSync(outputPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+			const existingHeader = rows.find((row) => row.kind === "trajectory-matrix-header");
+			if (!existingHeader) throw new Error(`${outputPath} exists without a registered matrix header`);
+			if (existingHeader.matrixHash !== matrixHeader.matrixHash) throw new Error(`${outputPath} matrix hash drifted`);
+			if (existingHeader.codeCommit !== matrixHeader.codeCommit) throw new Error(`${outputPath} runner commit drifted`);
+		} else {
+			appendFileSync(outputPath, `${JSON.stringify(matrixHeader)}\n`);
+		}
 	}
 
 	// Resume: only cells that reached their cell-end row are complete; anything
@@ -558,8 +715,15 @@ async function main() {
 	);
 
 	let cursor = 0;
+	let spend = chargedSpend(outputPath);
+	let ceilingReached = false;
 	async function worker() {
-		while (cursor < cells.length) {
+		while (!ceilingReached && cursor < cells.length) {
+			if (spend >= spendCeilingUsd) {
+				ceilingReached = true;
+				console.error(`trajectory cost: spend ceiling reached at $${spend.toFixed(4)}; no new cell started`);
+				return;
+			}
 			const cell = cells[cursor++];
 			try {
 				await runCell({
@@ -569,6 +733,9 @@ async function main() {
 					requestedArms,
 					maxTurnsPerRun,
 					driverMaxTokens,
+					matrixId: matrixId || null,
+					matrixHash: matrixHeader.matrixHash,
+					spendCeilingUsd: Number.isFinite(spendCeilingUsd) ? spendCeilingUsd : null,
 					apiKey: credentials[CONFIGS[cell.config].provider].access,
 				});
 			} catch (error) {
@@ -583,6 +750,7 @@ async function main() {
 				appendFileSync(outputPath, `${JSON.stringify(row)}\n`);
 				console.error(`${cell.key}: CELL ERROR ${row.error}`);
 			}
+			spend = chargedSpend(outputPath);
 		}
 	}
 	await Promise.all(Array.from({ length: Math.min(concurrency, cells.length) }, () => worker()));
@@ -599,7 +767,21 @@ async function main() {
  * reachable from argv: rows produced by a fake must never be creatable from the
  * command line that writes the real ones.
  */
-export async function runCell({ task, config, attempt, outputPath, payloadDir, requestedArms, maxTurnsPerRun, driverMaxTokens, apiKey, streamFn = streamSimple }) {
+export async function runCell({
+	task,
+	config,
+	attempt,
+	outputPath,
+	payloadDir,
+	requestedArms,
+	maxTurnsPerRun,
+	driverMaxTokens,
+	matrixId = null,
+	matrixHash = null,
+	spendCeilingUsd = null,
+	apiKey,
+	streamFn = streamSimple,
+}) {
 	const spec = CONFIGS[config];
 	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unknown model ${spec.provider}/${spec.id}`);
@@ -635,6 +817,9 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 
 	append({
 		kind: "cell-start",
+		matrixId,
+		matrixHash,
+		spendCeilingUsd,
 		workspace: root,
 		seedManifest,
 		trackedPaths,
@@ -642,6 +827,7 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 		arms: requestedArms,
 		armPromptHashes: Object.fromEntries(requestedArms.map((arm) => [arm, promptHash(arm)])),
 		armContractHashes: Object.fromEntries(requestedArms.map((arm) => [arm, contractHash(arm)])),
+		armHandoffs: Object.fromEntries(requestedArms.map((arm) => [arm, handoffFingerprint(arm, spec)])),
 		prices,
 		systemPromptHash: sha(systemPrompt).slice(0, 16),
 		driverMaxTokens,
@@ -812,6 +998,7 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 				splitHandoff: item.usedEnvelope,
 				promptHash: promptHash(item.arm),
 				contractHash: contractHash(item.arm),
+				handoff: handoffFingerprint(item.arm, spec),
 				capturedPayloadHash: capturedHash,
 				capturedPayloadPath: capturedPath,
 				prefixTokens,
@@ -834,6 +1021,7 @@ export async function runCell({ task, config, attempt, outputPath, payloadDir, r
 				providerCalls: item.providerCalls,
 				recoveryAttempted: item.recoveryAttempted,
 				decision: item.decision,
+				deliveries: item.decision?.deliveries ?? (item.decision ? [item.decision] : null),
 				delivery: item.decision ? (item.decision.action === "noop" ? "none" : item.decision.action) : null,
 				formatValid: item.formatValid,
 				parseError: item.parseError,

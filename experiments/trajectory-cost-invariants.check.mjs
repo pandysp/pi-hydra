@@ -26,7 +26,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { mergeObservationPayload } from "../utils.ts";
+import {
+	buildEnumeratedJudgeObservationEnvelope,
+	buildEnumeratedJudgeObservationPrompt,
+	mergeObservationPayload,
+} from "../utils.ts";
 import { armHandoff, armSpec } from "./arm-registry.mjs";
 import {
 	ARMS,
@@ -42,10 +46,13 @@ import {
 	flatUsage,
 	lensHash,
 	parseEnumDecision,
+	parseEnumSo2Decision,
 	promptHash,
 	rawCost,
 	sumUsage,
 } from "./trajectory-cost-ab.mjs";
+import { MAIN_SO2 } from "./steer-only-variants.mjs";
+import { EMPTY_DELIVERY_CONTEXT, handoffFor, mainSo2EnvelopeFrom } from "./trajectory-openai.mjs";
 import { FIXTURE_PRICES } from "./costing.mjs";
 import { deriveGroundTruth, defectStateInPayload, payloadChunks } from "./trajectory-ground-truth.mjs";
 import { TRAJECTORY_TASKS, setupTask, taskById } from "./trajectory-cost-tasks.mjs";
@@ -211,7 +218,7 @@ test("a run with no captured payload schedules nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("the arms share one lens and differ only in the contract region", () => {
-	assert.deepEqual(ARMS, ["MAIN", "J", "F", "F1", "F2", "F3", "ENUM"]);
+	assert.deepEqual(ARMS, ["MAIN", "J", "F", "F1", "F2", "F3", "ENUM", "MAIN-SO2", "ENUM-SO2"]);
 	const lens = lensHash();
 	for (const arm of ARMS) {
 		assert.equal(ARM_PROMPTS[arm].split(OBSERVER_LENS).length - 1, 1, `${arm}: the lens must appear exactly once`);
@@ -244,7 +251,7 @@ test("this harness's arms are the screen registry's arms under other names", () 
 	// So it is exempt from the registry-equivalence check and carries a
 	// PROVENANCE assertion instead — it must still be MAIN plus exactly the two
 	// documented edits, or it is a third unrelated contract wearing the name.
-	const exempt = new Set(["ENUM"]);
+	const exempt = new Set(["ENUM", "MAIN-SO2", "ENUM-SO2"]);
 	assert.deepEqual([...Object.keys(equivalent), ...exempt], [...ARMS]);
 	assert.notEqual(ARM_PROMPTS.ENUM, ARM_PROMPTS.MAIN, "ENUM is byte-identical to MAIN — the grammar edit did not land");
 	assert.ok(
@@ -258,6 +265,12 @@ test("this harness's arms are the screen registry's arms under other names", () 
 	assert.ok(
 		!ARM_PROMPTS.ENUM.includes("Noop unless something warrants feedback."),
 		"ENUM still carries MAIN's noop-unless routing — the routing edit did not land",
+	);
+	assert.equal(ARM_PROMPTS["MAIN-SO2"], MAIN_SO2, "MAIN-SO2 drifted from the frozen steer-only candidate");
+	assert.equal(
+		ARM_PROMPTS["ENUM-SO2"],
+		buildEnumeratedJudgeObservationPrompt(OBSERVER_HEAD, OBSERVER_LENS, EMPTY_DELIVERY_CONTEXT),
+		"ENUM-SO2 drifted from the current production combined handoff",
 	);
 	for (const [local, registryArm] of Object.entries(equivalent)) {
 		const handoff = armHandoff(registryArm, "anthropic", {
@@ -306,6 +319,38 @@ test("the ENUM parser takes the most urgent action and keeps every finding", () 
 	assert.equal(parseEnumDecision("not json at all"), null);
 	assert.equal(parseEnumDecision('{"action":"steer","message":"m"}'), null, "MAIN's shape is not ENUM's shape");
 	assert.equal(parseEnumDecision('{"findings":[{"action":"shout","message":"m"}]}'), null, "an out-of-enum action is a parse failure");
+});
+
+test("the SO2 OpenAI handoffs and mixed-delivery parser match production", () => {
+	const spec = { provider: "openai-codex" };
+	const main = armHandoff("screen-a0", "openai-codex", { head: OBSERVER_HEAD, lens: OBSERVER_LENS });
+	const mainSo2 = handoffFor("MAIN-SO2", spec, {
+		head: OBSERVER_HEAD,
+		lens: OBSERVER_LENS,
+		anthropicPrompt: ARM_PROMPTS["MAIN-SO2"],
+	});
+	assert.equal(mainSo2.prompt, OBSERVER_LENS);
+	assert.equal(mainSo2.envelope, mainSo2EnvelopeFrom(main.envelope));
+	assert.ok(!/queue/i.test(mainSo2.envelope));
+
+	const enumSo2 = handoffFor("ENUM-SO2", spec, {
+		head: OBSERVER_HEAD,
+		lens: OBSERVER_LENS,
+		anthropicPrompt: ARM_PROMPTS["ENUM-SO2"],
+	});
+	assert.equal(enumSo2.prompt, OBSERVER_LENS);
+	assert.equal(
+		enumSo2.envelope,
+		buildEnumeratedJudgeObservationEnvelope(OBSERVER_HEAD, EMPTY_DELIVERY_CONTEXT),
+	);
+
+	const mixed = parseEnumSo2Decision(
+		'{"findings":[{"action":"print","reason":"r1","message":"m1"},{"action":"steer","reason":"r2","message":"m2"}]}',
+	);
+	assert.equal(mixed.action, "steer");
+	assert.deepEqual(mixed.deliveries.map((item) => item.action), ["print", "steer"]);
+	assert.equal(mixed.findings.length, 2);
+	assert.equal(parseEnumSo2Decision('{"findings":[{"action":"queue","message":"m"}]}'), null);
 });
 
 // ---------------------------------------------------------------------------
