@@ -1,7 +1,8 @@
 # Fresh OpenAI protocol studies — case freeze (2026-08-02)
 
-Status: **cases and exact matrix registered in separate checkpoints. No
-provider calls yet.**
+Status: **COMPLETE.** Cases and exact matrix were registered in separate
+checkpoints before spend; see `OPENAI-PROTOCOL-STUDY-RESULTS.md` for the frozen
+producer run, blinded Sol pass, raw-review findings, and rejected variants.
 
 ## Why
 
@@ -112,7 +113,8 @@ matrix size, and stop rules must be appended here before the first call.
 
 ## Exact pre-spend matrix and prompts
 
-Status: **REGISTERED; still no provider calls.**
+Status at registration: **REGISTERED; still no provider calls.** The immutable
+matrix later completed exactly as written.
 
 The control is the exact current `buildEnumeratedJudgeObservationEnvelope`
 rendering with an empty factual delivery context. OpenAI receives the unchanged
@@ -162,3 +164,21 @@ mkdir -p ~/scratch/2026-08-02-openai-protocol-studies
 node experiments/openai-protocol-study.mjs \
   --output ~/scratch/2026-08-02-openai-protocol-studies/rows.jsonl
 ```
+
+## Completed-run audit
+
+All 144 producer calls completed with zero provider or JSON-format errors for
+$3.37301. The frozen producer SHA-256 is
+`2c57c98a9bf48ba65e630d2c4306764abbb4f90ffb4768ca157bf7f9a1290f71`.
+
+The blinded Sol pass accepted 59/60 batches and 436/444 findings. Eight failed
+attempts were preserved without changing the judge; four were transport
+failures and four were strict-format failures. One final quiet-case batch remained
+unaccepted after three response-bearing attempts copied the same opaque key one
+character short. Its eight findings remain unjudged. Charged judge spend was
+$11.39192. The append-only judge file, including every failed attempt, has
+SHA-256 `b8807392f46d821a1ee4c872b7ac2dbe7b0200a207df814e297d735ca0da60f1`.
+
+The registered quiet case proved invalid as a discriminator and was excluded
+from causal gates without being edited. Neither exact simplification proceeds
+to capstone production. Full reasoning and cell metrics are in the results doc.

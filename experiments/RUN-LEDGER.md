@@ -45,8 +45,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 34 | 2026-08-02 | `2026-08-02-cross-task-trajectory` | (recorded by hand) | fa9a730066355403646b4f314feb42b689aae2e4 (dirty) | — | 347 | 0 | $6.079 | `experiments/artifacts/2026-08-02-cross-task-trajectory` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-cross-task-trajectory | experiments/CROSS-TASK-TRAJECTORY-RESULTS.md | measured |
 | 35 | 2026-08-02 | `2026-08-02-golden-v2-calibration` | scratch run.mjs (frozen in artifact) | 7eedc8b14ecc85e9dd2871c32e01d7ec39a99f9a (dirty) | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-02-golden-v2-calibration` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-golden-v2-calibration | experiments/GOLDEN-DATASET-V2-SPEC.md | measured |
 | 36 | 2026-08-02 | `2026-08-02-steer-only` | (recorded by hand) | 6b2c363a4380e0bbb38c1bb8aedfcdd2de37ac08 (dirty) | — | 212 | 0 | $5.7029 | `experiments/artifacts/2026-08-02-steer-only` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-steer-only | experiments/STEER-ONLY-RESULTS.md | measured |
+| 37 | 2026-08-02 | `2026-08-02-openai-protocol-study` | openai-protocol-study.mjs + openai-protocol-study-judge.mjs + openai-protocol-study-results.mjs | 581785b3bbb5d2d180627191f635e4cc0827ff6d / 134d98bd6f264053cd46f8e817d72f90dbd14ef1 | openai-protocol-study-cases.mjs (9 sealed cases) | 144 | 436 | $14.7649 | `experiments/artifacts/2026-08-02-openai-protocol-study` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-openai-protocol-study | experiments/OPENAI-PROTOCOL-STUDY-RESULTS.md | measured |
 
-**Program totals: 11620 producer rows, 10399 judgments, $83.88 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $105.68.
+**Program totals: 11764 producer rows, 10835 judgments, $98.65 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $120.45.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -87,6 +88,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-02-cross-task-trajectory`: ENUM generalisation runs B (N3/N4): exporter clean 08-01 cell + fresh complete dispatcher 08-02; judged pools + golden-v1 scoring; truncated 08-01 dispatcher attempt retained, unused
 - `2026-08-02-golden-v2-calibration`: wave 1 Q1 calibration re-judge, subscription-billed. treeDirty is sibling v2-build edits (golden-dataset-consensus.mjs four-ruling draft, golden-dataset-score.mjs), NOT this run's inputs: RULINGS used == 18b5627 text, sha-verified in calibration-judgments.json basis
 - `2026-08-02-steer-only`: steer-only vocabulary probe: SO collapse (MAIN silent, ENUM free) + SO2 wording repair (MAIN delivers at steer price, ENUM still free); spend $5.70 harness-priced
+- `2026-08-02-openai-protocol-study`: Fresh causal OpenAI study. Exact terse and no-interrupt variants rejected; unchanged ENUM-SO2 advances. Quiet case invalid and excluded without relabeling. One quiet-case batch remains strictly unaccepted after repeatable one-character opaque-key transcription failures. Sol is one diagnostic judge only; no Opus vote, consensus, golden promotion, or capstone score.
 
 ## Reading the frozen evidence
 

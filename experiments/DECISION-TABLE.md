@@ -589,10 +589,16 @@ that otherwise inherit specific unstated consequences. The immutable v1 pass
 produced no promotion and no arm verdict; see
 `OPENAI-TRAJECTORY-SOL-PASS.md`.
 
-The fresh OpenAI protocol study is now registered but has not produced data.
-Its nine cases were committed in `95a8f4d` before the exact terse and
-no-interrupt prompts existed. The final pre-spend matrix has four arms
-(control, terse, no-interrupt, and their mechanical combination), sol-high and
-sol-xhigh, two samples, 144 calls, and fixed prompt hashes. The no-interrupt
-study explicitly cannot erase the product tradeoff: even a perfect steer reply
-cannot abort an already-running destructive action.
+The fresh OpenAI protocol study is complete. Its nine cases were committed in
+`95a8f4d` before the exact terse and no-interrupt prompts existed; all 144
+registered calls completed for $3.37301 and the blinded Sol pass accepted
+436/444 findings. Both exact simplifications are refuted. Terse cuts characters
+per finding by about 40% but increases output by 41% overall and loses planted
+blocking recall. No-interrupt increases output by 22%; it correctly steers four
+proposed-danger findings but can only steer eight genuine in-flight emergencies
+that control correctly interrupts. The interaction arm also sends planted
+driver findings to `print`. One supposedly quiet case was invalid and remains
+excluded rather than relabeled; its final eight-finding judge batch remains
+strictly unaccepted after repeatable opaque-key transcription failures. See
+`OPENAI-PROTOCOL-STUDY-RESULTS.md`. The unchanged ENUM-SO2 control is the only
+study arm admitted to the OpenAI capstone matrix.
