@@ -143,10 +143,15 @@ export async function executeCapstoneJudgePass({
 	judgeName,
 	transport,
 	inputIdentity,
+	eligibilityPolicy = "strict-v1",
+	expectedFindings = null,
 }) {
 	const judgeSpec = JUDGES[judgeName];
 	if (!judgeSpec) throw new Error(`unknown judge: ${judgeName}`);
-	const items = buildFindingItems(rows);
+	const items = buildFindingItems(rows, { eligibilityPolicy });
+	if (expectedFindings !== null && items.length !== expectedFindings) {
+		throw new Error(`expected ${expectedFindings} judgeable findings under ${eligibilityPolicy}, found ${items.length}`);
+	}
 	const catalogs = Object.fromEntries([...new Set(items.map((item) => item.task))].sort().map((task) => [task, activeCatalog(dataset, task)]));
 	const metadata = {
 		protocol: "capstone-trajectory-claims-v1",
@@ -155,6 +160,8 @@ export async function executeCapstoneJudgePass({
 		judgeTransport: judgeSpec.transport,
 		judgeReasoning: judgeSpec.reasoning,
 		judgeBuilderHash: capstoneJudgeBuilderHash(),
+		eligibilityPolicy,
+		expectedFindings,
 		datasetVersion: dataset.version,
 		catalogHashes: Object.fromEntries(Object.entries(catalogs).map(([task, catalog]) => [task, catalogHash(dataset.version, catalog)])),
 		...inputIdentity,
@@ -283,6 +290,12 @@ async function main() {
 	const outputPath = argOf(args, "--output", "");
 	const judgeName = argOf(args, "--judge", "sol");
 	const timeoutMs = Number.parseInt(argOf(args, "--cli-timeout-ms", "300000"), 10);
+	const eligibilityPolicy = argOf(args, "--eligibility-policy", "strict-v1");
+	const expectedFindingsArg = argOf(args, "--expected-findings", "");
+	const expectedFindings = expectedFindingsArg === "" ? null : Number.parseInt(expectedFindingsArg, 10);
+	if (expectedFindings !== null && (!Number.isInteger(expectedFindings) || expectedFindings < 0)) {
+		throw new Error("--expected-findings must be a non-negative integer");
+	}
 	if (!rowsPath || !payloadDir || !payloadsTarPath || !outputPath) {
 		throw new Error("--rows-gz, --payload-dir, --payloads-tar and --output are required");
 	}
@@ -307,6 +320,8 @@ async function main() {
 			datasetFile: basename(datasetPath),
 			datasetSha256: sha256Hex(datasetBytes),
 		},
+		eligibilityPolicy,
+		expectedFindings,
 	});
 	process.stdout.write(
 		`${state.status}: ${Object.keys(state.judgments).length} judged, ${Object.keys(state.unjudgeable).length} unjudgeable, ` +

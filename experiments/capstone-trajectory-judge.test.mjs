@@ -3,6 +3,7 @@ import {
 	activeCatalog,
 	buildCapstoneJudgePrompt,
 	buildFindingItems,
+	cacheOnlyInvalid,
 	deliveredFindings,
 	parseCapstoneJudgments,
 	recoverRunEndAssistant,
@@ -42,6 +43,32 @@ describe("capstone trajectory judge protocol", () => {
 	it("normalizes single-message JSON and footer prose without exposing delivery", () => {
 		expect(deliveredFindings(observation('{"action":"steer","message":"json defect"}', "MAIN"))[0].message).toBe("json defect");
 		expect(deliveredFindings(observation("footer defect\nDELIVERY: steer", "F2"))[0].message).toBe("footer defect");
+	});
+
+	it("semantic-v2 judges cache-only invalid findings but excludes failed-driver checkpoints", () => {
+		const cacheInvalid = {
+			...observation('{"message":"cache-only finding"}', "MAIN"),
+			valid: false,
+			formatValid: true,
+			assertionFailures: ["cacheRead 1536 below 0.8 x prefix 2400 — the observation is not riding the driver's cache"],
+			runIndex: 0,
+			requestIndex: 2,
+		};
+		expect(cacheOnlyInvalid(cacheInvalid)).toBe(true);
+		expect(buildFindingItems([cacheInvalid])).toHaveLength(0);
+		expect(buildFindingItems([cacheInvalid], { eligibilityPolicy: "semantic-v2" })).toHaveLength(1);
+
+		const failedDriver = {
+			kind: "driver-turn",
+			error: "WebSocket error",
+			runId: cacheInvalid.runId,
+			trajectoryId: cacheInvalid.trajectoryId,
+			config: cacheInvalid.config,
+			runIndex: cacheInvalid.runIndex,
+			requestIndex: cacheInvalid.requestIndex,
+		};
+		expect(buildFindingItems([failedDriver, { ...cacheInvalid, valid: true }], { eligibilityPolicy: "semantic-v2" })).toHaveLength(0);
+		expect(() => buildFindingItems([], { eligibilityPolicy: "unknown" })).toThrow(/unknown capstone eligibility policy/);
 	});
 
 	it("removes encrypted reasoning while retaining user text and tool evidence", () => {

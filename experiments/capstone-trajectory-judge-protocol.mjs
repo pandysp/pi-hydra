@@ -3,10 +3,28 @@ import { SUPPORT_POLICY } from "./delivery-context-judge-protocol.mjs";
 import { sha16 } from "./fingerprints.mjs";
 
 const FOOTER = /\s*DELIVERY:\s*\w+\s*$/i;
+export const CAPSTONE_ELIGIBILITY_POLICIES = Object.freeze(["strict-v1", "semantic-v2"]);
+
+function pointRequestKey(row) {
+	return [row.runId, row.trajectoryId, row.config, row.runIndex, row.requestIndex].join("/");
+}
+
+export function cacheOnlyInvalid(row) {
+	return row?.valid === false && Array.isArray(row.assertionFailures) && row.assertionFailures.length > 0 &&
+		row.assertionFailures.every((failure) => /^cacheRead \d+ below /.test(failure));
+}
+
+export function failedDriverPointKeys(rows) {
+	return new Set(rows
+		.filter((row) => row?.kind === "driver-turn" && row.error)
+		.map(pointRequestKey));
+}
 
 /** The text actually delivered for each independently routed finding. */
-export function deliveredFindings(row) {
-	if (row?.kind !== "observation" || row.error || row.valid === false || !row.delivery || row.delivery === "none") return [];
+export function deliveredFindings(row, { acceptCacheOnlyInvalid = false } = {}) {
+	if (row?.kind !== "observation" || row.error || row.formatValid === false ||
+		(row.valid === false && !(acceptCacheOnlyInvalid && cacheOnlyInvalid(row))) ||
+		!row.delivery || row.delivery === "none") return [];
 	const raw = String(row.responseText ?? "").trim();
 	if (!raw) return [];
 	try {
@@ -31,9 +49,14 @@ export function findingSourceKey(row, findingIndex) {
 	return [row.runId, row.trajectoryId, row.config, row.pointId, row.arm, `f${findingIndex}`].join("/");
 }
 
-export function buildFindingItems(rows) {
+export function buildFindingItems(rows, { eligibilityPolicy = "strict-v1" } = {}) {
+	if (!CAPSTONE_ELIGIBILITY_POLICIES.includes(eligibilityPolicy)) {
+		throw new Error(`unknown capstone eligibility policy: ${eligibilityPolicy}`);
+	}
+	const semantic = eligibilityPolicy === "semantic-v2";
+	const failedPoints = semantic ? failedDriverPointKeys(rows) : new Set();
 	return rows.flatMap((row) =>
-		deliveredFindings(row).map((finding) => ({
+		(failedPoints.has(pointRequestKey(row)) ? [] : deliveredFindings(row, { acceptCacheOnlyInvalid: semantic })).map((finding) => ({
 			sourceKey: findingSourceKey(row, finding.index),
 			runId: row.runId,
 			pointKey: [row.runId, row.trajectoryId, row.config, row.pointId].join("/"),
@@ -48,6 +71,7 @@ export function buildFindingItems(rows) {
 			pointKind: row.pointKind,
 			requestIndex: row.requestIndex,
 			runIndex: row.runIndex,
+			qualitySourceValidity: row.valid === false ? "cache-only-invalid" : "valid",
 		})),
 	);
 }
@@ -211,7 +235,11 @@ export function parseCapstoneJudgments(text, expectedCount, catalogKeys) {
 export function capstoneJudgeBuilderSource() {
 	return [
 		SUPPORT_POLICY,
+		pointRequestKey.toString(),
+		cacheOnlyInvalid.toString(),
+		failedDriverPointKeys.toString(),
 		deliveredFindings.toString(),
+		buildFindingItems.toString(),
 		findingSourceKey.toString(),
 		visiblePayload.toString(),
 		recoverRunEndAssistant.toString(),

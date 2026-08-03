@@ -89,3 +89,32 @@ dataset version bump and free re-score.
 The catalog is the active scheduler slice of candidate dataset version
 `2b0a85843c9be981`. If the frozen v2 scheduler catalog differs, affected
 matches must be judged in a versioned follow-up; old judgments remain intact.
+
+## Second registered input: 2026-08-03 OpenAI capstone producer
+
+Registered before its first Sol judge call. The producer artifact is
+`artifacts/2026-08-03-openai-capstone-producer/`:
+
+- stored rows SHA-256: `7224f4e031be4719abc7b6f7570c3972b64c5d5df7e66407b42fba26ffad9e03`;
+- payload archive SHA-256: `401c38dfdfd6845ceef5e28a4f1519246c65ee3845fcc07818e9ca1406be4ae7`;
+- provisional dataset version: `2b0a85843c9be981`, file SHA-256
+  `4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0`;
+- tasks: scheduler, exporter, dispatcher; configs: sol-high, sol-xhigh;
+  arms: MAIN-SO2, ENUM-SO2;
+- first judge: `gpt-5.6-sol`, high reasoning, subscription transport;
+- batch unit: one observation point; concurrency 1; producer spend zero.
+
+This input uses eligibility policy `semantic-v2`. Cache assertions measure
+whether cost is comparable; they do not make a successfully parsed finding
+semantically unjudgeable. A delivered finding whose only invalidity is the
+registered cache-read floor therefore enters the quality pass with its source
+validity preserved as `cache-only-invalid`. All other invalid observations
+remain excluded. The one checkpoint spawned from a driver `WebSocket error`
+is excluded even though both observer calls returned: it is not a legitimate
+post-driver observation point. This versioned policy is frozen before judging;
+the earlier Sol artifact remains on strict-v1.
+
+The frozen adapter yields exactly 264 judgeable findings: successful delivered
+findings from ordinary valid rows plus cache-only-invalid rows, minus every
+finding at the failed-driver checkpoint. A different count is input or adapter
+drift and must stop the pass.

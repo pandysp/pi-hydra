@@ -30,6 +30,16 @@ describe("capstone trajectory judge resume", () => {
 		const transport = { model: "gpt-5.6-sol", async ask() { calls++; return { text: response(3), error: null }; } };
 		const first = await executeCapstoneJudgePass({ rows, dataset, payloadDir: dir, outputPath, judgeName: "sol", transport, inputIdentity: { fixture: "v1" } });
 		expect(first.status).toBe("complete");
+		await expect(executeCapstoneJudgePass({
+			rows,
+			dataset,
+			payloadDir: dir,
+			outputPath: join(dir, "wrong-count.json"),
+			judgeName: "sol",
+			transport,
+			inputIdentity: { fixture: "v1" },
+			expectedFindings: 4,
+		})).rejects.toThrow(/expected 4 judgeable findings.*found 3/);
 		expect(Object.keys(first.judgments)).toHaveLength(3);
 		expect(calls).toBe(1);
 
