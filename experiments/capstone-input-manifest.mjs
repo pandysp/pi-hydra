@@ -46,6 +46,7 @@ export const CAPSTONE_INPUTS = [
 	"experiments/OPENAI-CAPSTONE-COMPARISON.json",
 	"experiments/capstone-trajectory-judge-protocol.mjs",
 	"experiments/capstone-trajectory-judge.mjs",
+	"experiments/capstone-consensus-packet.mjs",
 	"experiments/openai-capstone-results.mjs",
 ];
 

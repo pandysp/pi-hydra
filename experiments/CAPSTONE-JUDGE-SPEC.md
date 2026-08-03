@@ -61,6 +61,13 @@ Raw judge responses are retained verbatim. After each pass the analyst reads
 the original delivered messages, the atomic judgments, and the raw responses;
 summary numbers alone are insufficient.
 
+After both columns complete, `capstone-consensus-packet.mjs` first proves that
+their rows, payloads, dataset, catalog, judge builder, finding identities, and
+unjudgeable evidence holes are identical. It then presents the two independently
+split claim lists side by side with stable claim references. It deliberately
+does not align claims or decide consensus: the analyst records those semantic
+groupings only after reading both raw passes.
+
 ## Scoring boundary
 
 No precision or recall result is final until Sol and Opus have answered these
