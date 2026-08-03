@@ -125,8 +125,10 @@ metric changes land between iterations, versioned and documented.
    but more expensive and lower-recall; deleting `interrupt` loses the only
    route that can abort two active emergencies. See
    `OPENAI-PROTOCOL-STUDY-RESULTS.md`;
-4. **IN PROGRESS:** retain ENUM-SO2 unchanged and append the exact dated OpenAI
-   producer matrix here before running it;
+4. **COMPLETE, BEFORE SPEND:** retain ENUM-SO2 unchanged and register the exact
+   dated OpenAI producer matrix. `OPENAI-CAPSTONE-PRODUCER-SPEC.md` freezes three
+   tasks × two Sol tiers, paired MAIN-SO2 and ENUM-SO2 observers, six live
+   drivers, exact split-handoff hashes, concurrency 1, and a $20 ceiling;
 5. freeze raw producer outputs and their costs, run one Sol judgment pass, and
    queue novel candidates as `pending-opus` rather than promoting them;
 6. after Opus returns, finish v2, add Opus judgments over the same frozen rows,
@@ -143,6 +145,16 @@ The v1 Sol pass remains immutable; Opus answers its identical questions first,
 then the flagged multi-match subset is re-judged under the sharper iteration-2
 rule. This is the evaluator-freeze rule working as intended, not an in-place
 repair aimed at an arm.
+
+### Registered OpenAI production wave (2026-08-03)
+
+Status: **REGISTERED; no provider calls at registration.** Matrix id
+`2026-08-03-openai-capstone-producer-v1`, SHA-256
+`0913b5090b046a0b67e30564ac15e86e4a2c127351e5a8118f3d2b005cdbf44d`.
+The exact command, task seeds, provider-specific prompt hashes, resume rules,
+and spend boundary are in `OPENAI-CAPSTONE-PRODUCER-SPEC.md`. Only MAIN-SO2 and
+unchanged production ENUM-SO2 proceed; the fresh terse and no-interrupt arms
+were rejected before this spend.
 
 ## Boundaries
 

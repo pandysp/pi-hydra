@@ -602,3 +602,11 @@ excluded rather than relabeled; its final eight-finding judge batch remains
 strictly unaccepted after repeatable opaque-key transcription failures. See
 `OPENAI-PROTOCOL-STUDY-RESULTS.md`. The unchanged ENUM-SO2 control is the only
 study arm admitted to the OpenAI capstone matrix.
+
+The exact OpenAI production matrix is now registered before spend in
+`OPENAI-CAPSTONE-PRODUCER-SPEC.md`: scheduler, exporter and dispatcher ×
+sol-high and sol-xhigh; one live driver per task/config; paired MAIN-SO2 and
+unchanged production ENUM-SO2 at every point; concurrency 1; $20 ceiling;
+matrix hash `0913b5090b046a0b67e30564ac15e86e4a2c127351e5a8118f3d2b005cdbf44d`.
+No quality number or design verdict exists until the frozen rows receive both
+judge columns against a valid dataset.
