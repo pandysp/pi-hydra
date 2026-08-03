@@ -11,13 +11,28 @@
   "files": [
     {
       "path": "experiments/BENCHMARK-SPEC.md",
-      "bytes": 9171,
-      "sha256": "2306ca31d68b617a683e93f49f0912c4111dcdd8028392e5da362a3eb63120dc"
+      "bytes": 9669,
+      "sha256": "d86da3db7788badd968005dc7f7d815d828d69415b68ca970b4949a61de8e974"
     },
     {
       "path": "experiments/CAPSTONE-JUDGE-SPEC.md",
-      "bytes": 4890,
-      "sha256": "af2d0c979b8cdc2b60ce31f518f37fc082e71b5d932e158b2e5ff97290dced01"
+      "bytes": 7439,
+      "sha256": "b5487e564de5a9dd0fa7d764734b7918509b31fc40b055e7e87914a1427bead6"
+    },
+    {
+      "path": "experiments/OPENAI-CAPSTONE-COMPARISON.json",
+      "bytes": 2079,
+      "sha256": "3d70a97e638c6b5d0c31c3971332d6890008c4b877c4dbe7df7d87b2d46f0fbf"
+    },
+    {
+      "path": "experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md",
+      "bytes": 7736,
+      "sha256": "926dc2ef1bb2b76764a6471af3af5616c30ad065c9b7be838038d699779a6a38"
+    },
+    {
+      "path": "experiments/OPENAI-CAPSTONE-PRODUCER-SPEC.md",
+      "bytes": 5146,
+      "sha256": "ccb2fc51bf1d5053cae223d7b46ce47c63d5677a1e109c5955619b894ade6467"
     },
     {
       "path": "experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
@@ -115,19 +130,49 @@
       "sha256": "a6766a5aae4e0f6233ff1fb0fce54e3fd4aeb4e5551d071d8bf2d840ade6865b"
     },
     {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+      "bytes": 7243143,
+      "sha256": "401c38dfdfd6845ceef5e28a4f1519246c65ee3845fcc07818e9ca1406be4ae7"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",
+      "bytes": 174512,
+      "sha256": "7224f4e031be4719abc7b6f7570c3972b64c5d5df7e66407b42fba26ffad9e03"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-sol/judge-sol.json.gz",
+      "bytes": 88520,
+      "sha256": "31f3b5057b1c6937236449bdafa58a6c1a03e2bf763991db1c1a247868aacf3f"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-sol/judgments-sol.jsonl.gz",
+      "bytes": 48072,
+      "sha256": "cad67a7ca3481a5f42acef07d8c56fc198d227636a4c8c9719b047fb6b3d446b"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-sol/summary.json.gz",
+      "bytes": 2492,
+      "sha256": "c9f71e9ecaa76e1cda4080bc2aaa817a5bf2441ee1aef1b7022ac452838d7390"
+    },
+    {
       "path": "experiments/capstone-trajectory-judge-protocol.mjs",
-      "bytes": 9137,
-      "sha256": "a3f723f0c9a8358df7eca4107a142e33bb4a1a663997b303807196d92df9e405"
+      "bytes": 10492,
+      "sha256": "d871f1e9e31bf62b648c0ec637268ab9ad5e4b48c04a297bdf33b9cbb9960c56"
     },
     {
       "path": "experiments/capstone-trajectory-judge.mjs",
-      "bytes": 12540,
-      "sha256": "b1d12877a05ec0697d9a9e49a10362691b9b4427bafe44c7bcf46f34e98132f8"
+      "bytes": 13324,
+      "sha256": "144986a8a5a0e5a4eef9bddff81d3a9580b85c98fff5b2b6834f06fafff18078"
     },
     {
       "path": "experiments/golden-dataset-score.mjs",
       "bytes": 4951,
       "sha256": "471d20c5512aee3a96962daf7c0621af88b809f75ea63333b594ffaec9452ef4"
+    },
+    {
+      "path": "experiments/openai-capstone-results.mjs",
+      "bytes": 12258,
+      "sha256": "7101b4e66d6c94327e89c3595aa8fcf84656cf4b2206233263295a36c9a1e807"
     },
     {
       "path": "experiments/trajectory-cost-tasks.mjs",

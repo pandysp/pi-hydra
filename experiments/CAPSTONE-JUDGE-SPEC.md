@@ -118,3 +118,20 @@ The frozen adapter yields exactly 264 judgeable findings: successful delivered
 findings from ordinary valid rows plus cache-only-invalid rows, minus every
 finding at the failed-driver checkpoint. A different count is input or adapter
 drift and must stop the pass.
+
+## Second-input execution record (appended after completion)
+
+Sol completed the exact 264/264 findings in 109 accepted batches. Two attempts
+returned no response because of transport errors; each resume retried only the
+still-unanswered point under identical metadata and prompts. All accepted
+answers passed on their first response, so no format-correction answer entered
+the checkpoint.
+
+The immutable raw checkpoint, deterministic 264-row judgment export, and audit
+summary are frozen under `artifacts/2026-08-03-openai-capstone-sol/`. Their
+logical SHA-256 values are respectively
+`d19a38b219e7dabc25f35e0b07624cff94f08e74786d221a5b5c205da85ceabe`,
+`8cb51785a2cd287c59cf9ec6ec7f5d5e38b60f8ae8d7861b98e315bbadefb537`,
+and `00cf599a4c419b1a59941514eab2a669fc8bb253bee54c8582f4a82f6a36b62b`.
+This remains one judge column. It neither freezes v2 nor supplies a quality
+score.

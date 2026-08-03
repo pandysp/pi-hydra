@@ -7,6 +7,9 @@ still provisional and Opus has not judged these rows. No design winner follows
 from this document.
 
 Frozen producer input: `artifacts/2026-08-03-openai-capstone-producer/`.
+Frozen Sol checkpoint: `artifacts/2026-08-03-openai-capstone-sol/` (raw logical
+SHA-256
+`d19a38b219e7dabc25f35e0b07624cff94f08e74786d221a5b5c205da85ceabe`).
 Deterministic analysis: `openai-capstone-results.mjs`. The producer and judge
 raw text were read in full before this distillation.
 

@@ -189,7 +189,13 @@ export function reconcile(rows, judgments, { header = null } = {}) {
 		judgments: judgments.length,
 		judgmentsByJudge: byJudge,
 		duplicateJudgments: judgments.length - judgmentKeys.size,
-		orphanJudgments: judgments.filter((judgment) => !sourceKeys.has(judgment.sourceKey)).length,
+		// A judge-only freeze deliberately references producer rows in a separate
+		// immutable artifact. With no local source rows there is nothing against
+		// which to evaluate orphanhood; reporting every judgment as orphaned is a
+		// false failure, while zero would invent a successful check.
+		orphanJudgments: rows.length === 0
+			? null
+			: judgments.filter((judgment) => !sourceKeys.has(judgment.sourceKey)).length,
 	};
 }
 

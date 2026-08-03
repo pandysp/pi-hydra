@@ -28,14 +28,23 @@ export const CAPSTONE_INPUTS = [
 	"experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz",
 	"experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz",
 	"experiments/artifacts/2026-08-02-openai-trajectory/judge-sol.json.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-sol/judge-sol.json.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-sol/judgments-sol.jsonl.gz",
+	"experiments/artifacts/2026-08-03-openai-capstone-sol/summary.json.gz",
 	"experiments/trajectory-cost-tasks.mjs",
 	"experiments/trajectory-ground-truth.mjs",
 	"experiments/golden-dataset-score.mjs",
 	"experiments/BENCHMARK-SPEC.md",
 	"experiments/CAPSTONE-JUDGE-SPEC.md",
 	"experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
+	"experiments/OPENAI-CAPSTONE-PRODUCER-SPEC.md",
+	"experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md",
+	"experiments/OPENAI-CAPSTONE-COMPARISON.json",
 	"experiments/capstone-trajectory-judge-protocol.mjs",
 	"experiments/capstone-trajectory-judge.mjs",
+	"experiments/openai-capstone-results.mjs",
 ];
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");

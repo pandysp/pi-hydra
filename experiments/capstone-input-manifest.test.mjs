@@ -11,6 +11,8 @@ describe("capstone frozen-input manifest", () => {
 		expect(manifest.files.some((file) => file.path.includes("enum-trajectory"))).toBe(true);
 		expect(manifest.files.some((file) => file.path.includes("cross-task-trajectory"))).toBe(true);
 		expect(manifest.files.some((file) => file.path.includes("openai-trajectory"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-capstone-producer/rows"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-capstone-sol/judge-sol"))).toBe(true);
 		expect(readFileSync("experiments/CAPSTONE-FROZEN-INPUTS.json", "utf8")).toBe(renderCapstoneInputManifest());
 	});
 });

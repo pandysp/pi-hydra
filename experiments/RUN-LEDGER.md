@@ -47,8 +47,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 36 | 2026-08-02 | `2026-08-02-steer-only` | (recorded by hand) | 6b2c363a4380e0bbb38c1bb8aedfcdd2de37ac08 (dirty) | — | 212 | 0 | $5.7029 | `experiments/artifacts/2026-08-02-steer-only` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-steer-only | experiments/STEER-ONLY-RESULTS.md | measured |
 | 37 | 2026-08-02 | `2026-08-02-openai-protocol-study` | openai-protocol-study.mjs + openai-protocol-study-judge.mjs + openai-protocol-study-results.mjs | 581785b3bbb5d2d180627191f635e4cc0827ff6d / 134d98bd6f264053cd46f8e817d72f90dbd14ef1 | openai-protocol-study-cases.mjs (9 sealed cases) | 144 | 436 | $14.7649 | `experiments/artifacts/2026-08-02-openai-protocol-study` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-02-openai-protocol-study | experiments/OPENAI-PROTOCOL-STUDY-RESULTS.md | measured |
 | 38 | 2026-08-03 | `2026-08-03-openai-capstone-producer` | experiments/trajectory-cost-ab.mjs | 07f6f42eac46f5d01344157f3fa416beedd8b24c | 2026-08-03-openai-capstone-producer-v1 | 533 | 0 | $12.9608 | `experiments/artifacts/2026-08-03-openai-capstone-producer` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-producer | experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md | measured |
+| 39 | 2026-08-03 | `2026-08-03-openai-capstone-sol` | experiments/capstone-trajectory-judge.mjs | 08b27d50d0f341a8b18eac32cf7610bec329f987 | — | 0 | 264 | $0 | `experiments/artifacts/2026-08-03-openai-capstone-sol` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-sol | experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md | measured |
 
-**Program totals: 12297 producer rows, 10835 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
+**Program totals: 12297 producer rows, 11099 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -91,6 +92,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-02-steer-only`: steer-only vocabulary probe: SO collapse (MAIN silent, ENUM free) + SO2 wording repair (MAIN delivers at steer price, ENUM still free); spend $5.70 harness-priced
 - `2026-08-02-openai-protocol-study`: Fresh causal OpenAI study. Exact terse and no-interrupt variants rejected; unchanged ENUM-SO2 advances. Quiet case invalid and excluded without relabeling. One quiet-case batch remains strictly unaccepted after repeatable one-character opaque-key transcription failures. Sol is one diagnostic judge only; no Opus vote, consensus, golden promotion, or capstone score.
 - `2026-08-03-openai-capstone-producer`: Registered six-cell OpenAI MAIN-SO2 vs ENUM-SO2 producer matrix; quality pending one Sol pass and Opus.
+- `2026-08-03-openai-capstone-sol`: Registered one-Sol pass over the frozen OpenAI capstone producer: 264/264 eligible findings, 109 accepted first-answer batches, 2 empty transport failures resumed unchanged, no schema correction; no consensus or quality score.
 
 ## Reading the frozen evidence
 
