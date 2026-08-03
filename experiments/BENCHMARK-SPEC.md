@@ -97,7 +97,7 @@ earlier passes are kept as shakedown artifacts, quoted only for what
 they taught. The evaluator freeze above applies WITHIN an iteration;
 metric changes land between iterations, versioned and documented.
 
-## Run matrix — producer-first OpenAI amendment in progress; Anthropic pending v2
+## Run matrix — OpenAI producer and Sol half complete; Anthropic pending v2
 
 - Zero-spend rescoring against v2 of every frozen trajectory run:
   scheduler (C2, enum-trajectory), cross-task exporter + dispatcher,
@@ -109,7 +109,7 @@ metric changes land between iterations, versioned and documented.
 
 ### 2026-08-02 execution status
 
-**IN PROGRESS, before new provider data.** The approved sequence is:
+**IN PROGRESS: OpenAI producer and one Sol column complete; Opus and valid v2 pending.** The approved sequence is:
 
 1. **COMPLETE:** make the Opus-resume path replay-safe and prepare the
    frozen-input manifest, comparison renderer with intentionally blank quality
@@ -125,7 +125,7 @@ metric changes land between iterations, versioned and documented.
    but more expensive and lower-recall; deleting `interrupt` loses the only
    route that can abort two active emergencies. See
    `OPENAI-PROTOCOL-STUDY-RESULTS.md`;
-4. **COMPLETE, BEFORE SPEND:** retain ENUM-SO2 unchanged and register the exact
+4. **COMPLETE, REGISTERED BEFORE SPEND:** retain ENUM-SO2 unchanged and register the exact
    dated OpenAI producer matrix. `OPENAI-CAPSTONE-PRODUCER-SPEC.md` freezes three
    tasks × two Sol tiers, paired MAIN-SO2 and ENUM-SO2 observers, six live
    drivers, exact split-handoff hashes, concurrency 1, and a $20 ceiling;
@@ -133,9 +133,12 @@ metric changes land between iterations, versioned and documented.
    payloads are frozen. The registered Sol pass judged 264/264 eligible
    findings; every supported unmatched claim remains `pending-opus`. See
    `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`;
-6. after Opus returns, finish v2, add Opus judgments over the same frozen rows,
-   promote only through Sol + Opus + analyst consensus, re-score, and produce the
-   lock-in table.
+6. after Opus returns, finish and freeze valid v2, then run one Opus pass over
+   the exact provisional dataset basis frozen for the Sol questions. Form
+   Sol + Opus + analyst consensus without changing the original questions;
+   handle catalog changes from final v2 as a versioned follow-up, then promote,
+   re-score, and complete the registered iterations before producing a lock-in
+   table.
 
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used
@@ -167,9 +170,9 @@ until Opus judges the same frozen findings and v2 is valid.
 ## Boundaries
 
 No runtime changes in this spec's scope. No evaluator edits after scoring
-starts. No fresh Anthropic producer spend before the valid-v2 addendum. OpenAI
-producer spend requires its own exact dated matrix first. Judges are Sol + Opus
-throughout: an early Sol pass fills one half of that pair, never two votes. Both
+starts. No fresh Anthropic producer spend before the valid-v2 addendum. The
+completed OpenAI producer spend used its own exact dated matrix. Judges are
+Sol + Opus throughout: an early Sol pass fills one half of that pair, never two votes. Both
 must credit a finding for promotion; coverage follows the two-judge flow with
 disagreement recorded, not averaged. Known-case prompt tuning remains forbidden;
 development variants freeze once and validate on fresh, sealed material.

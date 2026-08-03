@@ -7,8 +7,10 @@ RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
 > **CURRENT STATUS.** Golden v1 (`4ea27b0018705940`) is the valid ruler: 46
 > active issues, 17 blocking. Golden v2 is only a local provisional candidate
 > (`2b0a85843c9be981`): 75 active, 28 blocking, consensus below its registered
-> bar; its mechanical checker now passes 8/8. The capstone benchmark against v2
-> has not run. On 2026-08-02 Andreas nevertheless made the product choice:
+> bar; its mechanical checker now passes 8/8. No scored capstone benchmark
+> against v2 has run; the registered OpenAI producer wave and one Sol judge
+> column are frozen, with all quality fields deliberately blank. On 2026-08-02
+> Andreas nevertheless made the product choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
 > uncertainty, not a benchmark verdict; a provider text split remains open if
@@ -201,9 +203,9 @@ for valid v2 and the capstone table.
 
 Completed later in this document: opus-high/xhigh cost work, judged sol screens,
 real OpenAI trajectories, cross-task trajectories, golden v1 and steer-only.
-Still open or deferred: valid golden v2, the capstone run matrix and iterations,
-fable's refusal-gated verdict, acting-head confirmation, and the final shipped-
-text confirmation.
+Still open or deferred: valid golden v2, the Opus and Anthropic capstone columns
+and benchmark iterations, fable's refusal-gated verdict, acting-head
+confirmation, and the final shipped-text confirmation.
 
 ## Instrument limitation found 2026-08-01 — why the screens could not see this
 
