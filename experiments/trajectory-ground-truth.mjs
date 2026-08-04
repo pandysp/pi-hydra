@@ -116,6 +116,64 @@ export function normalizeEditInput(input) {
 	return normalized.length > 0 ? normalized : null;
 }
 
+function pushEditChunks(chunks, base, edits) {
+	chunks.push({
+		...base,
+		kind: "edit-new",
+		authoritative: true,
+		text: edits.map((edit) => edit?.newText ?? "").join("\n"),
+	});
+	chunks.push({
+		...base,
+		kind: "edit-old",
+		authoritative: false,
+		text: edits.map((edit) => edit?.oldText ?? "").join("\n"),
+	});
+}
+
+/**
+ * OpenAI Responses items (`payload.input[]`). Two message shapes occur in the
+ * frozen corpus — bare `{role, content}` with NO `type` field, and
+ * `{type:"message", role, content}` — so dispatch must look at `role` first,
+ * never only at `item.type`. `function_call.arguments` arrives as a JSON
+ * STRING and decides nothing until parsed; the write/edit/other
+ * classification then mirrors the Anthropic path exactly, including the
+ * oldText non-authoritative rule (a fix must never read as a re-plant).
+ * `function_call_output.output` is driver read-back — authoritative.
+ * `reasoning` items carry only encrypted content on this corpus — skipped.
+ */
+function responsesItemChunks(item, itemIndex) {
+	const chunks = [];
+	const base = { messageIndex: itemIndex, blockIndex: 0, role: item?.role ?? item?.type ?? "?" };
+	if (item?.role && Array.isArray(item.content)) {
+		for (const [blockIndex, block] of item.content.entries()) {
+			if (!["input_text", "output_text", "text"].includes(block?.type)) continue;
+			const text = String(block?.text ?? "");
+			if (text) chunks.push({ ...base, blockIndex, kind: "text", authoritative: true, text });
+		}
+	} else if (item?.type === "function_call") {
+		let parsed = null;
+		try {
+			parsed = JSON.parse(item.arguments ?? "");
+		} catch {
+			parsed = null;
+		}
+		const edits = item.name === "edit" ? normalizeEditInput(parsed ?? {}) : null;
+		if (item.name === "write" && typeof parsed?.content === "string") {
+			chunks.push({ ...base, kind: "write", authoritative: true, text: parsed.content });
+		} else if (edits) {
+			pushEditChunks(chunks, base, edits);
+		} else {
+			chunks.push({ ...base, kind: "tool-args", authoritative: false, text: String(item.arguments ?? "") });
+		}
+	} else if (item?.type === "function_call_output") {
+		const output = item.output;
+		const text = typeof output === "string" ? output : Array.isArray(output) ? output.map(blockText).join("\n") : "";
+		if (text) chunks.push({ ...base, kind: "tool-result", authoritative: true, text });
+	}
+	return chunks;
+}
+
 export function payloadChunks(payload) {
 	const chunks = [];
 	for (const [messageIndex, message] of (payload?.messages ?? []).entries()) {
@@ -128,18 +186,7 @@ export function payloadChunks(payload) {
 				if (block.name === "write" && typeof input.content === "string") {
 					chunks.push({ ...base, kind: "write", authoritative: true, text: input.content });
 				} else if (edits) {
-					chunks.push({
-						...base,
-						kind: "edit-new",
-						authoritative: true,
-						text: edits.map((edit) => edit?.newText ?? "").join("\n"),
-					});
-					chunks.push({
-						...base,
-						kind: "edit-old",
-						authoritative: false,
-						text: edits.map((edit) => edit?.oldText ?? "").join("\n"),
-					});
+					pushEditChunks(chunks, base, edits);
 				} else {
 					chunks.push({ ...base, kind: "tool-args", authoritative: false, text: JSON.stringify(input) });
 				}
@@ -151,13 +198,39 @@ export function payloadChunks(payload) {
 			}
 		}
 	}
+	// OpenAI Responses shape. Top-level `instructions` is the system text the
+	// head conditioned on — authoritative by the same rule as any other text
+	// it saw (decided explicitly; moot on the 2026-08 corpus, where no defect
+	// expression appears there).
+	if (typeof payload?.instructions === "string" && payload.instructions) {
+		chunks.push({ messageIndex: -1, blockIndex: 0, role: "system", kind: "instructions", authoritative: true, text: payload.instructions });
+	}
+	for (const [itemIndex, item] of (payload?.input ?? []).entries()) {
+		chunks.push(...responsesItemChunks(item, itemIndex));
+	}
 	return chunks;
+}
+
+/**
+ * A grep output line: `src/retry.js:12: …` (match) or `src/dispatch.js-12- …`
+ * (context). A declaration seen only on such lines was never "the region on
+ * screen" — grep prints the declaration with none of the body, so letting it
+ * close a window manufactures quiet spans out of ordinary searches (the same
+ * failure mode the module header bars for bare identifiers). Expression
+ * SIGHTINGS in grep output still open a window: a sighting is real wherever
+ * it appears.
+ */
+const GREP_OUTPUT_LINE = /^[^\s:]*[./][^\s:]*[-:]\d+[-:]/;
+
+export function declarationOnDirectLine(text, declarationRegex) {
+	return text.split("\n").some((line) => !GREP_OUTPUT_LINE.test(line) && declarationRegex.test(line));
 }
 
 /**
  * The defect's state as the payload shows it: the LAST authoritative chunk that
  * either carries the defective expression (live) or shows the region without it
- * (fixed). `null` when the payload has never shown the region at all.
+ * (fixed). `null` when the payload has never shown the region at all. A close
+ * additionally requires the declaration on a non-grep line (see above).
  */
 export function defectStateInPayload(payload, defect) {
 	const regex = defect.regex ?? new RegExp(defect.expression);
@@ -166,7 +239,7 @@ export function defectStateInPayload(payload, defect) {
 	for (const chunk of payloadChunks(payload)) {
 		if (!chunk.authoritative) continue;
 		if (regex.test(chunk.text)) state = { state: "live", chunk };
-		else if (declarationRegex.test(chunk.text)) state = { state: "fixed", chunk };
+		else if (declarationRegex.test(chunk.text) && declarationOnDirectLine(chunk.text, declarationRegex)) state = { state: "fixed", chunk };
 	}
 	return state;
 }

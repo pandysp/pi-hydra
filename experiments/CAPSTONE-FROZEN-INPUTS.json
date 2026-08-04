@@ -176,8 +176,8 @@
     },
     {
       "path": "experiments/capstone-trajectory-judge.mjs",
-      "bytes": 14472,
-      "sha256": "fe9c27ac197993f556c59282bff9400e22693bf73f80697774906d9790345138"
+      "bytes": 17675,
+      "sha256": "5e63b847d28a721cd41a6f67bc92b3cc2b72fe1f4fa8e50d51d7eef33a0939d8"
     },
     {
       "path": "experiments/golden-dataset-score.mjs",
@@ -196,8 +196,8 @@
     },
     {
       "path": "experiments/trajectory-ground-truth.mjs",
-      "bytes": 21259,
-      "sha256": "11ccf74529c8870b8da8f09ddee7c63bbe19c61e2a0901265f5e9212d20194cf"
+      "bytes": 24816,
+      "sha256": "db3b1089d0e91039f0dbf5566e1dfad3c96f91c8450d97267a92113081100299"
     }
   ]
 }
