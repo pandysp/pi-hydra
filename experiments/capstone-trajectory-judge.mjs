@@ -33,6 +33,10 @@ const CORRECTION =
 const JUDGES = Object.freeze({
 	sol: { transport: "pi", provider: "openai-codex", model: "gpt-5.6-sol", reasoning: "high" },
 	opus: { transport: "claude-cli", model: "opus", reasoning: "high" },
+	// Transport A/B diagnostics (JUDGE-TRANSPORT-AB-SPEC.md): same pinned
+	// model, different carrier. Never used for the registered columns.
+	"opus-cli-ab": { transport: "claude-cli", model: "claude-opus-5", reasoning: "high" },
+	"opus-pi-ab": { transport: "pi", provider: "anthropic", model: "claude-opus-5", reasoning: "high" },
 });
 
 function textOf(message) {
@@ -145,6 +149,7 @@ export async function executeCapstoneJudgePass({
 	inputIdentity,
 	eligibilityPolicy = "strict-v1",
 	expectedFindings = null,
+	pointFilter = null,
 }) {
 	const judgeSpec = JUDGES[judgeName];
 	if (!judgeSpec) throw new Error(`unknown judge: ${judgeName}`);
@@ -152,6 +157,8 @@ export async function executeCapstoneJudgePass({
 	if (expectedFindings !== null && items.length !== expectedFindings) {
 		throw new Error(`expected ${expectedFindings} judgeable findings under ${eligibilityPolicy}, found ${items.length}`);
 	}
+	const inScope = pointFilter ? items.filter((item) => pointFilter.has(item.pointKey)) : items;
+	if (pointFilter && inScope.length === 0) throw new Error("point filter matches no judgeable findings");
 	const catalogs = Object.fromEntries([...new Set(items.map((item) => item.task))].sort().map((task) => [task, activeCatalog(dataset, task)]));
 	const metadata = {
 		protocol: "capstone-trajectory-claims-v1",
@@ -172,7 +179,7 @@ export async function executeCapstoneJudgePass({
 	assertMetadata(state.metadata, metadata, outputPath);
 	state.unjudgeable ??= {};
 
-	for (const [pointKey, pointItems] of pointGroups(items)) {
+	for (const [pointKey, pointItems] of pointGroups(inScope)) {
 		const pending = pointItems.filter((item) => !state.judgments[item.sourceKey] && !state.unjudgeable[item.sourceKey]);
 		if (pending.length === 0) continue;
 		const payloadFiles = new Set(pending.map((item) => item.capturedPayloadFile));
@@ -273,7 +280,7 @@ export async function executeCapstoneJudgePass({
 		process.stderr.write(`${pointKey}: ${built.ordered.length} finding(s) judged in ${batchMs}ms${recovered ? " (recovered)" : ""}\n`);
 	}
 	const accounted = Object.keys(state.judgments).length + Object.keys(state.unjudgeable).length;
-	state.status = accounted === items.length
+	state.status = accounted === inScope.length
 		? (Object.keys(state.unjudgeable).length > 0 ? "complete-with-unjudgeable" : "complete")
 		: "in-progress";
 	if (state.status !== "in-progress") state.completedAt ??= new Date().toISOString();
@@ -291,6 +298,7 @@ async function main() {
 	const judgeName = argOf(args, "--judge", "sol");
 	const timeoutMs = Number.parseInt(argOf(args, "--cli-timeout-ms", "300000"), 10);
 	const eligibilityPolicy = argOf(args, "--eligibility-policy", "strict-v1");
+	const pointsFilePath = argOf(args, "--points-file", "");
 	const expectedFindingsArg = argOf(args, "--expected-findings", "");
 	const expectedFindings = expectedFindingsArg === "" ? null : Number.parseInt(expectedFindingsArg, 10);
 	if (expectedFindings !== null && (!Number.isInteger(expectedFindings) || expectedFindings < 0)) {
@@ -305,6 +313,18 @@ async function main() {
 	const rowsBytes = readFileSync(rowsPath);
 	const datasetBytes = readFileSync(datasetPath);
 	const payloadsTarBytes = readFileSync(payloadsTarPath);
+	let pointFilter = null;
+	const filterIdentity = {};
+	if (pointsFilePath) {
+		const pointsBytes = readFileSync(pointsFilePath);
+		const points = JSON.parse(pointsBytes.toString());
+		if (!Array.isArray(points) || points.some((key) => typeof key !== "string")) {
+			throw new Error("--points-file must contain a JSON array of pointKey strings");
+		}
+		pointFilter = new Set(points);
+		filterIdentity.pointsFile = basename(pointsFilePath);
+		filterIdentity.pointsSha256 = sha256Hex(pointsBytes);
+	}
 	const state = await executeCapstoneJudgePass({
 		rows: readRowsGz(rowsPath),
 		dataset: JSON.parse(datasetBytes.toString()),
@@ -319,9 +339,11 @@ async function main() {
 			payloadsSha256: sha256Hex(payloadsTarBytes),
 			datasetFile: basename(datasetPath),
 			datasetSha256: sha256Hex(datasetBytes),
+			...filterIdentity,
 		},
 		eligibilityPolicy,
 		expectedFindings,
+		pointFilter,
 	});
 	process.stdout.write(
 		`${state.status}: ${Object.keys(state.judgments).length} judged, ${Object.keys(state.unjudgeable).length} unjudgeable, ` +
