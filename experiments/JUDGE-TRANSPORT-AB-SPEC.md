@@ -130,3 +130,31 @@ experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz
 --judge opus-pi-ab --eligibility-policy semantic-v2 --expected-findings 264`,
 then compare with `judge-transport-ab-compare.mjs --pass-a pass-a.json
 --pass-b "pass-b-shard-0.json,pass-b-shard-1.json,pass-b-shard-2.json"`.
+
+**Corrected-shape retest, 2026-08-04 (registered before the call).** Andreas
+hypothesized the refusal was request SHAPE: the failed calls went through the
+pi-ai compat `streamSimple` shim with a custom judge system prompt and
+`tools: []`, while pi's production agent path mimics Claude Code exactly
+(identity system line plus the canonical tool roster, per the stealth-mode
+block in pi-ai's `anthropic-messages.js`), and production drivers/observers
+on Opus draw plan quota. The retest used the byte-equivalent production
+shape — the actual `pi` binary, default system prompt, default tools, from a
+clean cwd with stdin closed:
+
+    pi -p --no-session --provider anthropic --model claude-opus-5:high \
+      --mode json "Reply with exactly the word ok and nothing else."
+
+Result: the identical refusal, `400 invalid_request_error: "You're out of
+extra usage. Add more at claude.ai/settings/usage and keep going."`
+(request id `req_011CdhsxPHP7WqKTbV34ginD`, exit 0 with an in-band error
+stop). The shape hypothesis is therefore REFUTED by direct test: pi's
+Anthropic OAuth route is refused at the account level today in every shape,
+including production's own. What is true alongside this: producer runs
+through the same OAuth route succeeded on 2026-08-01/02, so either the
+extra-usage pool was drained between then and now, or Anthropic's plan/extra
+classification for this route changed; the two are indistinguishable from
+this side. Per the stop rule no shard was attempted and no retries were
+burned; one probe call total. The verdict-quality half of the flip check
+remains staged and idempotent, exactly as recorded above. Next
+discriminator when desired: check claude.ai/settings/usage (user-visible
+only), or rerun the probe after the pool refills.
