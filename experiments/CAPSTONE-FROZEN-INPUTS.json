@@ -11,13 +11,13 @@
   "files": [
     {
       "path": "experiments/BENCHMARK-SPEC.md",
-      "bytes": 11544,
-      "sha256": "f021262f9b3cd6b189337292bfaafafe4f63e1aa0ff1e289fa96e49908522b92"
+      "bytes": 12409,
+      "sha256": "e9019cc18f72bb9c7c53036cbe7cfe3c70c1f89f37f8977e36410bcc0bf9b2c7"
     },
     {
       "path": "experiments/CAPSTONE-JUDGE-SPEC.md",
-      "bytes": 15218,
-      "sha256": "2e9689c19e9ccc50916be87ed89ce934351010a79bd30eea88b7518b51fb6531"
+      "bytes": 15751,
+      "sha256": "abf9b4f49fca88809d9ccd248b00da809dd85e829b2bc8096f5c1b660dd07a39"
     },
     {
       "path": "experiments/OPENAI-CAPSTONE-COMPARISON.json",

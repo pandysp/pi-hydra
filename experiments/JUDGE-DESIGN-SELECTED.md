@@ -1,7 +1,7 @@
 # Judge design — selected expanded 2Q / dual catalog
 
-Status: **selected by Andreas, 2026-08-04; design of record, not yet
-implemented or benchmarked.**
+Status: **selected by Andreas and implemented, 2026-08-04; frozen-sample
+mechanics measured, final semantic contract approval pending.**
 
 Evidence base: `JUDGE-DESIGN-UNDERSTAND.md`. The four perspective drafts that
 preceded this choice are retained only as terse rejection records. This design
@@ -54,8 +54,9 @@ Built over time through the same versioned discipline:
 
 A severely false report is one whose acceptance could cause a dangerous wrong
 change or materially misdirect the current work. A minor false report wastes
-attention but is unlikely to cause serious damage. This rubric must be tested
-on examples before implementation.
+attention but is unlikely to cause serious damage. The implementation seeds two
+settled minor examples and one settled severe example; catalog validation binds
+their exact provenance and applicability.
 
 Neither catalog is shown to observer heads. Both are frozen before an
 iteration's score is read.
@@ -194,12 +195,11 @@ Andreas chooses real/false/unclear and severe/minor, or preserves the item as
 unresolved. There are no persuasion rounds and no analyst model with a third
 vote. The original disagreement remains in provenance.
 
-**Still open before implementation:** matching disagreement is also
-load-bearing because a match imports truth and severity. Cheap verification
-must choose between requiring both judges to match, using one matcher plus a
-seeded audit, or sending matching disagreements to the same blinded human
-queue. This may not be decided by convenience alone; current repeat evidence
-shows catalog matching is less stable than truth/severity.
+Matching disagreement is load-bearing because a match imports truth and
+severity. The implemented rule therefore requires exact match-set agreement;
+every matching disagreement enters the same blinded human queue as unmatched
+truth/severity disagreement. No union, intersection, majority, or single-judge
+matcher is authoritative.
 
 ## Catalog growth and freeze discipline
 
@@ -228,26 +228,49 @@ reworded to rescue an arm after its result is known.
 - **Cost/latency:** checkpoint every batch and spend further judgment only on
   unmatched or disputed work.
 
-## Cheap verification required before implementation
+## Cheap verification result
 
 1. **COMPLETE:** audit `unsupportedExtra`; omit it from scoring under the result
    recorded above.
-2. Build a provisional false-positive catalog from already judged wholly false
-   central findings, without looking at arm totals during selection.
-3. Render the dual-catalog prompt on a stratified frozen sample and measure Sol
-   and Opus matching agreement, unmatched truth/severity agreement, schema
-   validity, latency, and calls.
-4. Manually inspect every disagreement and a seeded sample of agreements and
-   misses.
-5. Recompute the iteration-1 table under the four buckets, paired by trajectory
-   point, before authorizing fresh provider spend.
+2. **COMPLETE:** a conservative provisional false-positive catalog contains
+   three settled records selected without arm totals: one severe and two minor.
+3. **COMPLETE:** both current Pi replay routes passed live probes. On the frozen
+   20-point / 45-finding sample, all outputs were terminally valid; exact outcome
+   agreement was 33/45 (73.3%), catalog disposition agreement 38/45 (84.4%),
+   and unmatched truth+severity agreement 19/24 (79.2%). Sol used 20 calls with
+   no corrections; Opus used 20 initial calls plus five successful format
+   corrections.
+4. **PARTIAL:** all 12 disagreements were manually inspected. The current
+   deterministic packet includes five distinct matched records and five misses
+   across all three tasks, plus the complete hash-bound catalog statements.
+   Final agreement/miss sign-off waits for the semantic decision below.
+5. **BLOCKED CORRECTLY:** iteration-1 four-bucket rescoring waits for the settled
+   iteration-2 catalog repairs and explicit live/excluded denominator partition.
+   Old atomized outcomes are not silently reinterpreted as expanded-2Q results.
+
+The sample is mechanics evidence against catalog v2 only. Its prompts remain
+byte-identical after implementation hardening, but any catalog fold creates a
+new identity and cannot pool these outputs.
+
+## Final semantic approval gate
+
+Eight of the 12 disagreements concern a requested test that was not delivered.
+The prompt currently says process advice without a shown behavior defect is
+false/minor; parts of the real catalog treat missing explicitly requested
+coverage as a real/minor delivery defect. Andreas must choose one rule before a
+full pass. Smaller confirmations are whether multiple matches are allowed only
+for true aliases of the same main proposition, and how reachable a hypothetical
+documentation concern must be. The agreement audit confirms this is not merely
+a disagreement problem: “requested tests still absent” matched a real record,
+while imperative “add those tests” findings were agreed false/minor catalog
+misses. Grammar cannot remain the implicit product boundary.
 
 ## Definition of done for the design phase
 
-- The matching-disagreement rule is selected from measured evidence.
-- The false-severity rubric is demonstrated on concrete examples.
-- The mixed-content decision remains grounded in the completed audit.
-- The provisional contract passes the frozen-sample check on both judges.
-- Every output is mechanically countable into the four source buckets or the
+- **DONE:** The matching-disagreement rule is selected from measured evidence.
+- **DONE:** The false-severity rubric is demonstrated on concrete examples.
+- **DONE:** The mixed-content decision remains grounded in the completed audit.
+- **DONE MECHANICALLY:** The provisional contract passes the frozen-sample check on both judges.
+- **DONE:** Every output is mechanically countable into the four source buckets or the
   explicit unresolved lane.
-- Andreas approves the final contract before iteration 2 resumes.
+- **OPEN:** Andreas approves the final semantic contract before iteration 2 resumes.

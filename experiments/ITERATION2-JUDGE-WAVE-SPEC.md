@@ -1,12 +1,17 @@
 # Iteration-2 judge wave — dataset v3 + re-judging (SPEC, registered 2026-08-04)
 
+Status: **historical registration, partially spent and not applied. The expanded
+2Q design supersedes unstarted evaluator steps 3–5; the settled dataset-repair
+work below remains valid but requires Andreas's fold/residue decisions.**
+
 Registered before any judge call, per the standing spend discipline. This wave
 executes every judge-spend item the iteration-1 data pass produced
 (ITERATION1-DATA-PASS.md lanes A4/A5-staged and B), plus the promotion of the
 consensus wave's novel candidates. Its output is golden dataset v3 and the
-inputs for the iteration-2 rescore. Sol runs on the OpenAI subscription via
-its established transport; Opus runs via `claude -p` (or the verified
-`oauth-replay` transport — same verdicts, JUDGE-TRANSPORT-AB-SPEC.md);
+inputs for the iteration-2 rescore. The original wave registered Sol on its
+established transport and Opus via `claude -p` or the then-verified replay
+transport. Any new expanded-2Q pass uses the shared Pi hook/replay transport for
+both judges instead;
 the analyst is the coordinator session's agents. All deliberation follows the
 v2 consensus protocol as amended by the adopted Option A
 (GOLDEN-V2-PROTOCOL-DECISION.md): converged, or terminated as recorded
@@ -74,24 +79,55 @@ It wrote only to `~/scratch/2026-08-04-iter2-wave/`; the tracked dataset,
 scores, run ledger, and frozen artifacts did not change. No worker from this
 wave is still running.
 
-Step 1 reached the registered three-round stop:
+Step 1 reached the registered three-round stop and was reconciled from the raw
+checkpoints:
 
-- `RG22` and `RG27` converged; `RG21` remains stable dissent after round 3;
-- anchor proposals `AG03` and `AG17` converged; `AC13` did not;
-- the scoped replacement `AC13B` also ended open after round 3.
+- `RG22` and `RG27` converged as statement replacements. RG22 is unanimously
+  harmful/minor; RG27 is unanimously blocking/severe.
+- `RG21` terminates mechanically under adopted Option A at the majority
+  blocking/severe tier with Sol's non-blocking dissent preserved verbatim.
+- anchor proposals `AG03` and `AG17` converged; `AC13` was replaced by the
+  scoped `AC13B`, which ended open after round 3.
 
 Step 2 adopted `RULE-ANCHOR-V2` unanimously. The first 31-record backfill pass
-converged 22 records after two rounds and left nine open:
+produced 22 unanimous outcomes, but only 19 were adopted. Three proposals
+(`SCHED-o-g07`, `SCHED-o-g14`, `SCHED-r-d18`) were unanimously rejected because
+their file-wide tokens collide and the current anchor rule cannot express the
+faithful function scope. Nine records remained open:
 `SCHED-r-d11`, `SCHED-r-d37`, `SCHED-r-d39`, `SCHED-r-d44`, `SCHED-c-15`,
 `DISP-o-xd-g20`, `DISP-o-xd-g26`, `EXP-o-xe-g21R`, and `EXP-o-xe-g22R`.
 A corrected six-record residue was then staged. Sol completed all six; Opus
 returned the Claude session-limit error before producing its first batch, so
 `consensus-backfill-v2/` has no consensus file and is not a completed round.
 
+The fold-ready machine record is
+`~/scratch/2026-08-04-iter2-reconciliation/settled-outcomes.json`: 25 items
+(two statements, RG21 termination, two anchor repairs, the rule, and 19 adopted
+backfills). It is evidence only until deliberately folded into a new catalog
+version.
+
+Seven items require a dataset-repair queue distinct from expanded-2Q judge
+disagreements: `AC13B`, `SCHED-c-15`, `DISP-o-xd-g20`, `DISP-o-xd-g26`,
+`SCHED-o-g07`, `SCHED-o-g14`, and `SCHED-r-d18`. The six Sol-only residue votes
+remain incomplete old-protocol evidence. Until adopted anchors are folded, 33
+of 75 active real-catalog records remain anchor-less and must be visibly
+excluded from recall denominators.
+
 Recovery must reuse these exact checkpoints; do not restart completed judge
-work and do not treat an analyst proposal as a settled vote. Steps 3–6
-(cache-only re-judge, old-basis re-judge, promotions, v3 assembly and rescore)
-were never started. Andreas has selected the expanded 2Q / dual-catalog design
-in `JUDGE-DESIGN-SELECTED.md`. This wave may resume only after that design's
-cheap verification and after its assumptions have been reconciled explicitly
-with this checkpoint.
+work and do not treat an analyst proposal as a settled vote. The original
+cache-only re-judges and atomized 67-candidate promotion step were never started
+and are superseded by the full expanded-2Q pass. The 67 candidates survive only
+as completeness leads; they are not direct promotions. V3 assembly and rescore
+remain unstarted.
+
+Two user decisions gate recovery:
+
+1. authorize folding the 25 settled outcomes before any catalog-ready expanded-
+   2Q pass; and
+2. either complete the six-record Opus residue under the frozen old protocol,
+   or retire it as incomplete evidence and leave those records excluded/pending
+   explicit repair.
+
+The seven repair items and the expanded-2Q semantic contract must then be
+settled before iteration 2 resumes. Any catalog change creates a fresh judge
+checkpoint identity; the 45-finding mechanics sample cannot be pooled with it.

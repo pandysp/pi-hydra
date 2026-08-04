@@ -1,5 +1,10 @@
 # Benchmark — baseline and arms against golden v2 (SPEC, 2026-08-02)
 
+Status: **iteration-1 scoring below is frozen historical claim-v1.** Iteration 2
+prospectively replaces its quality evaluator with expanded 2Q: separate severe
+real recall, minor real recall, severe false burden, and minor false burden.
+Cost and delivery remain separate. No iteration-1 number is rewritten.
+
 Funded by Andreas 2026-08-02: once the dataset is finished, run baseline
 and the arms and produce ONE table across all runs — cost per
 observation, trajectory cost as a share of the driver's, and a quality
@@ -72,6 +77,12 @@ into the dataset"): any raised issue judged real by both judges and
 absent from the set enters the design doc's promotion path; a version
 bump re-scores every frozen run for free, and every quoted number
 carries its version.
+
+That paragraph describes the frozen claim-v1 iteration. Under expanded 2Q,
+catalog growth must also write an occurrence ledger mapping each settled
+unmatched source to final catalog ids. A new catalog record does not make old
+unmatched outputs a free semantic match; absent a frozen occurrence mapping,
+rematching is a new evaluation pass.
 
 ## Iteration protocol (Andreas, 2026-08-02)
 
@@ -162,8 +173,11 @@ blocking issues and was more precise on average, while MAIN-SO2 cost less. The
 data pass showed that the current judge and denominator machinery is not yet a
 trustworthy lock-in instrument. Andreas selected the expanded 2Q / dual-catalog
 replacement in `JUDGE-DESIGN-SELECTED.md`; its cheap verification and
-reconciliation with the partial wave are now the active gate. Iteration 2 must
-not be presented as complete or resumed blindly around that boundary.
+reconciliation with the partial wave are now mechanically complete. The active
+gates are semantic approval of the requested-test/process-advice boundary,
+folding 25 settled repair outcomes, deciding the six incomplete residue votes,
+and settling seven dataset-repair items. Iteration 2 must not be presented as
+complete or resumed blindly around those boundaries.
 
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used

@@ -1,5 +1,10 @@
 # Capstone trajectory judging — individual claims, replay-safe (SPEC, 2026-08-02)
 
+Status: **historical claim-v1 protocol, complete and reproducible.** Its frozen
+371-finding consensus feeds the immutable iteration-1 shakedown and redesign
+audits only. Future evaluator work uses the expanded-2Q finding-level protocol
+in `EXPANDED-2Q-IMPLEMENTATION-SPEC.md`; do not append new outputs here.
+
 Registered before the first Sol call over the frozen OpenAI trajectory. This is
 the judging protocol for the producer-first amendment in `BENCHMARK-SPEC.md`.
 The first pass fills one Sol column only. It is not consensus, a golden-v2
@@ -164,7 +169,11 @@ findings from ordinary valid rows plus cache-only-invalid rows, minus every
 finding at the failed-driver checkpoint. A different count is input or adapter
 drift and must stop the pass.
 
-## Iteration-2 staged judge work (registered 2026-08-04, NOT run)
+## Iteration-2 staged judge work (registered 2026-08-04, NOT run; superseded)
+
+The expanded-2Q decision superseded both staged claim-v1 re-judges before any
+call. The source findings remain part of the full future pass; these commands
+are retained only as the historical registration.
 
 Two judge-spend items from the ITERATION1-DATA-PASS lane-A list are staged
 here for the coordinator; no calls have been made. Both use the CURRENT
@@ -248,9 +257,9 @@ answered under — against byte-identical frozen inputs (rows `7224f4e0…`,
 payloads `401c38df…`, provisional dataset bytes `4035950f…`, policy
 `semantic-v2`). 109 accepted batches, zero transport failures, zero
 unjudgeable, zero resumes, zero schema corrections, one uninterrupted process
-at concurrency 1. Frozen as `2026-08-04-openai-capstone-opus`. Both capstone
-judge columns now exist; Sol + Opus + analyst consensus is a separate
-registered stage and has not run.
+at concurrency 1. Frozen as `2026-08-04-openai-capstone-opus`. This was the
+interim state; the cross-judge consensus execution record above subsequently
+completed the registered stage.
 
 The exact provisional dataset bytes used to render the Sol catalog are also
 frozen separately under
