@@ -51,8 +51,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 40 | 2026-08-03 | `2026-08-03-openai-capstone-judge-basis` | experiments/capstone-trajectory-judge.mjs | f7accb848404ae9c4c5a9f91de76d24ef78e393f | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-03-openai-capstone-judge-basis` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-openai-capstone-judge-basis | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
 | 41 | 2026-08-04 | `2026-08-03-golden-dataset-v2-final` | experiments/golden-dataset-v2-freeze-stage.mjs | 6bd18e5695e9c5532cb3769746254b923f7609e2 | — | 0 | 0 | $0 | `experiments/artifacts/2026-08-03-golden-dataset-v2-final` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-03-golden-dataset-v2-final | experiments/GOLDEN-DATASET-V2-RESULTS.md | measured |
 | 42 | 2026-08-04 | `2026-08-04-openai-capstone-opus` | experiments/capstone-trajectory-judge.mjs | 680a26d657853f318ca8edeac01d75ebdac215a5 | — | 0 | 264 | $0 | `experiments/artifacts/2026-08-04-openai-capstone-opus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-openai-capstone-opus | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
+| 43 | 2026-08-04 | `2026-08-04-openai-trajectory-opus` | experiments/capstone-trajectory-judge.mjs | b61c12415368b51b52071af9ca24083f9dbcaa73 | — | 411 | 107 | $7.739 | `experiments/artifacts/2026-08-04-openai-trajectory-opus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-openai-trajectory-opus | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
 
-**Program totals: 12297 producer rows, 11363 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
+**Program totals: 12708 producer rows, 11470 judgments, $119.35 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $141.15.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -99,6 +100,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-03-openai-capstone-judge-basis`: Exact provisional dataset bytes and metadata/catalog hashes used for the registered 264-finding Sol pass; frozen so Opus can receive an identical catalog after the working dataset advances.
 - `2026-08-03-golden-dataset-v2-final`: Final golden v2 freeze under adopted protocol decision Option A: dataset 0aadc215658a775b (75 active / 27 blocking / 61 rejected), 88 hash-addressed build inputs incl. every consensus checkpoint and raw judge response; raw novel convergence 63/67 with four stable dissents carried verbatim.
 - `2026-08-04-openai-capstone-opus`: Registered Opus pass over the frozen OpenAI capstone producer: 264/264 eligible findings at builder 5880bf010bbb428e (identical to Sol's), 109 accepted batches, zero failures/resumes/corrections, one uninterrupted process; second judge column only, no consensus or quality score.
+- `2026-08-04-openai-trajectory-opus`: Registered Opus pass over the old 119-finding OpenAI trajectory input at the pinned 369ed58 builder df3cc0f57a725965, concurrency-3 amendment: 107 judged + 12 unjudgeable (identical set to Sol), 29 batches, zero failures; shard rows, shard checkpoints, and the fail-closed merge tools are frozen alongside.
 
 ## Reading the frozen evidence
 
