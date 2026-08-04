@@ -164,6 +164,39 @@ findings from ordinary valid rows plus cache-only-invalid rows, minus every
 finding at the failed-driver checkpoint. A different count is input or adapter
 drift and must stop the pass.
 
+## Iteration-2 staged judge work (registered 2026-08-04, NOT run)
+
+Two judge-spend items from the ITERATION1-DATA-PASS lane-A list are staged
+here for the coordinator; no calls have been made. Both use the CURRENT
+frozen judge builder and the frozen provisional dataset bytes
+(`4035950f…`), both judges each, batch unit one observation point.
+
+**A4 — old-input basis unification.** `capstone-old-realign.mjs` verifies
+the old input reconstructs to 119 findings under strict-v1 and 131 under
+semantic-v2, that the 12 packet-missing findings are exactly the recorded
+final-run-end unjudgeables (unrecoverable by construction, not resurrected),
+and that the actual re-judging delta is the 12 cache-only-invalid findings
+(no F2 among them). Staging output: `--output` writes `rejudge-points.json`
+(the 12 sourceKeys). Invocation per judge once approved:
+
+    node experiments/capstone-old-realign.mjs --output ~/scratch/<date>-old-realign
+    node experiments/capstone-trajectory-judge.mjs       --rows-gz experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz       --payloads-tar experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz       --dataset <provisional-basis-bytes> --eligibility-policy semantic-v2       --points-file <the 12 sourceKeys' points> --judge {sol|opus} --output <checkpoint>
+
+**A5 — fresh-input cache-only re-judge under clarified instructions.** The
+23 cache-only-invalid fresh findings re-run with ONE added judge-prompt
+sentence, registered verbatim here and to be appended to the judge
+instructions for these runs only (a builder-hash change, recorded as such):
+
+> A finding marked cache-only-invalid failed only a cost-comparability
+> check on its request; its delivered message and all payload evidence are
+> complete and fully judgeable — judge it exactly like any valid finding.
+
+Point selection: the 23 sourceKeys with `qualitySourceValidity ==
+"cache-only-invalid"` in the frozen fresh packet. Original verdicts remain
+immutable; the re-judged verdicts land as a versioned follow-up column and
+enter consensus through the standard packet flow. Do not revert the
+eligibility policy to strict-v1 — it also rescues 5 real findings.
+
 ## Cross-judge consensus execution record — 2026-08-04
 
 Both judge columns complete, the analyst stage ran as a 28-agent workflow
