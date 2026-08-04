@@ -46,10 +46,12 @@ provisional bytes shown to Sol (frozen in `CAPSTONE-FROZEN-INPUTS.json`);
 catalog differences between that basis and this final version are handled as
 the registered versioned follow-up during consensus.
 
-## What this unlocks
+## What followed
 
-The registered chain in `BENCHMARK-SPEC.md`: both pending OpenAI Opus judge
-columns (119-finding input at judge builder `369ed58`, 264-finding input at
-the current frozen builder), Sol + Opus + analyst consensus, bonus
-promotions, scoring under the frozen metric, the 2–3 shakedown iterations,
-and only then the lock-in table.
+Both pending OpenAI Opus columns completed on their exact frozen bases, then
+Sol + Opus + analyst consensus froze 371 judgeable findings. Iteration 1 scored
+all 18 registered cells against this version and the required raw-data pass
+found material judge, denominator, and anchor-design weaknesses. The first two
+steps of iteration 2 later produced resumable scratch checkpoints but were not
+applied before the Opus session limit stopped the run. The live boundary is in
+`BENCHMARK-SPEC.md` and `ITERATION2-JUDGE-WAVE-SPEC.md`; no lock-in table exists.

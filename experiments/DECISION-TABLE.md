@@ -10,22 +10,23 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > Option A — Andreas, before any arm was scored against v2; raw convergence
 > 63/67 stays recorded, four dissents carried verbatim). Golden v1
 > (`4ea27b0018705940`) remains the basis of the historical golden-v1 blocks.
-> No scored capstone benchmark against v2 has run yet; the registered OpenAI
-> producer wave and one Sol judge column are frozen, with all quality fields
-> deliberately blank. On 2026-08-02 Andreas made the product choice:
+> Both Opus columns, the 371-finding cross-judge consensus, and the first
+> 18-cell capstone table are complete. That table is a shakedown, not lock-in
+> evidence: the mandatory data pass found material anchor, denominator,
+> precision-unit, eligibility, and one-sided-judge-silence problems. Iteration
+> 2 is partially checkpointed in scratch but has changed no live dataset or
+> score; judge redesign is the active decision gate. On 2026-08-02 Andreas made
+> the product choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
 > uncertainty, not a benchmark verdict; a provider text split remains open if
 > the later capstone shows ENUM's OpenAI premium does not earn its keep.
 >
-> **OPENAI PRODUCER-FIRST WORK IS COMPLETE; FINAL JUDGING IS BLOCKED.** Andreas approved decoupling raw
-> OpenAI production from scoring: exact matrices are registered before spend,
-> outputs are frozen without seeing v2 labels, and Sol may fill its one judge
-> column now. Final scoring, promotions, and design claims still require a valid
-> v2 plus Opus; repeated Sol calls never become extra consensus votes. Known-case
-> prompt tuning remains forbidden. The six registered producer cells and one
-> Sol pass are now frozen; Opus, valid v2, consensus promotions, and the final
-> table remain outstanding.
+> **CURRENT STOP LINE.** Preserve iteration 1 and the partial iteration-2
+> scratch state exactly. The four first-pass judge-redesign options exist, but
+> the planned independent reviews and synthesis failed at the Claude session
+> limit, so no design has been selected. Known-case tuning remains forbidden;
+> repeated calls never become extra consensus votes.
 
 ## READ FIRST — quality bases differ
 
@@ -559,7 +560,11 @@ by single issues while the pool holds eight blockers nobody surfaces.
 Heterogeneous lenses (his "different heads") and coverage-first contracts
 are the levers that could reach it.
 
-## Golden dataset v2 — provisional, not a ruler (2026-08-02)
+## Golden dataset v2 — historical failed checkpoint (2026-08-02/03)
+
+This block preserves the state before Andreas's prospective Option A decision.
+It is superseded by final v2 and the iteration-1 block below; do not read its
+present-tense sentences as the live plan.
 
 Local checkpoint `d96123b` contains provisional version
 `2b0a85843c9be981`: 75 active issues (28 blocking, 47 harmful) and 61 recorded
@@ -578,7 +583,10 @@ an explicit prospective protocol decision produces a qualifying,
 non-provisional dataset and results document. The provisional artifact remains
 immutable; any eventual final freeze will use a new run id.
 
-## Capstone benchmark — OpenAI producer half complete, no verdict
+## Capstone benchmark — historical producer-first checkpoint
+
+This block preserves what was known before Opus, consensus, and iteration-1
+scoring completed. The current evidence begins at the iteration-1 block below.
 
 `BENCHMARK-SPEC.md` freezes the scoring design and 2–3 iteration protocol.
 The steer-only input is complete. The producer-first OpenAI amendment is now
@@ -655,5 +663,23 @@ column and stays dead. ENUM-SO2 fresh ≈ old ENUM on scheduler xhigh recall
 (7/15 vs 8/15) — the queue removal cost ENUM no measurable recall.
 
 Quiet-span deliveries are vacuous this iteration (payload-walker
-harness-bug; files-basis spans are empty by construction). No design verdict
-before the registered data pass and iteration 2.
+harness-bug; files-basis spans are empty by construction). The registered data
+pass subsequently reproduced all 18 blocking cells and found enough
+measurement-design friction to prevent lock-in; see `ITERATION1-DATA-PASS.md`.
+
+## Post-table status — data pass, partial iteration 2, judge redesign
+
+Between iterations, the payload walker, span close rule, anchor-state handling,
+noise rendering, precision basis, one-judge floor, and staged unified-basis
+re-judges landed without changing iteration-1 numbers. The data pass's most
+consequential findings are structural: 30 one-sided catalog matches (8
+blocking), different precision units for MAIN and ENUM, 33 anchor-less records,
+14 cross-run-fragile end-state anchors, and 17 of 109 fresh Opus batches with
+zero claims where Sol did not show the reverse pattern.
+
+Iteration 2 steps 1–2 then produced a recoverable scratch checkpoint but did
+not modify the live dataset or scores; steps 3–6 remain unspent. In parallel,
+four first-pass judge designs were drafted (robustness, cost/latency,
+simplicity, statistical rigor). Their independent reviews and synthesis failed
+at the Claude session limit. Therefore there is still no lock-in verdict and
+no selected replacement judge design.

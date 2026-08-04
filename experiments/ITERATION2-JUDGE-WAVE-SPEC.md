@@ -65,3 +65,32 @@ plus the protocol — a coordinator or agent never promotes on its own
 authority. The driver-prompt realism probe (pending Andreas's documentation
 section) is OUTSIDE this wave and separately registered when its input
 arrives.
+
+## Execution and recovery checkpoint — 2026-08-04
+
+This wave is **partially spent, checkpointed, and not applied**. A fork that
+looked failed to the coordinator continued in the background until 18:43 CEST.
+It wrote only to `~/scratch/2026-08-04-iter2-wave/`; the tracked dataset,
+scores, run ledger, and frozen artifacts did not change. No worker from this
+wave is still running.
+
+Step 1 reached the registered three-round stop:
+
+- `RG22` and `RG27` converged; `RG21` remains stable dissent after round 3;
+- anchor proposals `AG03` and `AG17` converged; `AC13` did not;
+- the scoped replacement `AC13B` also ended open after round 3.
+
+Step 2 adopted `RULE-ANCHOR-V2` unanimously. The first 31-record backfill pass
+converged 22 records after two rounds and left nine open:
+`SCHED-r-d11`, `SCHED-r-d37`, `SCHED-r-d39`, `SCHED-r-d44`, `SCHED-c-15`,
+`DISP-o-xd-g20`, `DISP-o-xd-g26`, `EXP-o-xe-g21R`, and `EXP-o-xe-g22R`.
+A corrected six-record residue was then staged. Sol completed all six; Opus
+returned the Claude session-limit error before producing its first batch, so
+`consensus-backfill-v2/` has no consensus file and is not a completed round.
+
+Recovery must reuse these exact checkpoints; do not restart completed judge
+work and do not treat an analyst proposal as a settled vote. Steps 3–6
+(cache-only re-judge, old-basis re-judge, promotions, v3 assembly and rescore)
+were never started. Judge redesign is now the active decision gate, so this
+wave should be resumed only after its assumptions have been reconciled with
+the selected design.

@@ -97,7 +97,7 @@ earlier passes are kept as shakedown artifacts, quoted only for what
 they taught. The evaluator freeze above applies WITHIN an iteration;
 metric changes land between iterations, versioned and documented.
 
-## Run matrix — OpenAI producer and Sol half complete; Anthropic pending v2
+## Run matrix — iteration 1 complete; iteration 2 interrupted
 
 - Zero-spend rescoring against v2 of every frozen trajectory run:
   scheduler (C2, enum-trajectory), cross-task exporter + dispatcher,
@@ -107,9 +107,10 @@ metric changes land between iterations, versioned and documented.
   repaired MAIN-SO2 and ENUM-SO2 steer-only candidates. Arms, n, configs, and
   spend are pre-registered here before running.
 
-### 2026-08-02 execution status
+### Current execution status, 2026-08-04
 
-**IN PROGRESS: OpenAI producer and one Sol column complete; Opus and valid v2 pending.** The approved sequence is:
+**ITERATION 1 IS COMPLETE AS A SHAKEDOWN, NOT AS LOCK-IN EVIDENCE.** The
+approved sequence advanced as follows:
 
 1. **COMPLETE:** make the Opus-resume path replay-safe and prepare the
    frozen-input manifest, comparison renderer with intentionally blank quality
@@ -133,18 +134,35 @@ metric changes land between iterations, versioned and documented.
    payloads are frozen. The registered Sol pass judged 264/264 eligible
    findings; every supported unmatched claim remains `pending-opus`. See
    `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`;
-6. **UNBLOCKED 2026-08-04:** the precision pass terminated at 63/67 (94.0%),
+6. **COMPLETE 2026-08-04:** the precision pass terminated at 63/67 (94.0%),
    the builder refused, and Andreas then adopted Option A of
    `GOLDEN-V2-PROTOCOL-DECISION.md` prospectively — the final v2
-   (`0aadc215658a775b`, 75 active / 27 blocking) is frozen and valid. Now
-   complete both pending
-   OpenAI judge columns: the older 119-finding input runs at its original
-   `369ed58` judge builder, and the fresh 264-finding input runs at its current
-   frozen builder. Both use the exact provisional dataset basis shown to Sol.
-   Form Sol + Opus + analyst consensus without changing the original questions;
-   handle catalog changes from final v2 as a versioned follow-up, then promote,
-   re-score, and complete the registered iterations before producing a lock-in
-   table.
+   (`0aadc215658a775b`, 75 active / 27 blocking) is frozen and valid;
+7. **COMPLETE:** both OpenAI Opus judge columns ran on their exact frozen
+   bases: the older 119-finding input at its original
+   `369ed58` judge builder, and the fresh 264-finding input at its current
+   frozen builder. Both use the exact provisional dataset basis shown to Sol;
+8. **COMPLETE:** Sol + Opus + analyst consensus froze 371 judgeable findings
+   (264 fresh + 107 old; the old 12 remain unjudgeable), and iteration 1 scored
+   all 18 registered cells against final v2. The table is in
+   `CAPSTONE-SCORING-RESULTS.md`;
+9. **COMPLETE:** the registered raw-data pass reproduced all 18 blocking cells,
+   found two harness bugs, the cross-run anchor defect, denominator and
+   precision-unit non-comparability, and the one-sided Opus silence pattern.
+   Harness fixes landed between iterations in `d50f299`, `0f634da`, and
+   `b1e46db`;
+10. **PARTIAL, NOT APPLIED:** iteration 2 steps 1–2 spent judge calls into
+    `~/scratch/2026-08-04-iter2-wave/`. The Opus session limit interrupted the
+    corrected anchor-backfill residue. No live dataset, score, or tracked
+    artifact changed; steps 3–6 remain unspent. See
+    `ITERATION2-JUDGE-WAVE-SPEC.md` for the exact recovery boundary.
+
+The iteration-1 means are useful shakedown evidence only: ENUM-SO2 found more
+blocking issues and was more precise on average, while MAIN-SO2 cost less. The
+data pass showed that the current judge and denominator machinery is not yet a
+trustworthy lock-in instrument. Judge redesign is therefore the active design
+gate; iteration 2 must not be presented as complete or resumed blindly around
+that decision.
 
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used
@@ -170,8 +188,8 @@ were rejected before this spend.
 Post-run record: all six cells completed for $12.9608. The frozen cost result
 favours MAIN-SO2 in every cell; across all comparable observations MAIN costs
 $0.0253/observation and 52.1% of driver cost against ENUM's $0.0356 and 77.0%.
-The one-Sol diagnostic is complete, but no quality or design verdict exists
-until Opus judges the same frozen findings and v2 is valid.
+The later both-judge shakedown result is recorded separately in
+`CAPSTONE-SCORING-RESULTS.md`; this producer record stays immutable.
 
 ## Boundaries
 
