@@ -1,15 +1,15 @@
-# pi-hydra — decision table (2026-08-02, live evidence inventory)
+# pi-hydra — decision table (updated 2026-08-04, live evidence inventory)
 
 Every measured arm, its cost and its quality, in one place. Cells are only
 compared within a named measurement basis. Completed measurements trace to
-RUN-LEDGER.md; the interrupted golden-v2 build is not frozen evidence yet.
+RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 
 > **CURRENT STATUS.** Golden v1 (`4ea27b0018705940`) is the valid ruler: 46
 > active issues, 17 blocking. Golden v2 is only a local provisional candidate
-> (`2b0a85843c9be981`): 75 active, 28 blocking, consensus below its registered
-> bar; its mechanical checker now passes 8/8. No scored capstone benchmark
-> against v2 has run; the registered OpenAI producer wave and one Sol judge
-> column are frozen, with all quality fields deliberately blank. On 2026-08-02
+> (`2b0a85843c9be981`): 75 active, 28 blocking, and 63/67 consensus (94.0%)
+> against a registered 95% bar; its mechanical checker passes 8/8. No scored
+> capstone benchmark against v2 has run; the registered OpenAI producer wave and
+> one Sol judge column are frozen, with all quality fields deliberately blank. On 2026-08-02
 > Andreas nevertheless made the product choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI

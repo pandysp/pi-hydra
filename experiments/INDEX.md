@@ -13,7 +13,7 @@ was refuted before running.
 | doc | what it is |
 |---|---|
 | [DECISION-TABLE.md](DECISION-TABLE.md) | **The entry point.** Every arm, cost and quality, per config, with each block labelled by measurement basis. Carries the retractions. |
-| [RUN-LEDGER.md](RUN-LEDGER.md) | Every completed or reconstructed run through the steer-only probe: date, script, commit, corpus, rows, spend and artifact paths. Generated — edit `RUN-LEDGER.jsonl`. The interrupted v2 build is not a completed run and remains outside the ledger. |
+| [RUN-LEDGER.md](RUN-LEDGER.md) | Every completed or reconstructed run through the steer-only probe: date, script, commit, corpus, rows, spend and artifact paths. Generated — edit `RUN-LEDGER.jsonl`. The failed-threshold v2 candidate is not a completed frozen dataset run and remains outside the ledger. |
 
 ## Product decision (2026-08-02)
 
@@ -120,7 +120,8 @@ text or a better reference set. All are recorded in place:
 
 Completed decision evidence is frozen under `artifacts/<date>-<name>/` where
 available, mirrored to `~/dev/personal/pi-hydra-frozen-artifacts/`, and listed
-in the run ledger with its provenance gaps. The interrupted v2 consensus/build
-state remains in `~/scratch/2026-08-02-golden-v2/` until it is valid enough to
-freeze. User prompts across both sessions:
+in the run ledger with its provenance gaps. The failed-threshold v2
+consensus/build state remains preserved in `~/scratch/2026-08-02-golden-v2/` as
+the immutable failed run and as input to any prospectively versioned follow-up.
+User prompts across all three archived project sessions:
 `~/main-workspace/notes/side-projects/pi-hydra-user-messages-full.md`.
