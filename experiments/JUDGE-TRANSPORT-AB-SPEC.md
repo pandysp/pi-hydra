@@ -92,3 +92,41 @@ New judge entries and the point filter are additive; the suite must stay
 green. No judge call before the two registered Opus columns complete (shared
 subscription). Raw outputs freeze under run-id
 `2026-08-04-judge-transport-ab`.
+
+## Re-scope and first execution attempt — 2026-08-04
+
+Andreas re-scoped this to a quick operational check, outside the registered
+experiment program: can Opus judging flip from the Claude Code CLI to pi,
+because pi has operational advantages? The Sol codex-vs-pi arm was dropped
+before any call (Sol already judges through pi in production). The reduced
+design: ONE pi pass over the committed 20-point / 45-finding sample, compared
+against the production fresh column's frozen verdicts (which are the
+claude-cli side, no separate A pass); an A-repeat noise floor only if
+disagreement exceeds a couple of borderline items. No freeze, no ledger
+entry. The comparison script's `--pass-a2` became optional for this.
+
+**Attempt result: blocked by transport-specific metering, not by verdicts.**
+Both registered Opus columns completed first, as required. The production
+verdicts were extracted and filtered to the sample (exactly 45 findings).
+Three parallel pi shards then all refused immediately: pi's stored Anthropic
+login had expired ~36h earlier; a probe call auto-refreshed the token
+successfully, after which the API answered `400 You're out of extra usage.
+Add more at claude.ai/settings/usage` — while Opus-via-claude-cli had judged
+383 findings on the same subscription the same afternoon. Operationally
+decisive either way: the two carriers do not draw usage identically, so a
+flip is NOT currently possible regardless of verdict agreement, and any flip
+decision must first resolve how pi's Anthropic OAuth is metered.
+
+Everything needed to finish the verdict half is staged and idempotent:
+`~/scratch/2026-08-04-judge-transport-ab/` holds the filtered production
+pass (`pass-a.json`), the three shard point files, and the staged frozen
+dataset bytes (logical SHA-256 verified). When the pi route has usage again,
+rerun per shard `s`: `node experiments/capstone-trajectory-judge.mjs
+--rows-gz experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz
+--payload-dir <scratch>/payloads/payloads --payloads-tar
+experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz
+--dataset <scratch>/golden-dataset.json --points-file
+<scratch>/sample-shard-s.json --output <scratch>/pass-b-shard-s.json
+--judge opus-pi-ab --eligibility-policy semantic-v2 --expected-findings 264`,
+then compare with `judge-transport-ab-compare.mjs --pass-a pass-a.json
+--pass-b "pass-b-shard-0.json,pass-b-shard-1.json,pass-b-shard-2.json"`.

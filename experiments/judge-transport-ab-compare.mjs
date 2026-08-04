@@ -88,23 +88,27 @@ function readPass(pathsCsv) {
 async function main() {
 	const args = process.argv.slice(2);
 	const passA = readPass(argOf(args, "--pass-a", ""));
-	const passA2 = readPass(argOf(args, "--pass-a2", ""));
+	// The A-repeat noise floor is optional: the operational re-scope compares
+	// one pi pass against the production verdicts and escalates to a repeat
+	// pass only if disagreement needs explaining.
+	const passA2Arg = argOf(args, "--pass-a2", "");
+	const passA2 = passA2Arg ? readPass(passA2Arg) : null;
 	const passB = readPass(argOf(args, "--pass-b", ""));
 	const outputPath = argOf(args, "--output", "");
 	if (!outputPath) throw new Error("--output is required");
 	const comparison = {
-		floor: comparePasses(passA, passA2, "A", "A2"),
+		floor: passA2 ? comparePasses(passA, passA2, "A", "A2") : null,
 		aVsB: comparePasses(passA, passB, "A", "B"),
-		a2VsB: comparePasses(passA2, passB, "A2", "B"),
-		latency: { A: latencySummary(passA), A2: latencySummary(passA2), B: latencySummary(passB) },
+		a2VsB: passA2 ? comparePasses(passA2, passB, "A2", "B") : null,
+		latency: { A: latencySummary(passA), A2: passA2 ? latencySummary(passA2) : null, B: latencySummary(passB) },
 		recoveredBatches: {
 			A: passA.batches.filter((batch) => batch.recovered).length,
-			A2: passA2.batches.filter((batch) => batch.recovered).length,
+			A2: passA2 ? passA2.batches.filter((batch) => batch.recovered).length : null,
 			B: passB.batches.filter((batch) => batch.recovered).length,
 		},
 	};
 	writeFileSync(outputPath, `${JSON.stringify(comparison, null, 2)}\n`);
-	for (const pair of [comparison.floor, comparison.aVsB, comparison.a2VsB]) {
+	for (const pair of [comparison.floor, comparison.aVsB, comparison.a2VsB].filter(Boolean)) {
 		console.log(`${pair.pair} over ${pair.findings} findings: ${METRICS.map((metric) => `${metric}=${pair.discordant[metric]}`).join(" ")}`);
 	}
 }
