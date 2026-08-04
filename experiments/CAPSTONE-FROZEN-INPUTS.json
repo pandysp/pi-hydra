@@ -176,8 +176,8 @@
     },
     {
       "path": "experiments/capstone-trajectory-judge.mjs",
-      "bytes": 13324,
-      "sha256": "144986a8a5a0e5a4eef9bddff81d3a9580b85c98fff5b2b6834f06fafff18078"
+      "bytes": 14472,
+      "sha256": "fe9c27ac197993f556c59282bff9400e22693bf73f80697774906d9790345138"
     },
     {
       "path": "experiments/golden-dataset-score.mjs",
