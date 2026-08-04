@@ -97,10 +97,25 @@ export function assertFinalDataset(dataset) {
 	if (dataset.provisional) throw new Error("refusing to freeze a provisional dataset");
 	if (!/^[0-9a-f]{16}$/.test(dataset.version ?? "")) throw new Error("dataset has no valid content version");
 	const novel = dataset.builtFrom?.consensus?.novel;
-	if (!novel || novel.converged / novel.total < 0.95) throw new Error("dataset is below the registered 95% novel-consensus threshold");
+	if (!novel) throw new Error("dataset carries no novel consensus record");
+	const decision = dataset.builtFrom?.protocolDecision;
 	const precision = dataset.builtFrom?.addition?.precision;
-	if (precision?.total !== 2 || precision.converged !== 2) {
-		throw new Error("both precision repairs must converge before freeze");
+	if (decision) {
+		// GOLDEN-V2-PROTOCOL-DECISION.md Option A: terminated stable dissents
+		// count as addressed; the gap they close must be exact.
+		if (decision.option !== "A") throw new Error(`unknown protocol decision option ${decision.option}`);
+		if (!/^ADOPTED: Option A\b/.test(decision.adopted ?? "")) throw new Error("protocol decision carries no adoption line — a dry-run projection is not freezable");
+		const terminated = decision.terminated ?? [];
+		if (novel.converged + terminated.length !== novel.total) throw new Error("terminated dissents do not close the novel convergence gap");
+		const terminatedPrecision = terminated.filter((id) => /^CL/.test(id)).length;
+		if (precision?.total !== 2 || precision.converged + terminatedPrecision !== 2) {
+			throw new Error("precision repairs neither converged nor terminated under the adopted decision");
+		}
+	} else {
+		if (novel.converged / novel.total < 0.95) throw new Error("dataset is below the registered 95% novel-consensus threshold and carries no adopted protocol decision");
+		if (precision?.total !== 2 || precision.converged !== 2) {
+			throw new Error("both precision repairs must converge before freeze");
+		}
 	}
 }
 

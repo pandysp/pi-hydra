@@ -76,6 +76,29 @@ describe("golden v2 final freeze stage", () => {
 		expect(() => assertFinalDataset(incomplete)).toThrow(/precision/);
 	});
 
+	it("accepts an adopted protocol decision whose terminated dissents close the gap exactly", () => {
+		const decided = finalDataset();
+		decided.builtFrom.consensus.novel.converged = 63;
+		decided.builtFrom.addition.precision.converged = 1;
+		decided.builtFrom.protocolDecision = {
+			doc: "experiments/GOLDEN-V2-PROTOCOL-DECISION.md",
+			option: "A",
+			adopted: "ADOPTED: Option A — 2026-08-04 by Andreas",
+			terminated: ["CL38", "V2-I02", "V2-I04", "V2-I05"],
+			rawConvergence: "63/67",
+		};
+		expect(() => assertFinalDataset(decided)).not.toThrow();
+		const dryRun = finalDataset();
+		dryRun.builtFrom.consensus.novel.converged = 63;
+		dryRun.builtFrom.addition.precision.converged = 1;
+		dryRun.builtFrom.protocolDecision = { ...decided.builtFrom.protocolDecision, adopted: "DRY RUN — NOT ADOPTED, output is a projection" };
+		expect(() => assertFinalDataset(dryRun)).toThrow(/adoption line/);
+		const gapped = finalDataset();
+		gapped.builtFrom.consensus.novel.converged = 62;
+		gapped.builtFrom.protocolDecision = decided.builtFrom.protocolDecision;
+		expect(() => assertFinalDataset(gapped)).toThrow(/close the novel convergence gap/);
+	});
+
 	it("requires the frozen consensus states to match the dataset's recorded final rounds", () => {
 		const stateRoot = mkdtempSync(join(tmpdir(), "golden-v2-consensus-"));
 		writeConsensus(stateRoot, "consensus-novel", 6, 62, 67);
