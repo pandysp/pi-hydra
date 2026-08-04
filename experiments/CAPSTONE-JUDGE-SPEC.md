@@ -121,6 +121,20 @@ counts other than the registered 107 judged + 12 unjudgeable. Resume rules
 apply per shard. The shard and merge tools are frozen with the output
 artifact.
 
+### First-input Opus execution record — 2026-08-04
+
+Opus (claude-cli transport, effort high) judged the frozen input at the
+pinned `369ed58` implementation — the runner reproduced builder hash
+`df3cc0f57a725965` exactly — under the concurrency-3 amendment: three
+unmodified runner instances over the sharded rows, 29 point batches total,
+zero transport failures, zero resumes, zero schema corrections. 107/119
+findings judged; the 12 run-end findings without final-assistant evidence
+terminated `unjudgeable-missing-final-assistant` — verified identical, key by
+key, to the set Sol recorded. The fail-closed merge validated cross-shard
+metadata equality, disjointness, full coverage, and the registered 107+12
+counts before writing the merged checkpoint. Frozen as
+`2026-08-04-openai-trajectory-opus`.
+
 ## Second registered input: 2026-08-03 OpenAI capstone producer
 
 Registered before its first Sol judge call. The producer artifact is
@@ -166,6 +180,18 @@ logical SHA-256 values are respectively
 and `00cf599a4c419b1a59941514eab2a669fc8bb253bee54c8582f4a82f6a36b62b`.
 This remains one judge column. It neither freezes v2 nor supplies a quality
 score.
+
+### Second-input Opus execution record — 2026-08-04
+
+Opus (claude-cli transport, effort high) judged all 264/264 eligible findings
+at the current frozen builder `5880bf010bbb428e` — the same builder hash Sol
+answered under — against byte-identical frozen inputs (rows `7224f4e0…`,
+payloads `401c38df…`, provisional dataset bytes `4035950f…`, policy
+`semantic-v2`). 109 accepted batches, zero transport failures, zero
+unjudgeable, zero resumes, zero schema corrections, one uninterrupted process
+at concurrency 1. Frozen as `2026-08-04-openai-capstone-opus`. Both capstone
+judge columns now exist; Sol + Opus + analyst consensus is a separate
+registered stage and has not run.
 
 The exact provisional dataset bytes used to render the Sol catalog are also
 frozen separately under
