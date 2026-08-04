@@ -302,7 +302,7 @@ Do not tune these rules from the sample after the fact.
 10. **DONE:** A deterministic stratified frozen sample measures schema validity, exact
     agreement, every disagreement, and seeded agreements/misses before any full
     judge pass.
-11. **IN PROGRESS:** Manifests, run specs, index, benchmark documentation, handoff, and PR body
+11. **DONE:** Manifests, run specs, index, benchmark documentation, handoff, and PR body
     distinguish historical v1 results from the future v2 path.
 12. **OPEN:** Andreas approves the measured final contract before iteration 2 resumes.
 

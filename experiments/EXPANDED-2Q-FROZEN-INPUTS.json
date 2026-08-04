@@ -28,8 +28,8 @@
   "files": [
     {
       "path": "experiments/EXPANDED-2Q-IMPLEMENTATION-SPEC.md",
-      "bytes": 16050,
-      "sha256": "d05c2d31a4cd7b9579d2d115c58ded0db480f3e813fd6a533898f5273235c6d4"
+      "bytes": 16043,
+      "sha256": "8eeb471547683b740bf3ed0007062d79e677321d80b6e3428a8cc76fde0502d6"
     },
     {
       "path": "experiments/JUDGE-DESIGN-SELECTED.md",
