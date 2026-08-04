@@ -91,6 +91,7 @@ returned the Claude session-limit error before producing its first batch, so
 Recovery must reuse these exact checkpoints; do not restart completed judge
 work and do not treat an analyst proposal as a settled vote. Steps 3–6
 (cache-only re-judge, old-basis re-judge, promotions, v3 assembly and rescore)
-were never started. Judge redesign is now the active decision gate, so this
-wave should be resumed only after its assumptions have been reconciled with
-the selected design.
+were never started. Andreas has selected the expanded 2Q / dual-catalog design
+in `JUDGE-DESIGN-SELECTED.md`. This wave may resume only after that design's
+cheap verification and after its assumptions have been reconciled explicitly
+with this checkpoint.

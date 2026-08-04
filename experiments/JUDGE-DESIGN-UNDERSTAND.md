@@ -8,6 +8,11 @@ workflow (opus-xhigh); reader reports frozen in
 appear here by construction — design options are generated AGAINST this
 document. The synthesis follows verbatim.
 
+**Selection update, 2026-08-04:** Andreas selected the expanded 2Q / dual
+catalog architecture in `JUDGE-DESIGN-SELECTED.md`. This document remains the
+evidence base; the four generated option drafts are now terse provenance
+records rather than live alternatives.
+
 ---
 
 # Judge design — UNDERSTAND (evidence, not proposals)

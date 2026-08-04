@@ -15,7 +15,10 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > evidence: the mandatory data pass found material anchor, denominator,
 > precision-unit, eligibility, and one-sided-judge-silence problems. Iteration
 > 2 is partially checkpointed in scratch but has changed no live dataset or
-> score; judge redesign is the active decision gate. On 2026-08-02 Andreas made
+> score. Andreas has now selected the expanded 2Q / dual-catalog judge
+> architecture in `JUDGE-DESIGN-SELECTED.md`; its matching rule and false
+> severity rubric still require cheap verification before implementation. On
+> 2026-08-02 Andreas made
 > the product choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
@@ -23,10 +26,11 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > the later capstone shows ENUM's OpenAI premium does not earn its keep.
 >
 > **CURRENT STOP LINE.** Preserve iteration 1 and the partial iteration-2
-> scratch state exactly. The four first-pass judge-redesign options exist, but
-> the planned independent reviews and synthesis failed at the Claude session
-> limit, so no design has been selected. Known-case tuning remains forbidden;
-> repeated calls never become extra consensus votes.
+> scratch state exactly. The selected judge design supersedes the four
+> perspective drafts, but it is not yet implemented or benchmarked. Complete
+> its registered cheap verification and reconcile it with the partial wave
+> before resuming iteration 2. Known-case tuning remains forbidden; repeated
+> calls never become extra consensus votes.
 
 ## READ FIRST — quality bases differ
 
@@ -678,8 +682,12 @@ blocking), different precision units for MAIN and ENUM, 33 anchor-less records,
 zero claims where Sol did not show the reverse pattern.
 
 Iteration 2 steps 1–2 then produced a recoverable scratch checkpoint but did
-not modify the live dataset or scores; steps 3–6 remain unspent. In parallel,
-four first-pass judge designs were drafted (robustness, cost/latency,
-simplicity, statistical rigor). Their independent reviews and synthesis failed
-at the Claude session limit. Therefore there is still no lock-in verdict and
-no selected replacement judge design.
+not modify the live dataset or scores; steps 3–6 remain unspent. Four
+perspective drafts were produced before the review/synthesis workers hit the
+Claude session limit. Andreas subsequently selected an expanded 2Q design with
+versioned real and false-positive catalogs, code-counted severe/minor buckets,
+judgment only for unmatched central claims, and blinded human disagreement
+resolution. A full audit found only one clear material false elaboration among
+371 findings, so the selected contract deliberately drops `unsupportedExtra`.
+There is still no lock-in verdict: the selected architecture needs its cheap
+matching and false-severity checks before implementation.

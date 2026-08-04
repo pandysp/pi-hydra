@@ -160,9 +160,10 @@ approved sequence advanced as follows:
 The iteration-1 means are useful shakedown evidence only: ENUM-SO2 found more
 blocking issues and was more precise on average, while MAIN-SO2 cost less. The
 data pass showed that the current judge and denominator machinery is not yet a
-trustworthy lock-in instrument. Judge redesign is therefore the active design
-gate; iteration 2 must not be presented as complete or resumed blindly around
-that decision.
+trustworthy lock-in instrument. Andreas selected the expanded 2Q / dual-catalog
+replacement in `JUDGE-DESIGN-SELECTED.md`; its cheap verification and
+reconciliation with the partial wave are now the active gate. Iteration 2 must
+not be presented as complete or resumed blindly around that boundary.
 
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used
