@@ -1,6 +1,6 @@
 # experiments/ — index
 
-60 mapped documents (61 Markdown files including this index). This is the map.
+61 mapped documents (62 Markdown files including this index). This is the map.
 `README.md` documents the original cache probes only and predates almost all
 of this; start here instead.
 
@@ -76,6 +76,7 @@ measured ENUM-SO2 model contract stays byte-identical.
 | [GOLDEN-DATASET-DESIGN.md](GOLDEN-DATASET-DESIGN.md) | **The design of record**, incl. the three ruled conventions (reachability, individuation, source frame) |
 | [GOLDEN-DATASET-V1-RESULTS.md](GOLDEN-DATASET-V1-RESULTS.md) | **v1 BUILT** (`golden-dataset.json`, version 4ea27b0018705940): 46 active (17 blocking) + 26 recorded rejections, 2 dissents verbatim; regression scores per arm |
 | [GOLDEN-DATASET-V2-SPEC.md](GOLDEN-DATASET-V2-SPEC.md) → [GOLDEN-DATASET-V2-RESULTS.md](GOLDEN-DATASET-V2-RESULTS.md) | **v2 BUILT** (`0aadc215658a775b`): 75 active (27 blocking) + 61 recorded rejections, checker 8/8. Raw novel convergence 63/67 (94.0%) below the original 95% unanimity bar; final under the prospectively adopted Option A (four stable dissents carried verbatim, nothing forced). |
+| [DRIVER-PROMPT-REALISM-SPEC.md](DRIVER-PROMPT-REALISM-SPEC.md) | **ANSWERED same day.** The minimal driver prompt is a validated non-factor for observer behavior (12-point NATIVE-vs-MINIMAL probe sits inside the same-variant repeat floor). Carries the classifier confirmation: pi's "Pi documentation" block alone flips OAuth billing from plan to extra usage (single-variable, request ids recorded), plus the proxy ground-truth capture appendix. |
 | [ITERATION2-JUDGE-WAVE-SPEC.md](ITERATION2-JUDGE-WAVE-SPEC.md) | **REGISTERED, unspent.** The one remaining judge wave: dataset repairs and the anchor rule through the consensus protocol, the staged cache-only and old-basis re-judges, the 67 promotion candidates, then assemble v3 and the iteration-2 rescore. Checkpoint-per-batch against quota interruption. |
 | [ITERATION1-DATA-PASS.md](ITERATION1-DATA-PASS.md) | **Registered data pass over the shakedown table (verbatim synthesis).** All 18 blocking-recall cells independently reproduced; 7 surprises triaged (2 harness bugs, 2 dataset-label bugs incl. the end-anchor class defect, 2 real effects, 1 comparison-level artifact) plus 7 unrecorded findings — the intersection-credit floor and the per-arm precision-unit mismatch are the load-bearing ones. Carries the three-lane iteration-2 work list. |
 | [GOLDEN-V2-PROTOCOL-DECISION.md](GOLDEN-V2-PROTOCOL-DECISION.md) | **ADOPTED: Option A (Andreas, 2026-08-04).** The prospective options after the failed bar, with exact rule text; registered and decided while every v2 quality cell was still blank, so the choice could not be tuned toward an arm. The builder executed `--adopt-decision A` the same day; the projection matched the build exactly. |
