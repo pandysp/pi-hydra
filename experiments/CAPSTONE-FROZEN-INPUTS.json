@@ -166,8 +166,8 @@
     },
     {
       "path": "experiments/capstone-consensus-packet.mjs",
-      "bytes": 4839,
-      "sha256": "f12d946c84a83d2a733f08f494289ac747b44c50d0ade9cd9b401e33fa31552c"
+      "bytes": 5115,
+      "sha256": "1d3e5dd65764d6f2fc382169ebe692ff3857352c66184784ed3ee57c1d703c4b"
     },
     {
       "path": "experiments/capstone-trajectory-judge-protocol.mjs",
