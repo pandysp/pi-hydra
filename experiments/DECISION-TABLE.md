@@ -631,3 +631,29 @@ supported-unmatched claim occurrences remain pending Opus, and 42 multi-match
 claims confirm the already-registered evaluator refinement is necessary in the
 next iteration. See `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`. No quality number or
 design verdict exists until both judge columns and a valid dataset exist.
+
+## Iteration-1 capstone scores — BOTH JUDGES, golden v2 final (SHAKEDOWN)
+
+Basis: golden v2 `0aadc215658a775b` · consensus artifact
+`2026-08-04-capstone-consensus` (both-judge credit, adversarially verified,
+7 analyst resolutions in-band) · scorer `capstone-score.mjs` · iteration 1
+of the registered 2–3 shakedown passes — NOT a lock-in table. Full tables,
+derivation notes, and the 7-item surprise list: `CAPSTONE-SCORING-RESULTS.md`.
+
+Fresh generation (MAIN-SO2 vs ENUM-SO2, 3 tasks × sol-high/sol-xhigh),
+unweighted per-task means: ENUM-SO2 blocking 39.4% / any-harm 31.8% /
+precision 80.6% at $0.027–0.044 per observation (66–94% of driver cost);
+MAIN-SO2 blocking 30.2% / any-harm 24.1% / precision 69.8% at $0.020–0.030
+(42–62%). Per the lexicographic rule ENUM-SO2 found strictly more blockers
+in 3 of 6 cells (scheduler+dispatcher sol-xhigh, exporter sol-high), tied in
+2, and LOST scheduler sol-high (2/15 vs 5/15) — an effort-dependent reversal
+on the shakedown surprise list, unread raw rows, not yet a verdict.
+
+Old generation (scheduler only): ENUM blocking 40.0%/53.3% (high/xhigh)
+still leads MAIN 20.0%/26.7% and F2 20.0%/13.3%; F2 is dominated in every
+column and stays dead. ENUM-SO2 fresh ≈ old ENUM on scheduler xhigh recall
+(7/15 vs 8/15) — the queue removal cost ENUM no measurable recall.
+
+Quiet-span deliveries are vacuous this iteration (payload-walker
+harness-bug; files-basis spans are empty by construction). No design verdict
+before the registered data pass and iteration 2.
