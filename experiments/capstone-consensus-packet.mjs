@@ -5,7 +5,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { argOf } from "./lib.mjs";
 
 const COMPLETE = new Set(["complete", "complete-with-unjudgeable"]);
-const JUDGE_METADATA = new Set(["judge", "judgeModel", "judgeTransport"]);
+// Per-judge execution metadata, excluded from the shared-basis comparison:
+// these describe HOW a judge ran (identity, transport, registered concurrency
+// sharding), never WHAT was asked — stateless per-point calls make them
+// judgment-content-invariant.
+const JUDGE_METADATA = new Set(["judge", "judgeModel", "judgeTransport", "concurrency"]);
 const FINDING_IDENTITY = [
 	"sourceKey",
 	"runId",

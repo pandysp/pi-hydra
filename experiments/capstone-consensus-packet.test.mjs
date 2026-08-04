@@ -82,6 +82,11 @@ describe("capstone consensus analyst packet", () => {
 		const wrongDataset = state("opus", [], { datasetSha256: "different" });
 		expect(() => buildCapstoneConsensusPacket(sol, wrongDataset)).toThrow(/judge input metadata differs/);
 
+		// Per-judge execution metadata (e.g. the registered concurrency
+		// sharding amendment) must NOT be treated as a basis difference.
+		const sharded = state("opus", [], { concurrency: { registered: "three shards" } });
+		expect(() => buildCapstoneConsensusPacket(sol, sharded)).not.toThrow();
+
 		const missing = state("opus", []);
 		missing.judgments = {};
 		expect(() => buildCapstoneConsensusPacket(sol, missing)).toThrow(/judgment source keys differ/);
