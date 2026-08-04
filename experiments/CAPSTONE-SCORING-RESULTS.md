@@ -1,5 +1,7 @@
 # Capstone scoring — ITERATION 1 (SHAKEDOWN, 2026-08-04)
 
+**Data pass completed (ITERATION1-DATA-PASS.md):** the registered step-2 read is done; its verdicts qualify several numbers below (intersection-credit floor, per-arm precision units, cache-policy asymmetry, fresh-vs-old basis differences) and supply the iteration-2 work list. Read it before quoting any cell.
+
 **This is not a lock-in table.** Per the registered iteration protocol
 (BENCHMARK-SPEC.md) this is the first of 2–3 shakedown passes; its job is to
 surface dataset and harness defects as much as to rank arms. The surprise
