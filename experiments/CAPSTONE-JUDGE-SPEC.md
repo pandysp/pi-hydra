@@ -108,6 +108,19 @@ advanced since Sol answered. The old 119-finding input and the fresh
 264-finding input therefore need separate Opus passes on their own exact
 registered builders, even though they share these dataset bytes.
 
+Execution-record amendment, registered 2026-08-04 before this input's first
+Opus call: concurrency for this Opus pass is raised from 1 to 3 on Andreas's
+authorization. Per-point judge calls are stateless with session persistence
+off, so verdict content is order- and concurrency-independent. The pinned
+`369ed58` runner runs unmodified per shard: observation rows are split by
+judgeable point index modulo 3 in the pinned enumeration order (31 points →
+11+10+10; 47+36+36 findings), every evidence row (file-state, driver-turn,
+cell markers) is kept in all three shards, and the shard outputs are merged
+by a script that refuses metadata drift, duplicates, missing findings, or
+counts other than the registered 107 judged + 12 unjudgeable. Resume rules
+apply per shard. The shard and merge tools are frozen with the output
+artifact.
+
 ## Second registered input: 2026-08-03 OpenAI capstone producer
 
 Registered before its first Sol judge call. The producer artifact is
