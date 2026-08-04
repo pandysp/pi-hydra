@@ -83,14 +83,12 @@ findings raised) are unaffected.
 
 The native prompt used above is the PROXY-CAPTURED one: a logging reverse
 proxy (scratch, models.json baseUrl override, restored immediately) captured
-one full pi request verbatim — headers and body. Findings: (1) the SDK-based
-reconstruction of pi's prompt missed one dynamically-discovered skill entry
-(pi-ds4-config, from ~/.pi/agent/git) — proxy capture is the authority;
-(2) pi sends `user-agent: claude-cli/2.1.75`, `x-app: cli`, beta
-`claude-code-20250219,oauth-2025-04-20` (no interleaved-thinking),
-`output_config {effort}` from the reasoning level, `max_tokens 128000`;
-(3) the harness's onPayload captures are complete on the BODY side but never
-recorded HEADERS — now documented here; (4) the captured native request was
-refused (extra usage, `req_011CdhyDNvYrj2oar9uxUxb4`) while the identical
-request minus the documentation block passed minutes later — the
-single-variable confirmation quoted in the precondition above.
+one full pi request verbatim. Findings: (1) the SDK-based reconstruction of
+pi's prompt missed one dynamically-discovered skill entry (pi-ds4-config,
+from ~/.pi/agent/git) — proxy capture is the authority; (2) the harness's
+onPayload captures are complete on the body side (headers are outside the
+hook's scope; verified once, not retained — Andreas ruled them not worth
+keeping); (3) the captured native request was refused (extra usage,
+`req_011CdhyDNvYrj2oar9uxUxb4`) while the identical request minus the
+documentation block passed minutes later — the single-variable confirmation
+quoted in the precondition above.
