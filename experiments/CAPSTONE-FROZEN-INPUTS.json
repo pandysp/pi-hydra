@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "status": "provisional-v2; regenerate after consensus and freeze",
+  "status": "valid-v2; freeze identity verified separately",
   "dataset": {
     "path": "experiments/golden-dataset.json",
-    "version": "2b0a85843c9be981",
-    "sha256": "4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0",
+    "version": "0aadc215658a775b",
+    "sha256": "815bbb2755f2882fbe3dc0168df4cc5e280b948a03d493aca654f19d87e1418c",
     "active": 75,
-    "blocking": 28
+    "blocking": 27
   },
   "files": [
     {

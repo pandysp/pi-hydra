@@ -1,5 +1,5 @@
 {
- "version": "2b0a85843c9be981",
+ "version": "0aadc215658a775b",
  "builtFrom": {
   "base": "4ea27b0018705940",
   "addition": {
@@ -10,7 +10,13 @@
     "converged": 62,
     "total": 67
    },
-   "precision": null,
+   "precision": {
+    "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-precision",
+    "seedStateDir": null,
+    "finalRound": 3,
+    "converged": 1,
+    "total": 2
+   },
    "rejudge": {
     "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-rejudge",
     "seedStateDir": null,
@@ -28,17 +34,35 @@
   "baseCommit": "7eedc8b14ecc85e9dd2871c32e01d7ec39a99f9a",
   "consensus": {
    "novel": {
-    "converged": 62,
+    "converged": 63,
     "total": 67,
     "baseConverged": 62,
-    "precisionConverged": 0
+    "precisionConverged": 1
    },
    "rejudge": {
     "converged": 4,
     "total": 5
    }
   },
+  "protocolDecision": {
+   "doc": "experiments/GOLDEN-V2-PROTOCOL-DECISION.md",
+   "option": "A",
+   "adopted": "ADOPTED: Option A — 2026-08-04 by Andreas, verbatim: \"Alright, let's do Option 1\" (options were numbered 1/2/3 = A/B/C in the conversation), after ruling out discarding the dataset and a plain-language comparison of A vs C.",
+   "terminated": [
+    "CL38",
+    "V2-I02",
+    "V2-I04",
+    "V2-I05"
+   ],
+   "rawConvergence": "63/67"
+  },
   "stableDissent": {
+   "novel": [
+    "CL38",
+    "V2-I02",
+    "V2-I04",
+    "V2-I05"
+   ],
    "rejudge": [
     "RD04"
    ]
@@ -2617,49 +2641,6 @@
    "consensus": "unanimous"
   },
   {
-   "id": "DISP-o-xd-g03",
-   "task": "dispatcher",
-   "statement": "`http.post` provides no abort path for a timed-out POST, so the request stays in flight and may settle upstream while retries resend an identical body.",
-   "members": [
-    "O-XD-g03"
-   ],
-   "provenance": [
-    "observer"
-   ],
-   "votes": {
-    "sol": {
-     "blocking": true,
-     "anyHarm": true,
-     "reason": "`runAttempt` abandons a timed-out `post` without cancellation and retries the same charge body, allowing multiple upstream executions of real work."
-    },
-    "opus": {
-     "blocking": true,
-     "anyHarm": true,
-     "reason": "`runAttempt`'s `Promise.race` abandons a timed-out POST that `http.post` gives no way to cancel, and the retried body `{order, amount, currency}` carries no idempotency key — the doc itself states \"an upstream that succeeded but answered slowly sees N indistinguishable POSTs\" — which is duplicate execution of real work reachable through the documented public `timeoutMs` option; no other issue in this set owns that harm, so no deferral applies."
-    },
-    "analyst": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "holding harmful: the no-abort race is real as its own expression, but the duplicate-charge consequence both judges cite runs through the missing idempotency key, which is already the blocking record for duplicate execution — one blocking harm, one owning expression under RULING 2."
-    }
-   },
-   "firstSeen": "2026-08-02-golden-dataset-v2",
-   "status": "active",
-   "frame": "session",
-   "reachable": true,
-   "precondition": "an attempt exceeds timeoutMs while the upstream still processes it",
-   "anchors": {
-    "expression": "return Promise.race([started, expiry]).finally(() => clearTimeout(timer))",
-    "identifier": "runAttempt",
-    "file": "src/retry.js",
-    "match": "literal",
-    "state": "end"
-   },
-   "tier": "blocking",
-   "consensus": "unresolved",
-   "dissent": "analyst holds blocking=false: holding harmful: the no-abort race is real as its own expression, but the duplicate-charge consequence both judges cite runs through the missing idempotency key, which is already the blocking record for duplicate execution — one blocking harm, one owning expression under RULING 2."
-  },
-  {
    "id": "DISP-o-xd-g24",
    "task": "dispatcher",
    "statement": "`maskEmail` leaves a single-character local part unmasked, so an address like a@x.com is emitted with its real local part exposed.",
@@ -2700,49 +2681,6 @@
    },
    "tier": "harmful",
    "consensus": "unanimous"
-  },
-  {
-   "id": "DISP-o-xd-g11",
-   "task": "dispatcher",
-   "statement": "docs/dispatch.md omits the new per-result log field from the documented `dispatchCharge` return shape, flow block and examples, and still calls the shared aggregate array the only trace of a failed run.",
-   "members": [
-    "O-XD-g11"
-   ],
-   "provenance": [
-    "observer"
-   ],
-   "votes": {
-    "sol": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "Although the prose and flow document `log`, the runnable example inaccurately shows `dispatchCharge` returning only `id`, `delivered`, and `attempts`."
-    },
-    "opus": {
-     "blocking": false,
-     "anyHarm": true,
-     "reason": "Three conjuncts are refuted by the end doc (return shape `{ id, delivered, attempts, log }`, flow block ending `log: lines`, and the \"Every dispatch returns its own log\" paragraph), but the runnable exhibit annotates `console.log(await dispatchCharge(...))` as `// { id: 'ch-1', delivered: true, attempts: 4 }` — a three-key object for a four-key return, contradicting the doc's own \"`result.log.length` therefore equals `result.attempts`\" — a genuine but non-blocking documentation inaccuracy."
-    },
-    "analyst": {
-     "blocking": false,
-     "anyHarm": false,
-     "reason": "opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate."
-    }
-   },
-   "firstSeen": "2026-08-02-golden-dataset-v2",
-   "status": "active",
-   "frame": "session",
-   "reachable": true,
-   "anchors": {
-    "expression": "// { id: 'ch-1', delivered: true, attempts: 4 }",
-    "identifier": "dispatchCharge",
-    "file": "docs/dispatch.md",
-    "match": "literal",
-    "state": "end"
-   },
-   "tier": "harmful",
-   "consensus": "unresolved",
-   "dissent": "analyst holds anyHarm=false: opus precision argument holds judged-as-stated: the return shape, flow block and trace claims are affirmatively contradicted by the end doc, so the stated omission is false; the true residual (the runnable example omitting the log field) is a different defect and belongs to the promotion path as its own candidate.",
-   "precondition": null
   },
   {
    "id": "DISP-o-xd-g20",
@@ -2927,6 +2865,101 @@
    },
    "tier": "harmful",
    "consensus": "unanimous"
+  },
+  {
+   "id": "DISP-o-xd-g03",
+   "task": "dispatcher",
+   "statement": "`runAttempt` races an in-flight POST against a timer but has no way to cancel the losing POST, so work continues after the caller has timed out and may settle after the caller has moved on.",
+   "members": [
+    "O-XD-g03"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": true,
+     "anyHarm": true,
+     "reason": "The source says a timed-out payment POST is not cancelled while remaining attempts send identical POSTs, so the original and retry can both execute the charge."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "`Promise.race` genuinely abandons an uncancelled in-flight POST, but `.finally(() => clearTimeout(timer))` releases the timer and the race consumes the late settlement, so the stated consequence is bounded background work and a dropped result; duplicate payment execution requires the separately recorded key-less retry body in `dispatch.js`."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the final source shows the losing POST outlives Promise.race, while the second POST comes from withRetries and its non-idempotent body comes from dispatchCharge; under the registered individuation rule this repaired statement names only the bounded uncancelled work and discarded result, so the separate expressions needed for duplicate payment do not make this statement blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": "an attempt exceeds timeoutMs while the upstream still processes it",
+   "anchors": {
+    "expression": "return Promise.race([started, expiry]).finally(() => clearTimeout(timer))",
+    "identifier": "runAttempt",
+    "file": "src/retry.js",
+    "match": "literal",
+    "state": "end"
+   },
+   "tier": "harmful",
+   "consensus": "unresolved",
+   "dissent": "sol holds blocking=true: The source says a timed-out payment POST is not cancelled while remaining attempts send identical POSTs, so the original and retry can both execute the charge.",
+   "precisionRepair": {
+    "replaces": "V2-I38",
+    "previousStatement": "`http.post` provides no abort path for a timed-out POST, so the request stays in flight and may settle upstream while retries resend an identical body.",
+    "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-precision"
+   }
+  },
+  {
+   "id": "DISP-o-xd-g11",
+   "task": "dispatcher",
+   "statement": "The runnable `dispatchCharge` examples in docs/dispatch.md show a three-field `{ id, delivered, attempts }` result even though the function and the same document specify a fourth per-result `log` field.",
+   "members": [
+    "O-XD-g11"
+   ],
+   "provenance": [
+    "observer"
+   ],
+   "votes": {
+    "sol": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The documented example omits the returned log field, making the shown result shape inaccurate but not affecting execution."
+    },
+    "opus": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "The doc's runnable example comment prints a three-field result while both the code and the same document state a fourth log field is returned, a real documentation inaccuracy that is not release-blocking."
+    },
+    "analyst": {
+     "blocking": false,
+     "anyHarm": true,
+     "reason": "the runnable example prints only id, delivered and attempts while both the implementation and nearby documentation specify a returned log field, so the example is genuinely inaccurate but documentary and therefore non-blocking"
+    }
+   },
+   "firstSeen": "2026-08-02-golden-dataset-v2",
+   "status": "active",
+   "frame": "session",
+   "reachable": true,
+   "precondition": null,
+   "anchors": {
+    "expression": "// { id: 'ch-1', delivered: true, attempts: 4 }",
+    "identifier": "dispatchCharge",
+    "file": "docs/dispatch.md",
+    "match": "literal",
+    "state": "end"
+   },
+   "tier": "harmful",
+   "consensus": "unanimous",
+   "precisionRepair": {
+    "replaces": "V2-I52",
+    "previousStatement": "docs/dispatch.md omits the new per-result log field from the documented `dispatchCharge` return shape, flow block and examples, and still calls the shared aggregate array the only trace of a failed run.",
+    "stateDir": "~/scratch/2026-08-02-golden-v2/consensus-precision"
+   }
   },
   {
    "id": "EXP-c-12a",
@@ -5046,20 +5079,5 @@
    "reason": "consensus: real, individuated onto SCHED-requeue-resets-attempts under RULING 2",
    "dissent": "opus holds anyHarm=true: No function shown raises attempts — sweepExpired writes `{ ...job, state: \"pending\" }` and spreads attempts unchanged, so the dissent's counterfactual fails: repairing requeue alone still leaves a crash/lease-expiry poison job at attempts 0, exported isExhausted permanently false and store.dead never written, while claimNext's oldest-first ordering re-claims that same job at the queue head forever and re-runs its handler's side effects without bound."
   }
- ],
- "provisional": {
-  "reason": "below the registered 95% consensus bar",
-  "convergence": {
-   "novel": {
-    "converged": 62,
-    "total": 67,
-    "baseConverged": 62,
-    "precisionConverged": 0
-   },
-   "rejudge": {
-    "converged": 4,
-    "total": 5
-   }
-  }
- }
+ ]
 }

@@ -1,6 +1,8 @@
-# Golden v2 — prospective protocol decision (PROPOSED 2026-08-04, awaiting Andreas)
+# Golden v2 — prospective protocol decision (ADOPTED 2026-08-04)
 
-**Status: nothing here is in force.** The registered freeze bar failed (63/67
+ADOPTED: Option A — 2026-08-04 by Andreas, verbatim: "Alright, let's do Option 1" (options were numbered 1/2/3 = A/B/C in the conversation), after ruling out discarding the dataset and a plain-language comparison of A vs C.
+
+**Status at proposal time (2026-08-04, pre-adoption): nothing in force.** The registered freeze bar failed (63/67
 novel clusters converged, 94.0%, bar 95%) and the recovery amendment's repair
 avenues are exhausted: no fourth round, no majority-as-unanimity conversion, no
 deletion, no post-result repair, no denominator change. The four holdouts are

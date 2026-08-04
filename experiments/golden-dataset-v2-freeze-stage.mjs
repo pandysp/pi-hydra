@@ -179,8 +179,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const dataset = JSON.parse(readFileSync(join(repo, "experiments/golden-dataset.json"), "utf8"));
 	assertFinalDataset(dataset);
 	assertConsensusStateMatches(dataset, stateRoot);
-	const checkerOutput = execFileSync("node", ["experiments/golden-dataset.check.mjs"], { cwd: repo, encoding: "utf8" });
-	if (!/8\/8 checks passed/.test(checkerOutput)) throw new Error("dataset checker did not report 8/8");
+	const checkerOutput = execFileSync("node", ["--test", "--test-reporter=tap", "experiments/golden-dataset.check.mjs"], { cwd: repo, encoding: "utf8" });
+	if (!/^# pass 8$/m.test(checkerOutput) || !/^# fail 0$/m.test(checkerOutput)) throw new Error("dataset checker did not report 8 passing checks");
 	const provenance = stageFreezeInputs({
 		entries: buildFreezeInputPlan({ repo, stateRoot }),
 		output,

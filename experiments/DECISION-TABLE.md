@@ -4,13 +4,15 @@ Every measured arm, its cost and its quality, in one place. Cells are only
 compared within a named measurement basis. Completed measurements trace to
 RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 
-> **CURRENT STATUS.** Golden v1 (`4ea27b0018705940`) is the valid ruler: 46
-> active issues, 17 blocking. Golden v2 is only a local provisional candidate
-> (`2b0a85843c9be981`): 75 active, 28 blocking, and 63/67 consensus (94.0%)
-> against a registered 95% bar; its mechanical checker passes 8/8. No scored
-> capstone benchmark against v2 has run; the registered OpenAI producer wave and
-> one Sol judge column are frozen, with all quality fields deliberately blank. On 2026-08-02
-> Andreas nevertheless made the product choice:
+> **CURRENT STATUS.** Golden v2 (`0aadc215658a775b`) is the valid ruler as of
+> 2026-08-04: 75 active issues, 27 blocking, checker 8/8, built under the
+> prospectively adopted protocol decision (`GOLDEN-V2-PROTOCOL-DECISION.md`,
+> Option A — Andreas, before any arm was scored against v2; raw convergence
+> 63/67 stays recorded, four dissents carried verbatim). Golden v1
+> (`4ea27b0018705940`) remains the basis of the historical golden-v1 blocks.
+> No scored capstone benchmark against v2 has run yet; the registered OpenAI
+> producer wave and one Sol judge column are frozen, with all quality fields
+> deliberately blank. On 2026-08-02 Andreas made the product choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
 > uncertainty, not a benchmark verdict; a provider text split remains open if

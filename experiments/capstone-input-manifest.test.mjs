@@ -7,7 +7,7 @@ import { buildCapstoneInputManifest, CAPSTONE_INPUTS, renderCapstoneInputManifes
 describe("capstone frozen-input manifest", () => {
 	it("covers every registered frozen trajectory family and matches the committed manifest", () => {
 		const manifest = buildCapstoneInputManifest();
-		expect(manifest.status).toBe("provisional-v2; regenerate after consensus and freeze");
+		expect(manifest.status).toBe("valid-v2; freeze identity verified separately");
 		expect(manifest.files).toHaveLength(CAPSTONE_INPUTS.length);
 		expect(new Set(manifest.files.map((file) => file.path)).size).toBe(CAPSTONE_INPUTS.length);
 		expect(manifest.files.every((file) => file.bytes > 0 && /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);

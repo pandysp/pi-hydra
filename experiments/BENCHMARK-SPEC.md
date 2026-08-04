@@ -133,11 +133,11 @@ metric changes land between iterations, versioned and documented.
    payloads are frozen. The registered Sol pass judged 264/264 eligible
    findings; every supported unmatched claim remains `pending-opus`. See
    `OPENAI-CAPSTONE-PRODUCER-RESULTS.md`;
-6. **BLOCKED BY THE REGISTERED DATASET BAR:** Opus returned and the precision
-   pass terminated at 63/67 (94.0%), not the required 95%; the builder correctly
-   refused a final v2. Do not spend either pending OpenAI Opus column or start
-   Anthropic production until an explicit prospective protocol decision. If a
-   valid v2 is later frozen, complete both pending
+6. **UNBLOCKED 2026-08-04:** the precision pass terminated at 63/67 (94.0%),
+   the builder refused, and Andreas then adopted Option A of
+   `GOLDEN-V2-PROTOCOL-DECISION.md` prospectively — the final v2
+   (`0aadc215658a775b`, 75 active / 27 blocking) is frozen and valid. Now
+   complete both pending
    OpenAI judge columns: the older 119-finding input runs at its original
    `369ed58` judge builder, and the fresh 264-finding input runs at its current
    frozen builder. Both use the exact provisional dataset basis shown to Sol.

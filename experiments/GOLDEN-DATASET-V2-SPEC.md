@@ -205,6 +205,19 @@ fourth pressure round, majority-as-unanimity conversion, issue deletion,
 post-result statement repair, or denominator padding is permitted. Golden v2
 remains provisional pending an explicit prospective protocol decision.
 
+### Protocol decision and final build — 2026-08-04
+
+Andreas adopted Option A of `GOLDEN-V2-PROTOCOL-DECISION.md` (recorded there
+verbatim) before any arm was scored against v2: content follows the
+registered assemble contract unchanged, and the gate is restated to count a
+stable recorded dissent after maximum rounds as addressed. The builder ran
+under `--adopt-decision A` and produced the final v2: version
+`0aadc215658a775b`, 75 active (27 blocking), 61 rejected, checker 8/8,
+matching the pre-adoption dry-run projection exactly. The raw 63/67
+convergence stays recorded in `builtFrom.consensus`; the four terminated
+dissents are listed in `builtFrom.stableDissent` and carried verbatim. See
+`GOLDEN-DATASET-V2-RESULTS.md`.
+
 ## Boundaries
 
 No producer runs, no driver runs, no contract changes. No deepening of
