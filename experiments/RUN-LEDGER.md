@@ -53,8 +53,9 @@ commit is the FREEZE commit rather than necessarily the code that produced the r
 | 42 | 2026-08-04 | `2026-08-04-openai-capstone-opus` | experiments/capstone-trajectory-judge.mjs | 680a26d657853f318ca8edeac01d75ebdac215a5 | — | 0 | 264 | $0 | `experiments/artifacts/2026-08-04-openai-capstone-opus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-openai-capstone-opus | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
 | 43 | 2026-08-04 | `2026-08-04-openai-trajectory-opus` | experiments/capstone-trajectory-judge.mjs | b61c12415368b51b52071af9ca24083f9dbcaa73 | — | 411 | 107 | $0 | `experiments/artifacts/2026-08-04-openai-trajectory-opus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-openai-trajectory-opus | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
 | 44 | 2026-08-04 | `2026-08-04-capstone-consensus` | experiments/capstone-consensus-apply.mjs | d07777478e2df4ed577d64cb8979eab35b67ceba | — | 56 | 0 | $0 | `experiments/artifacts/2026-08-04-capstone-consensus` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-capstone-consensus | experiments/CAPSTONE-JUDGE-SPEC.md | measured |
+| 45 | 2026-08-04 | `2026-08-04-iteration1-data-pass` | experiments/capstone-score.mjs | d96217b9642902dee77bfcc2912cf533b452fa39 | — | 8 | 0 | $0 | `experiments/artifacts/2026-08-04-iteration1-data-pass` | /Users/spannagel/dev/personal/pi-hydra-frozen-artifacts/2026-08-04-iteration1-data-pass | experiments/ITERATION1-DATA-PASS.md | measured |
 
-**Program totals: 12764 producer rows, 11470 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
+**Program totals: 12772 producer rows, 11470 judgments, $111.61 spent (harness basis)** — plus $21.80 on 1 superseded run(s), money spent on evidence no verdict rests on. Total metered: $133.41.
 
 Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here are listed by
 `node experiments/hydra-lab.mjs ledger verify`, which also re-checks every frozen manifest.
@@ -103,6 +104,7 @@ Waves present in `~/dev/personal/pi-hydra-frozen-artifacts/` with no entry here 
 - `2026-08-04-openai-capstone-opus`: Registered Opus pass over the frozen OpenAI capstone producer: 264/264 eligible findings at builder 5880bf010bbb428e (identical to Sol's), 109 accepted batches, zero failures/resumes/corrections, one uninterrupted process; second judge column only, no consensus or quality score.
 - `2026-08-04-openai-trajectory-opus`: Registered Opus pass over the old 119-finding OpenAI trajectory input at the pinned 369ed58 builder df3cc0f57a725965, concurrency-3 amendment: 107 judged + 12 unjudgeable (identical set to Sol), 29 batches, zero failures; shard rows, shard checkpoints, and the fail-closed merge tools are frozen alongside. Spend recorded as 0: the sharded rows duplicate the 2026-08-02 producer rows whose cost is ledgered in that wave's own entry, and the Opus judging transport is subscription-billed.
 - `2026-08-04-capstone-consensus`: Cross-judge consensus: packets, workflow journal, verifier verdicts, analyst resolutions, final credited records for both judged inputs. Zero provider spend in this stage beyond the workflow's own orchestration.
+- `2026-08-04-iteration1-data-pass`: Registered data pass over iteration-1 scoring: three reader reports, synthesis, workflow script and journal. Read-only pass; zero repo changes; feeds the iteration-2 work list.
 
 ## Reading the frozen evidence
 
