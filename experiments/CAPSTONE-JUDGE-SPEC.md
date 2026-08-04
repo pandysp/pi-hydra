@@ -164,6 +164,32 @@ findings from ordinary valid rows plus cache-only-invalid rows, minus every
 finding at the failed-driver checkpoint. A different count is input or adapter
 drift and must stop the pass.
 
+## Cross-judge consensus execution record — 2026-08-04
+
+Both judge columns complete, the analyst stage ran as a 28-agent workflow
+(14 opus-high matchers, one per 27-finding batch; 14 opus-xhigh adversarial
+verifiers instructed to refute scoring-critical credits and default to
+refusal when uncertain). All 14 coverage checks passed. The verifiers
+refuted 6 credits and skipped 1; each of the 7 received an explicit analyst
+resolution with its reason recorded in-band (2 refutations upheld, 2 credits
+restored with the description narrowed to the shared core and the
+overreaching clause carved out as a recorded disagreement, 2 restored with
+the novel flag dropped because the statement equals the settled rejection
+`EXP-o-xe-g06`, 1 analyst direct verdict for the skipped defect). Mechanics:
+`capstone-consensus-apply.mjs` (verifier verdicts) and
+`capstone-consensus-resolve.mjs` (analyst resolutions), both fail-closed;
+runtime-validated, no dedicated unit tests yet — add them before any
+iteration-2 reuse.
+
+Result (artifact `2026-08-04-capstone-consensus`): fresh input 264 findings,
+263 credited both-judge defects over 30 catalog issues, 143 recorded
+disagreements, 34 novel candidates; old input 107 findings, 140 credited
+over 16 catalog issues, 70 disagreements, 33 novel candidates. Credits are
+claim-ref-exact; catalog credit uses intersection semantics (an id matched
+by only one judge is a recorded disagreement, never credit). Promotion of
+novel candidates goes through the dataset consensus protocol as the
+registered versioned follow-up; nothing here changes dataset content.
+
 ## Second-input execution record (appended after completion)
 
 Sol completed the exact 264/264 findings in 109 accepted batches. Two attempts
