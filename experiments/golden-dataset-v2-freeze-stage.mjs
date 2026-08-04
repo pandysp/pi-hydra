@@ -29,6 +29,7 @@ export const REPO_INPUTS = Object.freeze([
 	"experiments/trajectory-cost-tasks.mjs",
 	"experiments/GOLDEN-DATASET-V2-SPEC.md",
 	"experiments/GOLDEN-DATASET-V2-RESULTS.md",
+	"experiments/GOLDEN-V2-PROTOCOL-DECISION.md",
 	"experiments/artifacts/2026-08-02-golden-dataset-v2/frame-sources.json.gz",
 ]);
 

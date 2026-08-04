@@ -6,10 +6,14 @@
  * It fails closed below the registered 95% consensus bar. The explicit
  * `--allow-provisional` escape hatch exists only to repair and validate an
  * interrupted checkpoint; it marks the output provisional in-band.
+ * `--adopt-decision A` builds final under GOLDEN-V2-PROTOCOL-DECISION.md and
+ * refuses to run until that memo carries an `ADOPTED: Option A` line.
+ * `--dry-run` writes only to a temp dir — no repo or state change.
  */
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assemble, mergeDatasets } from "./golden-dataset-assemble.mjs";
 import { TRAJECTORY_TASKS } from "./trajectory-cost-tasks.mjs";
@@ -19,6 +23,14 @@ const args = process.argv.slice(2);
 const REPO = argOf(args, "--repo", resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const P = argOf(args, "--state-root", `${process.env.HOME}/scratch/2026-08-02-golden-v2`);
 const ALLOW_PROVISIONAL = args.includes("--allow-provisional");
+const ADOPT_DECISION = argOf(args, "--adopt-decision", null);
+const DRY_RUN = args.includes("--dry-run");
+if (ADOPT_DECISION !== null && ADOPT_DECISION !== "A") throw new Error(`unknown protocol decision "${ADOPT_DECISION}": only Option A has a registered execution path`);
+if (ADOPT_DECISION && ALLOW_PROVISIONAL) throw new Error("--adopt-decision builds final; it cannot combine with --allow-provisional");
+const DECISION_DOC = "experiments/GOLDEN-V2-PROTOCOL-DECISION.md";
+// The terminated stable dissents Option A carries, registered in the memo.
+// CL38 is V2-I38's precision replacement; the other three were repair-ineligible.
+const OPTION_A_TERMINATED = Object.freeze(["CL38", "V2-I02", "V2-I04", "V2-I05"]);
 const RUN_ID = "2026-08-02-golden-dataset-v2";
 // 7eedc8b is v1 after the audit-mandated frame/schema repairs. Its active
 // content version intentionally remains the original v1 hash.
@@ -37,6 +49,8 @@ const novelConsensus = JSON.parse(readFileSync(`${P}/consensus-novel/consensus.j
 const novelOpen = new Set(novelConsensus.rounds[novel.builtFrom.finalRound].open);
 
 const sameSet = (a, b) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
+let precisionReplaced = new Set();
+let precisionFinalOpen = [];
 if (precision) {
 	const precisionIssues = JSON.parse(readFileSync(`${precisionStateDir}/issues.json`, "utf8")).issues;
 	if (precisionIssues.length !== 2 || precision.builtFrom.total !== 2) throw new Error("precision state must contain exactly the registered CL38 and CL52 questions");
@@ -57,6 +71,9 @@ if (precision) {
 		};
 		(newRecord.status === "active" ? novel.issues : novel.rejected).push(newRecord);
 	}
+	precisionReplaced = new Set(precisionIssues.map((issue) => issue.replaces));
+	const precisionConsensus = JSON.parse(readFileSync(`${precisionStateDir}/consensus.json`, "utf8"));
+	precisionFinalOpen = precisionConsensus.rounds[precision.builtFrom.finalRound].open ?? [];
 }
 
 const precisionConverged = precision?.builtFrom.converged ?? 0;
@@ -75,7 +92,30 @@ if (JSON.stringify(rejudgeRound.open) !== JSON.stringify(["RD04"])) {
 	throw new Error(`rejudge termination changed: expected stable RD04 dissent, got ${(rejudgeRound.open ?? []).join(",")}`);
 }
 const belowBar = convergence.novel.converged / convergence.novel.total < 0.95;
-if (belowBar && !ALLOW_PROVISIONAL) {
+let decision = null;
+if (ADOPT_DECISION === "A") {
+	if (!precision) throw new Error("Option A requires the completed precision consensus state");
+	const adoptedLine = readFileSync(`${REPO}/${DECISION_DOC}`, "utf8")
+		.split("\n").find((line) => /^ADOPTED: Option A\b/.test(line));
+	if (!adoptedLine && !DRY_RUN) throw new Error(`refusing --adopt-decision A: ${DECISION_DOC} carries no "ADOPTED: Option A" line — the decision is Andreas's, not this script's`);
+	// Restated gate (memo rule): every novel cluster must be ADDRESSED —
+	// converged, or terminated as a stable recorded dissent after the maximum
+	// rounds. The terminated ids are pinned; any drift refuses the build.
+	const terminated = [...precisionFinalOpen, ...[...novelOpen].filter((id) => !precisionReplaced.has(id))].sort();
+	if (terminated.join(",") !== [...OPTION_A_TERMINATED].sort().join(",")) {
+		throw new Error(`terminated set drifted from the registered Option A list: got ${terminated.join(",")}`);
+	}
+	if (convergence.novel.converged + terminated.length !== convergence.novel.total) {
+		throw new Error(`addressed count broken: ${convergence.novel.converged} converged + ${terminated.length} terminated != ${convergence.novel.total}`);
+	}
+	decision = {
+		doc: DECISION_DOC,
+		option: "A",
+		adopted: adoptedLine ? adoptedLine.trim() : "DRY RUN — NOT ADOPTED, output is a projection",
+		terminated,
+		rawConvergence: `${convergence.novel.converged}/${convergence.novel.total}`,
+	};
+} else if (belowBar && !ALLOW_PROVISIONAL) {
 	throw new Error(`refusing final v2 build below the registered 95% novel-consensus bar: ${convergence.novel.converged}/${convergence.novel.total} (use --allow-provisional only for recovery/checker work)`);
 }
 
@@ -193,13 +233,17 @@ const addition = {
 const merged = mergeDatasets(base, addition, edits);
 merged.builtFrom.baseCommit = BASE_COMMIT;
 merged.builtFrom.consensus = convergence;
-if (belowBar) {
+if (decision) {
+	merged.builtFrom.protocolDecision = decision;
+} else if (belowBar) {
 	merged.provisional = {
 		reason: "below the registered 95% consensus bar",
 		convergence,
 	};
 }
-merged.builtFrom.stableDissent = { rejudge: ["RD04"] };
+merged.builtFrom.stableDissent = decision
+	? { novel: decision.terminated, rejudge: ["RD04"] }
+	: { rejudge: ["RD04"] };
 
 // Schema repair is editorial source metadata only: it changes no statement,
 // vote, tier, status, or dataset content version. Every anchor names its exact
@@ -283,8 +327,10 @@ const atomicWrite = (path, body) => {
 	writeFileSync(temporary, body);
 	renameSync(temporary, path);
 };
-atomicWrite(`${P}/edits-v2.json`, `${JSON.stringify(edits, null, 1)}\n`);
-atomicWrite(`${REPO}/experiments/golden-dataset.json`, `${JSON.stringify(merged, null, 1)}\n`);
+const outDir = DRY_RUN ? mkdtempSync(join(tmpdir(), "golden-v2-dry-run-")) : null;
+if (DRY_RUN) console.log(`DRY RUN — nothing written to the repo or state root; projection in ${outDir}`);
+atomicWrite(DRY_RUN ? `${outDir}/edits-v2.json` : `${P}/edits-v2.json`, `${JSON.stringify(edits, null, 1)}\n`);
+atomicWrite(DRY_RUN ? `${outDir}/golden-dataset.json` : `${REPO}/experiments/golden-dataset.json`, `${JSON.stringify(merged, null, 1)}\n`);
 
 const tiers = { blocking: 0, harmful: 0 };
 const byTask = {};
