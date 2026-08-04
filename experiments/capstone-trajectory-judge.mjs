@@ -35,8 +35,11 @@ const JUDGES = Object.freeze({
 	opus: { transport: "claude-cli", model: "opus", reasoning: "high" },
 	// Transport A/B diagnostics (JUDGE-TRANSPORT-AB-SPEC.md): same pinned
 	// model, different carrier. Never used for the registered columns.
+	// opus-pi-ab replays the captured production request shape directly against
+	// /v1/messages (verified to draw plan quota where both the compat shim and
+	// the pi binary were refused); it requires --shape-payload.
 	"opus-cli-ab": { transport: "claude-cli", model: "claude-opus-5", reasoning: "high" },
-	"opus-pi-ab": { transport: "pi", provider: "anthropic", model: "claude-opus-5", reasoning: "high" },
+	"opus-pi-ab": { transport: "oauth-replay", provider: "anthropic", model: "claude-opus-5", reasoning: "high" },
 });
 
 function textOf(message) {
@@ -68,6 +71,70 @@ async function piTransport(spec) {
 				{ apiKey: credential.access, reasoning: spec.reasoning, maxTokens: 5000 },
 			).result();
 			return { text: textOf(result), error: result.errorMessage ?? null, raw: result };
+		},
+	};
+}
+
+function oauthReplayTransport(spec, shapePath) {
+	const shape = JSON.parse(readFileSync(shapePath, "utf8"));
+	for (const key of ["model", "max_tokens", "stream", "thinking", "system", "tools"]) {
+		if (!(key in shape)) throw new Error(`shape payload missing ${key}`);
+	}
+	if (shape.system?.[0]?.text !== "You are Claude Code, Anthropic's official CLI for Claude.") {
+		throw new Error("shape payload lacks the Claude Code identity system block");
+	}
+	const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
+	const credential = auth[spec.provider];
+	if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
+		throw new Error(`missing or expired ${spec.provider} login; run pi and log in first`);
+	}
+	return {
+		model: shape.model,
+		async ask(prompt, prior = null) {
+			const text = prior ? `${prompt}\n\nYour prior response was structurally invalid:\n${prior.text}\n\n${CORRECTION}` : prompt;
+			const body = {
+				model: shape.model,
+				max_tokens: shape.max_tokens,
+				stream: true,
+				thinking: shape.thinking,
+				...(shape.output_config ? { output_config: shape.output_config } : {}),
+				tools: shape.tools,
+				system: [shape.system[0], { type: "text", text: SYSTEM_PROMPT }],
+				messages: [{ role: "user", content: [{ type: "text", text }] }],
+			};
+			try {
+				const response = await fetch("https://api.anthropic.com/v1/messages", {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						authorization: `Bearer ${credential.access}`,
+						"anthropic-version": "2023-06-01",
+						"anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14",
+						"anthropic-dangerous-direct-browser-access": "true",
+					},
+					body: JSON.stringify(body),
+				});
+				const bytes = await response.text();
+				if (!response.ok) return { text: "", error: `${response.status} ${bytes.slice(0, 400)}`, raw: bytes };
+				let out = "";
+				let streamError = null;
+				for (const line of bytes.split("\n")) {
+					if (!line.startsWith("data:")) continue;
+					const payload = line.slice(5).trim();
+					if (!payload || payload === "[DONE]") continue;
+					let event;
+					try {
+						event = JSON.parse(payload);
+					} catch {
+						continue;
+					}
+					if (event.type === "content_block_delta" && event.delta?.type === "text_delta") out += event.delta.text;
+					if (event.type === "error") streamError = event.error?.message ?? "stream error";
+				}
+				return { text: out, error: streamError, raw: bytes };
+			} catch (error) {
+				return { text: "", error: String(error), raw: null };
+			}
 		},
 	};
 }
@@ -309,7 +376,15 @@ async function main() {
 	}
 	const judgeSpec = JUDGES[judgeName];
 	if (!judgeSpec) throw new Error(`unknown judge: ${judgeName}`);
-	const transport = judgeSpec.transport === "pi" ? await piTransport(judgeSpec) : claudeCliTransport(judgeSpec, timeoutMs);
+	const shapePayloadPath = argOf(args, "--shape-payload", "");
+	if (judgeSpec.transport === "oauth-replay" && !shapePayloadPath) {
+		throw new Error(`judge ${judgeName} requires --shape-payload <captured production payload>`);
+	}
+	const transport = judgeSpec.transport === "pi"
+		? await piTransport(judgeSpec)
+		: judgeSpec.transport === "oauth-replay"
+			? oauthReplayTransport(judgeSpec, shapePayloadPath)
+			: claudeCliTransport(judgeSpec, timeoutMs);
 	const rowsBytes = readFileSync(rowsPath);
 	const datasetBytes = readFileSync(datasetPath);
 	const payloadsTarBytes = readFileSync(payloadsTarPath);
