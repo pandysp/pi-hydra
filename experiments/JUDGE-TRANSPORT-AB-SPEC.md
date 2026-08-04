@@ -158,3 +158,45 @@ burned; one probe call total. The verdict-quality half of the flip check
 remains staged and idempotent, exactly as recorded above. Next
 discriminator when desired: check claude.ai/settings/usage (user-visible
 only), or rerun the probe after the pool refills.
+
+**Route-level correction and completed flip verdict, 2026-08-04 (same day,
+later).** The pi-binary refutation above stands as recorded, but its
+account-level conclusion is overturned: the coordinator replayed a captured
+production payload (trajectory-pilot `scheduler-opus-high-a1-r1-q5.json`)
+directly against `/v1/messages` with the pi OAuth token and received 200 ON
+PLAN QUOTA minutes after the pi binary was refused — confirming Andreas's
+guarantee that the experiment harness never consumes extra usage. A new
+`oauth-replay` transport (`--judge opus-pi-ab --shape-payload <captured
+payload>`) reproduces that shape verbatim: identity system block, the
+captured 6-tool roster, `thinking {adaptive, summarized}`,
+`output_config {effort: high}`, `max_tokens 8000`, `stream true`, the three
+documented headers; judge line as system block 2, judge prompt as the user
+message.
+
+Execution: the shard-0 probe returned 200 and the full pass completed —
+45/45 findings across the three shards, zero failures, zero retries, on
+plan. The claude-cli noise-floor pass (A2) then ran over the identical
+sample (one silent shard death at 13/18, resumed cleanly by the append-only
+runner; 45/45, zero failures). Counts over 45 findings, discordant per
+field:
+
+| pair | real/not-real | unsupported-extra | catalog sets | claim counts |
+|---|---:|---:|---:|---:|
+| A vs A2 (same transport, the noise floor) | 5 | 0 | 9 | 10 |
+| A vs B (Claude Code vs pi-OAuth replay) | 3 | 0 | 5 | 6 |
+| A2 vs B | 2 | 0 | 7 | 4 |
+
+**Verdict: FLIPPABLE.** Cross-transport disagreement sits at or below the
+same-transport repeat floor on every field; the carrier adds no detectable
+verdict effect beyond ordinary sampling noise. The operational caveat is
+inverted from the earlier record: verdict quality permits the flip, and
+plan-covered capacity exists on this route — but only through the replayed
+production request shape; the pi binary's own fresh requests were still
+refused the same hour. Three capped ablations off the working shape (tools
+removed; interleaved-thinking beta removed; thinking swapped to
+enabled/budget) each still drew plan, so the field that gets a request
+classified out of plan coverage remains unisolated — candidates left
+untested include system-block content, message/timestamp shapes, token
+limits, and SDK-added headers. Until pi itself is confirmed to draw plan
+again, any pi-side Opus judging should go through the `oauth-replay`
+transport with a captured production payload as its shape source.
