@@ -1,0 +1,56 @@
+{
+  "seedRule": "judge-transport-ab-v1",
+  "rowsSha256": "7224f4e031be4719abc7b6f7570c3972b64c5d5df7e66407b42fba26ffad9e03",
+  "minFindingsPerStratum": 7,
+  "strata": {
+    "dispatcher/sol-high": {
+      "points": 4,
+      "findings": 9
+    },
+    "dispatcher/sol-xhigh": {
+      "points": 4,
+      "findings": 8
+    },
+    "exporter/sol-high": {
+      "points": 3,
+      "findings": 7
+    },
+    "exporter/sol-xhigh": {
+      "points": 3,
+      "findings": 7
+    },
+    "scheduler/sol-high": {
+      "points": 3,
+      "findings": 7
+    },
+    "scheduler/sol-xhigh": {
+      "points": 3,
+      "findings": 7
+    }
+  },
+  "points": [
+    "019fc500-4b21-7cd2-a10f-98c6957f13dd/scheduler/sol-high/scheduler/sol-high/a1/r0/4",
+    "019fc500-4b21-7cd2-a10f-98c6957f13dd/scheduler/sol-high/scheduler/sol-high/a1/r2/10",
+    "019fc500-4b21-7cd2-a10f-98c6957f13dd/scheduler/sol-high/scheduler/sol-high/a1/r2/12",
+    "019fc512-1c19-7e5d-9c67-4574c488f3f5/scheduler/sol-xhigh/scheduler/sol-xhigh/a1/r0/4",
+    "019fc512-1c19-7e5d-9c67-4574c488f3f5/scheduler/sol-xhigh/scheduler/sol-xhigh/a1/r2/18",
+    "019fc512-1c19-7e5d-9c67-4574c488f3f5/scheduler/sol-xhigh/scheduler/sol-xhigh/a1/r3/20",
+    "019fc529-9927-78ee-8d8a-7e8310664d46/exporter/sol-high/exporter/sol-high/a1/r1/6",
+    "019fc529-9927-78ee-8d8a-7e8310664d46/exporter/sol-high/exporter/sol-high/a1/r3/12",
+    "019fc529-9927-78ee-8d8a-7e8310664d46/exporter/sol-high/exporter/sol-high/a1/r3/15",
+    "019fc538-33d0-7df9-b4d4-6330432cfe0b/exporter/sol-xhigh/exporter/sol-xhigh/a1/r1/5",
+    "019fc538-33d0-7df9-b4d4-6330432cfe0b/exporter/sol-xhigh/exporter/sol-xhigh/a1/r1/9",
+    "019fc538-33d0-7df9-b4d4-6330432cfe0b/exporter/sol-xhigh/exporter/sol-xhigh/a1/r3/18",
+    "019fc543-58d4-71c0-8d77-ac2909462553/dispatcher/sol-high/dispatcher/sol-high/a1/r0/7",
+    "019fc543-58d4-71c0-8d77-ac2909462553/dispatcher/sol-high/dispatcher/sol-high/a1/r1/10",
+    "019fc543-58d4-71c0-8d77-ac2909462553/dispatcher/sol-high/dispatcher/sol-high/a1/r1/12",
+    "019fc543-58d4-71c0-8d77-ac2909462553/dispatcher/sol-high/dispatcher/sol-high/a1/r1/8",
+    "019fc550-7c26-7458-a56b-6393be4f967e/dispatcher/sol-xhigh/dispatcher/sol-xhigh/a1/r0/1",
+    "019fc550-7c26-7458-a56b-6393be4f967e/dispatcher/sol-xhigh/dispatcher/sol-xhigh/a1/r0/2",
+    "019fc550-7c26-7458-a56b-6393be4f967e/dispatcher/sol-xhigh/dispatcher/sol-xhigh/a1/r0/5",
+    "019fc550-7c26-7458-a56b-6393be4f967e/dispatcher/sol-xhigh/dispatcher/sol-xhigh/a1/r2/13"
+  ],
+  "totalFindings": 45,
+  "manifestSha256": "253ea8b8fcef9f7e01460d37f82885ad0daab0d9fa69dd8b34413580bf7e4936",
+  "rowsFile": "rows.jsonl.gz"
+}
