@@ -148,7 +148,9 @@ approved sequence advanced as follows:
 6. **COMPLETE 2026-08-04:** the precision pass terminated at 63/67 (94.0%),
    the builder refused, and Andreas then adopted Option A of
    `GOLDEN-V2-PROTOCOL-DECISION.md` prospectively — the final v2
-   (`0aadc215658a775b`, 75 active / 27 blocking) is frozen and valid;
+   (`0aadc215658a775b`, 75 active / 27 blocking) is frozen and valid
+   (superseded 2026-08-05 by the iteration-2 fold: v3 `d176183abab2d211`,
+   75 active / 26 blocking — see `ITERATION2-JUDGE-WAVE-SPEC.md`);
 7. **COMPLETE:** both OpenAI Opus judge columns ran on their exact frozen
    bases: the older 119-finding input at its original
    `369ed58` judge builder, and the fresh 264-finding input at its current

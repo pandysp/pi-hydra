@@ -131,3 +131,33 @@ Two user decisions gate recovery:
 The seven repair items and the expanded-2Q semantic contract must then be
 settled before iteration 2 resumes. Any catalog change creates a fresh judge
 checkpoint identity; the 45-finding mechanics sample cannot be pooled with it.
+
+## Recovery executed — 2026-08-05
+
+Andreas decided both gates: fold now, and complete the residue. Outcome:
+
+- **Residue completed** under the frozen old protocol: Sol resumed from
+  checkpoint (zero calls), Opus answered all six on the byte-identical
+  prompt (`consensus-backfill-v2/consensus.json`). BF-d11, BF-d37, BF-d44,
+  BF-g22R ratified unanimously; BF-d39 and BF-g21R carry substantive Opus
+  objections and route to the blinded queue with no further persuasion
+  rounds. `backfill-proposals.json` holds STALE pre-correction anchors for
+  these records; the voted question blobs are the only authoritative source.
+- **Byte-verification before fold** (now permanent in the settled-outcomes
+  generator): every anchor must resolve against the frozen frame sources.
+  Two unanimously voted anchors were refuted — BF-d44's absence witness
+  `leaseExpiresAt: 0` collides with `complete()`'s reset elsewhere in the
+  seed file, and SCHED-r-d35 pins `# Scheduling` where the seed doc says
+  `# Scheduler`. Votes do not override bytes; both route to the queue.
+- **Fold applied** (`golden-dataset-v3-fold.mjs`, ledger row
+  `2026-08-05-golden-dataset-v3-fold`): v2 `0aadc215658a775b` -> v3
+  `d176183abab2d211`, 75 active / 26 blocking, 27 settled outcomes, checker
+  8/8, full suite green. `EXP-o-xe-g21` keeps its v2 anchor pending the
+  BF-g21R ruling.
+- **The blinded human queue is ELEVEN items**: AC13B, SCHED-c-15,
+  DISP-o-xd-g20, DISP-o-xd-g26, SCHED-o-g07, SCHED-o-g14, SCHED-r-d18,
+  BF-d39, BF-g21R, BF-d44, SCHED-r-d35.
+- **Rescore split by provider quota**: the Opus half of the expanded-2Q
+  sample reruns against v3 under a fresh checkpoint identity now; the Sol
+  half waits for the OpenAI limit reset. Nothing pools with the v2
+  mechanics sample.

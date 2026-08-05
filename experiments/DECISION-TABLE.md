@@ -4,12 +4,17 @@ Every measured arm, its cost and its quality, in one place. Cells are only
 compared within a named measurement basis. Completed measurements trace to
 RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 
-> **CURRENT STATUS.** Golden v2 (`0aadc215658a775b`) is the valid ruler as of
-> 2026-08-04: 75 active issues, 27 blocking, checker 8/8, built under the
-> prospectively adopted protocol decision (`GOLDEN-V2-PROTOCOL-DECISION.md`,
-> Option A — Andreas, before any arm was scored against v2; raw convergence
-> 63/67 stays recorded, four dissents carried verbatim). Golden v1
-> (`4ea27b0018705940`) remains the basis of the historical golden-v1 blocks.
+> **CURRENT STATUS.** Golden v3 (`d176183abab2d211`, 2026-08-05) is the valid
+> ruler: the iteration-2 fold applied 27 byte-verified settled outcomes to v2
+> (75 active, 26 blocking, checker 8/8; ledger row
+> `2026-08-05-golden-dataset-v3-fold`). Every number in this table was
+> computed against v2 (`0aadc215658a775b`) or v1 and stays valid as recorded
+> history; nothing here has been rescored against v3 yet. Golden v2 was built
+> under the prospectively adopted protocol decision
+> (`GOLDEN-V2-PROTOCOL-DECISION.md`, Option A — Andreas, before any arm was
+> scored against v2; raw convergence 63/67 stays recorded, four dissents
+> carried verbatim). Golden v1 (`4ea27b0018705940`) remains the basis of the
+> historical golden-v1 blocks.
 > Both Opus columns, the 371-finding cross-judge consensus, and the first
 > 18-cell capstone table are complete. That table is a shakedown, not lock-in
 > evidence: the mandatory data pass found material anchor, denominator,
