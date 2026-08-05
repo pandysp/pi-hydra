@@ -54,7 +54,7 @@ export type HydraToolParams = ManageHeadsParams | CompleteObservationParams;
  */
 export function completionFromHydraToolCalls(content: readonly unknown[]): CompleteObservationParams | null {
 	const calls = content.filter(
-		(item): item is { type: "toolCall"; name: string; arguments: Parameters<typeof validateHydraToolParams>[0] } =>
+		(item): item is { type: "toolCall"; name: string; arguments: RawHydraToolParams } =>
 			typeof item === "object" && item !== null && (item as { type?: unknown }).type === "toolCall",
 	);
 	if (calls.length !== 1 || calls[0].name !== "hydra") return null;
@@ -66,13 +66,16 @@ export function completionFromHydraToolCalls(content: readonly unknown[]): Compl
 	}
 }
 
-export function validateHydraToolParams(value: {
+/** The unvalidated shape a hydra tool call arrives with, before branch validation. */
+export interface RawHydraToolParams {
 	action: "manage_heads" | "complete_observation";
 	operation?: "add" | "remove";
 	head?: string;
 	delivery?: "none" | "print" | "queue" | "steer" | "interrupt";
 	message: string;
-}): HydraToolParams {
+}
+
+export function validateHydraToolParams(value: RawHydraToolParams): HydraToolParams {
 	if (value.action === "manage_heads") {
 		if (value.operation === undefined || value.head === undefined) {
 			throw new Error("manage_heads requires operation and head");

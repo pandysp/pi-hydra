@@ -84,7 +84,7 @@ import {
 	isTerminalHydraAction,
 	validateHydraToolParams,
 } from "./protocol";
-import type { ManageHeadsParams } from "./protocol";
+import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
@@ -1317,7 +1317,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				execute: (toolCallId, params, toolSignal, _onUpdate) =>
 					executeObservationHydra(
 						toolCallId,
-						params as Parameters<typeof validateHydraToolParams>[0],
+						params as RawHydraToolParams,
 						toolSignal,
 						ctx,
 						job,
@@ -1683,7 +1683,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	async function executeObservationHydra(
 		_toolCallId: string,
-		rawParams: Parameters<typeof validateHydraToolParams>[0],
+		rawParams: RawHydraToolParams,
 		_signal: AbortSignal | undefined,
 		ctx: ExtensionContext,
 		job: Observation,
@@ -1736,7 +1736,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		parameters: hydraToolParameters,
 		async execute(
 			_toolCallId: string,
-			rawParams: Parameters<typeof validateHydraToolParams>[0],
+			rawParams: RawHydraToolParams,
 			_signal: AbortSignal | undefined,
 			_onUpdate: unknown,
 			ctx: ExtensionContext,
