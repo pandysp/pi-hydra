@@ -66,15 +66,14 @@ import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { createEditTool, createGrepTool, createLsTool, createReadTool, createWriteTool } from "@earendil-works/pi-coding-agent";
 import {
-	footerFormatCorrection,
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
 	parseEnumeratedDecision,
-	parseFooterDecision,
 	buildEnumeratedJudgeObservationPrompt,
 	selectFinalAssistant,
 } from "../utils.ts";
+import { footerFormatCorrection, parseFooterDecision } from "./frozen-footer-protocol.mjs";
 import { hydraToolDescription, hydraToolParameters } from "../protocol.ts";
 import { GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import {

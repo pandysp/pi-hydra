@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildAnthropicObservationPrompt, buildObservationEnvelope } from "../utils.ts";
+import { buildObservationEnvelope } from "../utils.ts";
+import { buildLegacyAnthropicJudgePrompt } from "./frozen-footer-protocol.mjs";
 import { GOLDEN_CASES, GOLDEN_HEADS, GOLDEN_SOURCES } from "./delivery-context-golden-cases.mjs";
 import {
 	DRIVER_AWARE,
@@ -161,11 +162,11 @@ describe("frozen delivery-context golden corpus", () => {
 		);
 	});
 
-	it("freezes the production control prompts independently of treatment work", () => {
+	it("freezes the study-era control prompts independently of treatment work", () => {
 		expect(hash(buildObservationEnvelope("security", []))).toBe(
 			"c157243e3204a693f97d03000b93eb222295c93ed0fda7d13d57beac4f72ff66",
 		);
-		expect(hash(buildAnthropicObservationPrompt("security", GOLDEN_HEADS.security, []))).toBe(
+		expect(hash(buildLegacyAnthropicJudgePrompt("security", GOLDEN_HEADS.security))).toBe(
 			"c166245f1901848d8ebd12220cd965e0033faa01bc395d0bca080e31ccc89621",
 		);
 	});

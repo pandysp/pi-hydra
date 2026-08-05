@@ -17,13 +17,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildObservationEnvelope } from "../utils.ts";
 import {
-	buildAnthropicObservationPrompt,
 	buildJudgeObservationEnvelope,
 	buildJudgeObservationPrompt,
-	buildObservationEnvelope,
+	buildLegacyAnthropicJudgePrompt,
 	footerFormatCorrection,
-} from "../utils.ts";
+} from "./frozen-footer-protocol.mjs";
 import {
 	buildUnifiedFooterToolFreeObservationEnvelope,
 	buildUnifiedFooterToolFreeObservationPrompt,
@@ -96,7 +96,7 @@ const EXPECTED = {
 		"openai-codex": { prompt: buildShippedMainObservationPrompt(HEAD, LENS) },
 	},
 	control: {
-		anthropic: { prompt: buildAnthropicObservationPrompt(HEAD, LENS, []) },
+		anthropic: { prompt: buildLegacyAnthropicJudgePrompt(HEAD, LENS) },
 		"openai-codex": { prompt: LENS, envelope: buildObservationEnvelope(HEAD, []) },
 	},
 	base: {

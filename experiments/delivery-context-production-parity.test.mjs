@@ -3,7 +3,7 @@ import {
 	buildJudgeObservationEnvelope,
 	buildJudgeObservationPrompt,
 	parseFooterDecision,
-} from "../utils.ts";
+} from "./frozen-footer-protocol.mjs";
 import {
 	buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationEnvelope,
 	buildEvidenceGuidedLastPlusPendingUnifiedFooterObservationPrompt,
@@ -24,7 +24,7 @@ const experimentalState = {
 	pendingAcrossHeads: productionState.pending,
 };
 
-describe("production delivery-context protocol parity", () => {
+describe("frozen footer protocol parity with the measured builders", () => {
 	const correctLifecycleWording = (measured) =>
 		measured.replace(
 			"lastByThisHead is this head's most recent message that successfully reached the driver; it may be absent from this fork when the forked snapshot is older. pending messages have been accepted by the harness but have not reached the driver yet.",

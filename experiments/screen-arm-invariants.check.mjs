@@ -11,7 +11,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseDecision, parseFooterDecision } from "../utils.ts";
+import { parseDecision } from "../utils.ts";
+import { parseFooterDecision } from "./frozen-footer-protocol.mjs";
 import { GOLDEN_HEADS } from "./delivery-context-golden-cases.mjs";
 import {
 	SCREEN_ARMS,

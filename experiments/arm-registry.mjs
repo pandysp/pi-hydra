@@ -18,16 +18,14 @@
  * trajectory harness can cross-check its own arms against it.
  */
 
+import { buildObservationEnvelope, decisionFromCompletion, parseDecision } from "../utils.ts";
 import {
-	buildAnthropicObservationPrompt,
 	buildJudgeObservationEnvelope,
 	buildJudgeObservationPrompt,
-	buildObservationEnvelope,
-	decisionFromCompletion,
+	buildLegacyAnthropicJudgePrompt,
 	footerFormatCorrection,
-	parseDecision,
 	parseFooterDecision,
-} from "../utils.ts";
+} from "./frozen-footer-protocol.mjs";
 import { completionFromHydraToolCalls } from "../protocol.ts";
 import {
 	buildUnifiedFooterToolFreeObservationEnvelope,
@@ -163,7 +161,7 @@ export const GOLDEN_ARMS = Object.freeze({
 		label: "judge-only-typed",
 		buildHandoff: (provider, { head, lens }) =>
 			provider === "anthropic"
-				? { prompt: buildAnthropicObservationPrompt(head, lens, []) }
+				? { prompt: buildLegacyAnthropicJudgePrompt(head, lens) }
 				: { prompt: lens, envelope: buildObservationEnvelope(head, []) },
 		// The control arm runs the agent loop and completes through the hydra
 		// tool, so the runner never calls a parser for it.

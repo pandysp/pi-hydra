@@ -39,7 +39,8 @@
 
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import { mergeObservationPayload, parseDecision, parseFooterDecision } from "../utils.ts";
+import { mergeObservationPayload, parseDecision } from "../utils.ts";
+import { parseFooterDecision } from "./frozen-footer-protocol.mjs";
 import { argOf } from "./lib.mjs";
 import { flatUsage, pricesFor, rawCost } from "./costing.mjs";
 import { resolveModel } from "./model-catalog.mjs";
