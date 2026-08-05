@@ -3,10 +3,10 @@
   "status": "valid-v2; freeze identity verified separately",
   "dataset": {
     "path": "experiments/golden-dataset.json",
-    "version": "0aadc215658a775b",
-    "sha256": "815bbb2755f2882fbe3dc0168df4cc5e280b948a03d493aca654f19d87e1418c",
+    "version": "d176183abab2d211",
+    "sha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5",
     "active": 75,
-    "blocking": 27
+    "blocking": 26
   },
   "files": [
     {

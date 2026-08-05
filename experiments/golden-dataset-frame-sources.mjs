@@ -91,19 +91,66 @@ function statesFor(issue, frameSources) {
 	const task = frameSources.tasks?.[issue.task];
 	if (!task) throw new Error(`${issue.id}: no frame source for task ${issue.task}`);
 	const state = issue.anchors?.state;
-	if (issue.frame === "seed") {
-		if (state !== "seed") throw new Error(`${issue.id}: seed-frame anchor must name state=seed`);
-		return [task.seed.files];
-	}
+	// RULE-ANCHOR-V2 (adopted 2026-08-04, folded with v3): an anchor pins seed
+	// bytes or a declaration regex that survives driver edits. A session-frame
+	// record may therefore carry a seed-state anchor, and emergent anchors
+	// resolve against the session end state where driver-written code lives.
+	if (state === "seed") return [task.seed.files];
+	if (issue.frame === "seed") throw new Error(`${issue.id}: seed-frame anchor must name state=seed`);
 	if (issue.frame !== "session") throw new Error(`${issue.id}: unknown frame ${issue.frame}`);
 	if (state === "start") return [task.session.start.files];
 	if (state === "end") return [task.session.end.files];
 	if (state === "either") return [task.session.start.files, task.session.end.files];
-	throw new Error(`${issue.id}: session-frame anchor must name state=start|end|either`);
+	if (state === "emergent") return [task.session.end.files];
+	throw new Error(`${issue.id}: session-frame anchor must name state=start|end|either|emergent|seed`);
+}
+
+/**
+ * One side of a RULE-ANCHOR-V2 two-sided predicate: `present`/`contradicts`
+ * are positive regex matches (string or array; `contradicts` names the doc
+ * side's surviving stale assertion), `absent` lists literal tokens that must
+ * not appear. Every assertion is a byte decision, never a semantic one.
+ */
+function sideResolution(bodies, side, label) {
+	if (!side?.file) return { ok: false, reason: `${label} side requires a file` };
+	const matched = bodies.map((state) => state[side.file]).filter((body) => body !== undefined);
+	if (matched.length === 0) return { ok: false, reason: `${label}: ${side.file} absent from selected state` };
+	const positive = side.present ?? side.contradicts;
+	const patterns = Array.isArray(positive) ? positive : positive !== undefined ? [positive] : [];
+	if (patterns.length === 0 && !(side.absent?.length > 0)) {
+		return { ok: false, reason: `${label}: side asserts nothing` };
+	}
+	for (const pattern of patterns) {
+		let hit;
+		try {
+			hit = matched.some((body) => new RegExp(pattern).test(body));
+		} catch (error) {
+			return { ok: false, reason: `${label}: invalid regex: ${error.message}` };
+		}
+		if (!hit) return { ok: false, reason: `${label}: ${pattern} does not match ${side.file}` };
+	}
+	for (const token of side.absent ?? []) {
+		if (typeof token !== "string" || token.length === 0) {
+			return { ok: false, reason: `${label}: absent assertions must be non-empty strings` };
+		}
+		if (matched.some((body) => body.includes(token))) {
+			return { ok: false, reason: `${label}: expected ${JSON.stringify(token)} to be absent from ${side.file}` };
+		}
+	}
+	return { ok: true };
 }
 
 export function anchorResolution(issue, frameSources) {
 	const anchor = issue.anchors;
+	if (anchor?.match === "two-sided") {
+		if (!anchor.code || !anchor.doc) return { ok: false, reason: "two-sided anchor requires code and doc sides" };
+		const files = statesFor(issue, frameSources);
+		for (const [label, side] of [["code", anchor.code], ["doc", anchor.doc]]) {
+			const resolved = sideResolution(files, side, label);
+			if (!resolved.ok) return resolved;
+		}
+		return { ok: true };
+	}
 	if (!anchor?.file || !anchor.expression || !anchor.match) {
 		return { ok: false, reason: "anchor requires file, expression, and match" };
 	}

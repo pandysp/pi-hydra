@@ -55,10 +55,24 @@ test("every record carries the full schema", () => {
 		if (issue.firstSeen !== V1_RUN) {
 			// The audit showed anchors are what make individuation and liveness
 			// mechanically checkable; new records enter with them or not at all.
-			assert.ok(issue.anchors?.expression, `${issue.id}: post-v1 record without an anchor expression`);
-			assert.ok(issue.anchors?.file, `${issue.id}: post-v1 record without an anchor file`);
-			assert.ok(["literal", "regex"].includes(issue.anchors?.match), `${issue.id}: post-v1 record without explicit literal|regex anchor matching`);
-			assert.ok(issue.anchors?.state, `${issue.id}: post-v1 record without an anchor state`);
+			if (issue.anchors?.match === "two-sided") {
+				// RULE-ANCHOR-V2 item 3: a doc-staleness anchor carries two byte
+				// predicates, each bound to a file, instead of one expression.
+				assert.ok(issue.anchors.state, `${issue.id}: two-sided anchor without a state`);
+				for (const label of ["code", "doc"]) {
+					const side = issue.anchors[label];
+					assert.ok(side?.file, `${issue.id}: two-sided anchor ${label} side without a file`);
+					assert.ok(
+						side.present !== undefined || side.contradicts !== undefined || (side.absent?.length ?? 0) > 0,
+						`${issue.id}: two-sided anchor ${label} side asserts nothing`,
+					);
+				}
+			} else {
+				assert.ok(issue.anchors?.expression, `${issue.id}: post-v1 record without an anchor expression`);
+				assert.ok(issue.anchors?.file, `${issue.id}: post-v1 record without an anchor file`);
+				assert.ok(["literal", "regex"].includes(issue.anchors?.match), `${issue.id}: post-v1 record without explicit literal|regex anchor matching`);
+				assert.ok(issue.anchors?.state, `${issue.id}: post-v1 record without an anchor state`);
+			}
 			assert.equal(typeof issue.reachable, "boolean", `${issue.id}: post-v1 record without reachable`);
 			assert.ok("precondition" in issue, `${issue.id}: post-v1 record without precondition (use null when none)`);
 		}

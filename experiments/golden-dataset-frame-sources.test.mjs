@@ -54,6 +54,48 @@ describe("golden dataset frame anchors", () => {
 	});
 });
 
+describe("RULE-ANCHOR-V2 anchor forms", () => {
+	it("resolves a session-frame record's seed-state anchor against the seed", () => {
+		expect(anchorResolution({
+			id: "EXP-session-seed", task: "exporter", frame: "session",
+			anchors: { file: "src/a.js", state: "seed", match: "literal", expression: "Number(limit)", absent: ["parseInt("] },
+		}, frames)).toEqual({ ok: true });
+	});
+
+	it("resolves an emergent anchor against the session end state", () => {
+		expect(anchorResolution({
+			id: "EXP-emergent", task: "exporter", frame: "session",
+			anchors: { file: "src/a.js", state: "emergent", match: "regex", expression: "parseInt\\(limit\\)" },
+		}, frames)).toEqual({ ok: true });
+		expect(anchorResolution({
+			id: "EXP-emergent-miss", task: "exporter", frame: "session",
+			anchors: { file: "src/a.js", state: "emergent", match: "regex", expression: "Number\\(limit\\)" },
+		}, frames)).toEqual({ ok: false, reason: "regex expression does not resolve in src/a.js" });
+	});
+
+	it("resolves a two-sided anchor only when both byte predicates hold", () => {
+		const anchors = {
+			match: "two-sided", state: "emergent",
+			code: { file: "src/a.js", present: "parseInt\\(limit\\)" },
+			doc: { file: "test/a.test.js", contradicts: "import \\{ size \\}", absent: ["describePagination"] },
+		};
+		expect(anchorResolution({ id: "EXP-two-sided", task: "exporter", frame: "session", anchors }, frames))
+			.toEqual({ ok: true });
+		expect(anchorResolution({
+			id: "EXP-two-sided-doc-gone", task: "exporter", frame: "session",
+			anchors: { ...anchors, doc: { ...anchors.doc, contradicts: "header only" } },
+		}, frames)).toEqual({ ok: false, reason: "doc: header only does not match test/a.test.js" });
+		expect(anchorResolution({
+			id: "EXP-two-sided-empty", task: "exporter", frame: "session",
+			anchors: { ...anchors, code: { file: "src/a.js" } },
+		}, frames)).toEqual({ ok: false, reason: "code: side asserts nothing" });
+		expect(anchorResolution({
+			id: "EXP-two-sided-half", task: "exporter", frame: "session",
+			anchors: { match: "two-sided", state: "emergent", code: anchors.code },
+		}, frames)).toEqual({ ok: false, reason: "two-sided anchor requires code and doc sides" });
+	});
+});
+
 describe("v2 candidate frame provenance", () => {
 	it("routes cross-task observer findings to their recorded session unless explicitly seeded", () => {
 		expect(frameOf("observer", { task: "exporter", seeded: false })).toBe("session");

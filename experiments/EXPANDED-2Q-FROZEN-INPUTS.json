@@ -123,8 +123,8 @@
     },
     {
       "path": "experiments/golden-dataset.json",
-      "bytes": 192024,
-      "sha256": "815bbb2755f2882fbe3dc0168df4cc5e280b948a03d493aca654f19d87e1418c"
+      "bytes": 201043,
+      "sha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5"
     },
     {
       "path": "experiments/judge-transport-ab-sample.mjs",

@@ -1,5 +1,5 @@
 {
- "version": "0aadc215658a775b",
+ "version": "d176183abab2d211",
  "builtFrom": {
   "base": "4ea27b0018705940",
   "addition": {
@@ -66,6 +66,66 @@
    "rejudge": [
     "RD04"
    ]
+  },
+  "iteration2Fold": {
+   "settledOutcomes": {
+    "path": "~/scratch/2026-08-04-iter2-reconciliation/settled-outcomes.json",
+    "sha256": "1c64dd22b46f263efd2109c261540ab7b008acf5f692e862a0ae69f3205c3d0c",
+    "items": 27,
+    "excluded": 7
+   },
+   "applied": {
+    "statements": [
+     "RG22",
+     "RG27"
+    ],
+    "termination": [
+     "RG21"
+    ],
+    "rule": [
+     "RULE-ANCHOR-V2"
+    ],
+    "anchors": [
+     "AG03",
+     "AG17",
+     "DISP-c-03",
+     "EXP-c-11",
+     "EXP-o-xe-g27R",
+     "SCHED-c-08",
+     "SCHED-c-ru07a",
+     "SCHED-c-ru13a",
+     "SCHED-o-g05",
+     "SCHED-r-d05",
+     "SCHED-r-d07",
+     "SCHED-r-d08",
+     "SCHED-r-d20",
+     "SCHED-r-d24",
+     "SCHED-r-d25",
+     "SCHED-r-d29",
+     "SCHED-r-d32",
+     "SCHED-r-d33",
+     "SCHED-r-d34",
+     "SCHED-r-d41",
+     "BF-d11",
+     "BF-d37",
+     "BF-g22R"
+    ]
+   },
+   "previousVersion": "0aadc215658a775b",
+   "blindedQueue": [
+    "AC13B",
+    "SCHED-c-15",
+    "DISP-o-xd-g20",
+    "DISP-o-xd-g26",
+    "SCHED-o-g07",
+    "SCHED-o-g14",
+    "SCHED-r-d18",
+    "BF-d39",
+    "BF-g21R",
+    "BF-d44",
+    "SCHED-r-d35"
+   ],
+   "notes": "Every folded anchor byte-verified against artifacts/2026-08-02-golden-dataset-v2/frame-sources.json.gz; BF-d44 and SCHED-r-d35 were unanimously voted but refuted by bytes and route to the blinded queue. EXP-o-xe-g21 keeps its v2 anchor: its corrected anchor (BF-g21R) carries an opus dissent and awaits the blinded ruling."
   }
  },
  "sourceReports": 145,
@@ -296,7 +356,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "seed"
+   "frame": "seed",
+   "anchors": {
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export const MAX_ATTEMPTS = 5;",
+    "identifier": "MAX_ATTEMPTS"
+   }
   },
   {
    "id": "SCHED-r-d06",
@@ -362,7 +429,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export async function renewLease(store, jobId, worker, now) {",
+    "identifier": "renewLease"
+   }
   },
   {
    "id": "SCHED-r-d08",
@@ -395,7 +469,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export async function sweepExpired(store, now = Date.now()) {",
+    "identifier": "sweepExpired"
+   }
   },
   {
    "id": "SCHED-c-07",
@@ -463,7 +544,16 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/worker.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export async function runOnce(store, worker, handler) {",
+    "absent": [
+     "renewLease("
+    ]
+   }
   },
   {
    "id": "SCHED-o-g14",
@@ -569,7 +659,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/worker.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "const next = { ...job, state: \"pending\", claimedBy: null, attempts: 0, lastError: error.message };",
+    "identifier": "error.message"
+   }
   },
   {
    "id": "SCHED-r-d18",
@@ -669,7 +766,14 @@
    "tier": "blocking",
    "consensus": "unanimous",
    "dissent": "RESOLVED 2026-08-02: RULING 4 confirmation deliberation (state consensus-ruling4), unanimous blocking — the caller-side discount the stall rested on is now ruled. Original stall: sol holds blocking=true: `getJob` and `listJobs` return the exact objects held by the Map, so mutating a returned public record silently changes stored state without `saveJob`.",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/store.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export function listJobs(store, state) {",
+    "identifier": "listJobs"
+   }
   },
   {
    "id": "SCHED-r-d24",
@@ -704,7 +808,14 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/format.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export function formatDuration(ms) {",
+    "identifier": "formatDuration"
+   }
   },
   {
    "id": "SCHED-r-d25",
@@ -737,7 +848,14 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/format.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export function formatDuration(ms) {",
+    "identifier": "formatDuration"
+   }
   },
   {
    "id": "SCHED-r-d29",
@@ -770,7 +888,14 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/format.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export function formatJobLine(job, now = Date.now()) {",
+    "identifier": "formatJobLine"
+   }
   },
   {
    "id": "SCHED-r-d32",
@@ -803,7 +928,18 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "test/format.test.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "formatDuration",
+    "absent": [
+     "src/store",
+     "src/scheduler",
+     "src/worker"
+    ]
+   }
   },
   {
    "id": "SCHED-r-d33",
@@ -836,7 +972,16 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "test/format.test.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "formatDuration",
+    "absent": [
+     "59_950"
+    ]
+   }
   },
   {
    "id": "SCHED-r-d34",
@@ -869,7 +1014,23 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "seed"
+   "frame": "seed",
+   "anchors": {
+    "match": "two-sided",
+    "state": "seed",
+    "doc": {
+     "file": "docs/scheduling.md",
+     "present": [
+      "renew(s|ing)? the lease|exactly one worker"
+     ]
+    },
+    "code": {
+     "file": "src/worker.js",
+     "absent": [
+      "renewLease("
+     ]
+    }
+   }
   },
   {
    "id": "SCHED-r-d35",
@@ -936,7 +1097,14 @@
    "tier": "blocking",
    "consensus": "unanimous",
    "dissent": "RESOLVED 2026-08-02: RULING 4 confirmation deliberation (state consensus-ruling4), unanimous blocking — same ground as SCHED-r-d20. Original stall: sol holds blocking=true: `saveJob` copies only the outer job while `runOnce` passes the shared `payload` to the handler, so a failing handler can silently alter the payload subsequently persisted for retry.",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/store.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "store.jobs.set(job.id, { ...job });",
+    "identifier": "saveJob"
+   }
   },
   {
    "id": "SCHED-r-d39",
@@ -1002,7 +1170,14 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export async function renewLease(store, jobId, worker, now) {",
+    "identifier": "renewLease"
+   }
   },
   {
    "id": "SCHED-r-d44",
@@ -1214,7 +1389,14 @@
    "status": "active",
    "tier": "harmful",
    "consensus": "unanimous",
-   "frame": "session"
+   "frame": "session",
+   "anchors": {
+    "file": "src/scheduler.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export async function sweepExpired(store, now = Date.now()) {",
+    "identifier": "sweepExpired"
+   }
   },
   {
    "id": "SCHED-o-g07",
@@ -1434,7 +1616,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "seed"
+   "frame": "seed",
+   "anchors": {
+    "file": "src/pager.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "const pageSize = Number(options.limit ?? DEFAULT_PAGE_SIZE);",
+    "identifier": "Number(options.limit ?? DEFAULT_PAGE_SIZE)"
+   }
   },
   {
    "id": "EXP-n-plus-one-customer",
@@ -1717,7 +1906,14 @@
    "status": "active",
    "tier": "blocking",
    "consensus": "unanimous",
-   "frame": "seed"
+   "frame": "seed",
+   "anchors": {
+    "file": "src/redact.js",
+    "match": "literal",
+    "state": "seed",
+    "expression": "export function maskCard(text) {",
+    "identifier": "maskCard"
+   }
   },
   {
    "id": "EXP-r-be1-04",
@@ -1993,7 +2189,7 @@
   {
    "id": "EXP-o-xe-g22",
    "task": "exporter",
-   "statement": "A NaN `row.amount` passes `toFixed(2)` and `Math.round` without throwing, so the row prints NaN and poisons `totalCents`, turning the exported TOTAL into NaN instead of raising an error.",
+   "statement": "A non-numeric `row.amount` is never validated: the row prints NaN and the accumulated total becomes NaN, corrupting the exported TOTAL line.",
    "members": [
     "O-XE-g22"
    ],
@@ -2002,19 +2198,19 @@
    ],
    "votes": {
     "sol": {
-     "blocking": true,
+     "blocking": false,
      "anyHarm": true,
-     "reason": "NaN passes both formatting operations, so exportOrders successfully returns an invalid amount and a poisoned TOTAL instead of reporting an error."
+     "reason": "For `row.amount = NaN`, `toFixed(2)` emits `NaN` and `Math.round` poisons `totalCents`, producing a defective but visibly invalid report rather than a blocking silent result."
     },
     "opus": {
-     "blocking": true,
+     "blocking": false,
      "anyHarm": true,
-     "reason": "`totalCents += Math.round(row.amount * 100)` silently absorbs NaN (Math.round(NaN)=NaN) so one bad row makes the final `(totalCents/100).toFixed(2)` render \"NaN\" and erases every good row's money from a summary the doc says is read positionally as the last line — a corrupted money aggregate that never raises, which is strictly worse than the one-cent divergence I graded blocking in I13."
+     "reason": "Nothing validates `row.amount`, so a NaN flows through `toFixed` into the row and through `Math.round` into `totalCents`, poisoning the whole TOTAL, but it surfaces as the literal invalid token `NaN` that no numeric consumer accepts as a value rather than as a plausible wrong number."
     },
     "analyst": {
-     "blocking": true,
+     "blocking": false,
      "anyHarm": true,
-     "reason": "a NaN amount prints NaN and poisons totalCents so the TOTAL line is NaN — the money summary silently corrupts on data the signature accepts (RULING 4)."
+     "reason": "Conceding to harmful on the judges' shared ground, which addresses the rubric anchor directly: the corrupted cells read as the literal string NaN — self-identifying garbage, not a plausible wrong number a consumer would act on unknowingly. The export completing without error keeps this harmful; the corruption failing to masquerade is what separates it from RG21, where the wrong total looks right. This is a genuine tier re-derivation under the replacement, not pressure."
     }
    },
    "firstSeen": "2026-08-02-golden-dataset-v2",
@@ -2023,14 +2219,23 @@
    "reachable": true,
    "precondition": "a row carries a NaN amount",
    "anchors": {
-    "expression": "totalCents += Math.round(row.amount * 100)",
-    "identifier": "exportOrders",
     "file": "src/exporter.js",
-    "match": "literal",
-    "state": "end"
+    "match": "regex",
+    "state": "emergent",
+    "expression": "SUMMARY_LABEL|\\bTOTAL\\b",
+    "identifier": "trailer",
+    "absent": [
+     "Number.isFinite(",
+     "isNaN("
+    ]
    },
-   "tier": "blocking",
-   "consensus": "unanimous"
+   "tier": "harmful",
+   "consensus": "unanimous",
+   "precisionRepair": {
+    "replaces": "RG22",
+    "previousStatement": "A NaN `row.amount` passes `toFixed(2)` and `Math.round` without throwing, so the row prints NaN and poisons `totalCents`, turning the exported TOTAL into NaN instead of raising an error.",
+    "stateDir": "~/scratch/2026-08-04-iter2-wave/consensus-repairs"
+   }
   },
   {
    "id": "EXP-o-xe-g15",
@@ -2121,7 +2326,7 @@
   {
    "id": "EXP-o-xe-g21",
    "task": "exporter",
-   "statement": "`totalCents += Math.round(row.amount * 100)` and the per-row `row.amount.toFixed(2)` apply different tie-rounding rules, so the TOTAL line can differ by a cent from the sum of the printed amounts.",
+   "statement": "The exported TOTAL line is computed through a different arithmetic path than the printed per-row amounts, so the TOTAL can disagree with the sum of the rows as printed.",
    "members": [
     "O-XE-g21"
    ],
@@ -2130,19 +2335,19 @@
    ],
    "votes": {
     "sol": {
-     "blocking": true,
+     "blocking": false,
      "anyHarm": true,
-     "reason": "For example, -1.125 prints as -1.13 while Math.round(-1.125 * 100) contributes -112 cents, silently making TOTAL disagree with the exported amounts."
+     "reason": "`row.amount.toFixed(2)` can round differently from `Math.round(row.amount * 100)`, so the TOTAL can contradict printed rows, but this is explicitly a non-blocking reporting inaccuracy."
     },
     "opus": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "`toFixed` strips the sign before choosing the larger n (ties away from zero), so `(-1.125).toFixed(2)` prints \"-1.13\" while `Math.round(-1.125*100)` = Math.round(-112.5) = -112 (ties toward +infinity) accumulates -1.12, and separately 0.615 prints \"0.61\" while `0.615*100` lands on 61.5 and contributes 62 — a plausible-looking TOTAL that breaks the doc's stated guarantee that \"the printed total is exactly the sum of the printed per-row amounts\"."
+     "reason": "`Math.round(row.amount * 100)` evaluates a different number than `row.amount.toFixed(2)` reads off the original double (e.g. 8.165 prints \"8.16\" but accumulates 817 cents), so the delivered CSV's TOTAL line is a plausible money figure that silently is not the sum of its own printed rows — contradicting both the inline comment and the doc's \"exactly the sum of the printed per-row amounts\", and this line is the payload the caller consumes, not a report about the run."
     },
     "analyst": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "verified sol exhibit: (-1.125).toFixed(2) is -1.13 while Math.round(-1.125*100) contributes -112, and 0.615 prints 0.61 but contributes 62 — the docs promise exact reconciliation and a money summary silently drifts a cent; my unevidenced claim was wrong."
+     "reason": "Holding blocking with opus's round-2 ground: the TOTAL prints a plausible money figure that is not the sum of the printed rows, the divergence compounds across rows, and nothing fails loudly — that is the rubric's silent-incorrect-results anchor exactly. Sol's one-cent framing understates the statement's scope: the statement covers any two-path divergence, including accumulate-then-round realizations where drift grows with the export."
     }
    },
    "firstSeen": "2026-08-02-golden-dataset-v2",
@@ -2157,13 +2362,19 @@
     "state": "end"
    },
    "tier": "blocking",
-   "consensus": "unanimous",
-   "precondition": "a negative amount falls on a half-cent boundary where Math.round and toFixed disagree"
+   "consensus": "unresolved",
+   "precondition": "a negative amount falls on a half-cent boundary where Math.round and toFixed disagree",
+   "precisionRepair": {
+    "replaces": "RG21",
+    "previousStatement": "`totalCents += Math.round(row.amount * 100)` and the per-row `row.amount.toFixed(2)` apply different tie-rounding rules, so the TOTAL line can differ by a cent from the sum of the printed amounts.",
+    "stateDir": "~/scratch/2026-08-04-iter2-wave/consensus-repairs"
+   },
+   "dissent": "sol dissent carried verbatim under Option A termination (round 3, ~/scratch/2026-08-04-iter2-wave/consensus-repairs): `row.amount.toFixed(2)` can round differently from `Math.round(row.amount * 100)`, so the TOTAL can contradict printed rows, but this is explicitly a non-blocking reporting inaccuracy."
   },
   {
    "id": "EXP-o-xe-g27",
    "task": "exporter",
-   "statement": "The newly appended TOTAL line breaks existing consumers, which can no longer assume every post-header line is an order row.",
+   "statement": "The newly appended summary/TOTAL trailer line breaks existing consumers, which can no longer assume every post-header line is an order row.",
    "members": [
     "O-XE-g27"
    ],
@@ -2174,17 +2385,17 @@
     "sol": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "The unconditional TOTAL push changes the prior public output from header-plus-order-rows to include a non-order row that existing consumers can silently ingest as an order."
+     "reason": "Adding a non-order trailer violates the prior one-line-per-order format and can make existing consumers silently process TOTAL as an order."
     },
     "opus": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "The start-state doc states the exporter \"writes one CSV line per order\", and the unconditional `lines.push(csvRow([SUMMARY_LABEL, count, \"\", (totalCents/100).toFixed(2), \"\"]))` appends a non-order line in the identical five-column shape, so an existing consumer treating post-header lines as orders silently ingests a phantom order carrying the grand total."
+     "reason": "The original doc states the exporter \"writes one CSV line per order,\" and the appended rectangular, position-only-identifiable TOTAL row parses cleanly as an order, so existing consumers silently double their amount column and over-count rows with no error surfaced."
     },
     "analyst": {
      "blocking": true,
      "anyHarm": true,
-     "reason": "conceding on the phantom-order mechanism: a consumer of the prior format that treats post-header lines as orders silently ingests the grand total as an order row and double-counts the export — the in-session doc update does not reach existing consumers."
+     "reason": "The trailer row is appended unconditionally to a format consumers previously could parse as header-plus-order-rows; any existing consumer iterating post-header lines now ingests a non-order row as data. A silent breaking change to the exported file contract is release-blocking; the replacement only stops naming the trailer by one run's label."
     }
    },
    "firstSeen": "2026-08-02-golden-dataset-v2",
@@ -2193,14 +2404,19 @@
    "reachable": true,
    "precondition": "an existing consumer treats every post-header line as an order row",
    "anchors": {
-    "expression": "lines.push(csvRow([SUMMARY_LABEL, count, \"\", (totalCents / 100).toFixed(2), \"\"]))",
-    "identifier": "exportOrders",
     "file": "src/exporter.js",
-    "match": "literal",
-    "state": "end"
+    "match": "regex",
+    "state": "emergent",
+    "expression": "SUMMARY_LABEL|\\bTOTAL\\b",
+    "identifier": "trailer"
    },
    "tier": "blocking",
-   "consensus": "unanimous"
+   "consensus": "unanimous",
+   "precisionRepair": {
+    "replaces": "RG27",
+    "previousStatement": "The newly appended TOTAL line breaks existing consumers, which can no longer assume every post-header line is an order row.",
+    "stateDir": "~/scratch/2026-08-04-iter2-wave/consensus-repairs"
+   }
   },
   {
    "id": "EXP-o-xe-g14",
@@ -2325,11 +2541,16 @@
    "frame": "session",
    "reachable": true,
    "anchors": {
-    "expression": "containing only the header row",
-    "identifier": "docs",
-    "file": "docs/exports.md",
-    "match": "literal",
-    "state": "end"
+    "match": "two-sided",
+    "state": "emergent",
+    "code": {
+     "file": "src/exporter.js",
+     "present": "SUMMARY_LABEL|\\bTOTAL\\b|summary row|trailer"
+    },
+    "doc": {
+     "file": "docs/exports.md",
+     "contradicts": "(only|just) the header"
+    }
    },
    "tier": "harmful",
    "consensus": "unanimous",
@@ -2414,7 +2635,7 @@
     "identifier": "complete",
     "file": "src/scheduler.js",
     "match": "literal",
-    "state": "end"
+    "state": "seed"
    },
    "tier": "blocking",
    "consensus": "unanimous"
@@ -2455,7 +2676,7 @@
     "identifier": "claimNext",
     "file": "src/scheduler.js",
     "match": "literal",
-    "state": "end"
+    "state": "seed"
    },
    "tier": "harmful",
    "consensus": "unanimous",
@@ -2899,11 +3120,15 @@
    "reachable": true,
    "precondition": "an attempt exceeds timeoutMs while the upstream still processes it",
    "anchors": {
-    "expression": "return Promise.race([started, expiry]).finally(() => clearTimeout(timer))",
-    "identifier": "runAttempt",
     "file": "src/retry.js",
-    "match": "literal",
-    "state": "end"
+    "match": "regex",
+    "state": "emergent",
+    "identifier": "runAttempt",
+    "expression": "(async\\s+)?function\\s+runAttempt\\b|const\\s+runAttempt\\s*=",
+    "absent": [
+     "AbortController",
+     ".abort("
+    ]
    },
    "tier": "harmful",
    "consensus": "unresolved",
@@ -5079,5 +5304,14 @@
    "reason": "consensus: real, individuated onto SCHED-requeue-resets-attempts under RULING 2",
    "dissent": "opus holds anyHarm=true: No function shown raises attempts — sweepExpired writes `{ ...job, state: \"pending\" }` and spreads attempts unchanged, so the dissent's counterfactual fails: repairing requeue alone still leaves a crash/lease-expiry poison job at attempts 0, exported isExhausted permanently false and store.dead never written, while claimNext's oldest-first ordering re-claims that same job at the queue head forever and re-runs its handler's side effects without bound."
   }
- ]
+ ],
+ "anchorRule": {
+  "id": "RULE-ANCHOR-V2",
+  "adopted": "2026-08-04",
+  "text": "AMENDED RULE TEXT under ratification (follow-up to RULE-ANCHOR, which all three participants adopted on the portability core while requiring the amendments below to appear in the ruled text itself; both judges' round-1/2 amendment demands are incorporated verbatim in substance):\n\n\"An anchor may pin only bytes that exist in the SEED, or a declaration regex that survives driver edits — never bytes that exist solely after a particular driver's edit.\n\n1. state:'seed' anchors stay as they are.\n2. Emergent-code issues use a declaration regex over the emergent identifier, state:'emergent', plus absent[] whose entries are exactly the identifiers whose introduction would resolve the issue, derived from the issue statement — never from any driver's diff. A record whose repair tokens cannot be derived from its statement emits no absent[] mechanically and routes to deliberation.\n3. Doc-staleness issues use a two-sided predicate where BOTH sides are byte matches, state:'emergent': the code side a positive match on the code construct, and the doc side a positive match on the specific stale assertion's surviving bytes, delimited by file plus a literal or regex locating that assertion. 'Still contradicting' is decided by byte presence at scoring time, never by a reader's semantic judgment. A doc-staleness record whose stale assertion cannot be pinned to surviving bytes routes to deliberation.\n4. absent[] is standard wherever the claim is an absence.\n\nBackfill under this rule is mechanical exactly where items 1–4 decide the form; every record they do not decide routes to individual deliberation, and the backfill artifact must list which branch produced each anchor so judgment calls are visible.\"\n\nVote: anyHarm=true adopts this text; blocking=true certifies it as mechanically applicable where its conditions are met.",
+  "provenance": [
+   "/Users/spannagel/scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/issues.json#issues[0].question",
+   "/Users/spannagel/scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/consensus.json#rounds.1.positions"
+  ]
+ }
 }
