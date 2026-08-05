@@ -9,7 +9,7 @@
  *   user-developer: user lens, developer envelope
  *
  * Usage:
- *   node experiments/role-order-quality.mjs \
+ *   node experiments/attic/role-order-quality.mjs \
  *     --session /path/to/session.jsonl --through ENTRY_ID \
  *     --heads-dir /path/to/.pi/hydra [--model gpt-5.6-terra] [--samples 3]
  */

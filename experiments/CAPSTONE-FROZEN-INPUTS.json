@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "status": "valid-v2; freeze identity verified separately",
+  "status": "frozen provisional judge basis; the live catalog versions independently",
   "dataset": {
-    "path": "experiments/golden-dataset.json",
-    "version": "d176183abab2d211",
-    "sha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5",
+    "path": "experiments/artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz",
+    "version": "2b0a85843c9be981",
+    "sha256": "4035950fd2ff2fbf1ee515f1d3da88f9437eebd15db198d354d305b6f1fce8c0",
     "active": 75,
-    "blocking": 26
+    "blocking": 28
   },
   "files": [
     {

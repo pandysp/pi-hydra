@@ -8,7 +8,7 @@
  * apply here (`trajectory-openai.mjs` explains why). Mixing the two would
  * report OpenAI numbers under Anthropic accounting.
  *
- * Usage: node experiments/analyse-openai-trajectory.mjs --rows rows.jsonl
+ * Usage: node experiments/attic/analyse-openai-trajectory.mjs --rows rows.jsonl
  */
 
 import { readFileSync } from "node:fs";

@@ -19,6 +19,41 @@ describe("anchor liveness under anchor state (A2)", () => {
 		expect(anchorLiveAtPoint(files, live)).toBe("live");
 		expect(anchorLiveAtPoint(files, fixed)).toBe("fixed");
 	});
+
+	it("judges a two-sided anchor live only while both byte-sides hold", () => {
+		const twoSided = {
+			anchors: {
+				match: "two-sided", state: "emergent",
+				code: { file: "src/exporter.js", present: "\\bTOTAL\\b" },
+				doc: { file: "docs/exports.md", contradicts: "only the header" },
+			},
+		};
+		const both = { "src/exporter.js": "emit(TOTAL);", "docs/exports.md": "only the header rows" };
+		expect(anchorLiveAtPoint(both, twoSided)).toBe("live");
+		expect(anchorLiveAtPoint({ ...both, "docs/exports.md": "header and trailer rows" }, twoSided)).toBe("fixed");
+		expect(anchorLiveAtPoint({ "src/exporter.js": "emit(TOTAL);" }, twoSided)).toBe("unknown");
+		const guarded = {
+			anchors: {
+				match: "two-sided", state: "emergent",
+				code: { file: "src/exporter.js", present: "\\bTOTAL\\b", absent: ["isFinite("] },
+				doc: { file: "docs/exports.md", contradicts: "only the header" },
+			},
+		};
+		expect(anchorLiveAtPoint({ ...both, "src/exporter.js": "if (isFinite(x)) emit(TOTAL);" }, guarded)).toBe("fixed");
+	});
+
+	it("judges an emergent declaration anchor through the gap-claim path", () => {
+		const emergent = {
+			anchors: {
+				file: "src/retry.js", match: "regex", state: "emergent",
+				expression: "function\\s+runAttempt\\b", absent: ["AbortController"],
+			},
+		};
+		expect(anchorLiveAtPoint({ "src/retry.js": "function runAttempt() {}" }, emergent)).toBe("live");
+		expect(anchorLiveAtPoint({ "src/retry.js": "function runAttempt() { new AbortController(); }" }, emergent)).toBe("fixed");
+		// The declaration does not exist yet: the record has no anchor to stand on.
+		expect(anchorLiveAtPoint({ "src/retry.js": "export const retries = 3;" }, emergent)).toBe("unknown");
+	});
 });
 
 describe("packet support and the one-judge floor (A3, A7)", () => {

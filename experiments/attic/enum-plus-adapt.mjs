@@ -23,7 +23,7 @@
  * carry no file state.
  *
  * Usage:
- *   node experiments/enum-plus-adapt.mjs --probe rows.jsonl \
+ *   node experiments/attic/enum-plus-adapt.mjs --probe rows.jsonl \
  *     --trajectory <pilot rows.jsonl> --output adapted.jsonl
  */
 

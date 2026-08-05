@@ -27,7 +27,7 @@
  * `enumerate-variants.mjs`: plain `{variantId: promptString}` for
  * `adaptive-skip-probe.mjs`, NOT registry arms.
  *
- * Usage: node experiments/enum-plus-variants.mjs > variants.json
+ * Usage: node experiments/attic/enum-plus-variants.mjs > variants.json
  */
 
 import { MAIN, F2 } from "../adaptive-skip-variants.mjs";

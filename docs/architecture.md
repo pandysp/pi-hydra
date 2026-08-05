@@ -118,7 +118,7 @@ driver throughout:        CH ~87%, zero errors across every shared-mode run
 
 Byte-parity itself was verified separately on every captured pair of the session: the observation payload minus its appended items reproduces the driver payload byte-for-byte (the recipe below).
 
-The registered production-shaped OpenAI wave on 2026-08-03 provides the better session-level cost reference: across comparable observations MAIN cost $0.0253 per observation and 52.1% of driver cost, while ENUM cost $0.0356 and 77.0%. Counting the two zero-prefix calls that could not be compared but were still charged raises the all-call ratios to 66.2% and 93.3%. MAIN was cheaper in all six cells. These numbers establish cost only; the quality comparison remains blank until Opus judges the frozen rows and golden v2 is valid. See [OPENAI-CAPSTONE-PRODUCER-RESULTS.md](../experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
+The registered production-shaped OpenAI wave on 2026-08-03 provides the better session-level cost reference: across comparable observations MAIN cost $0.0253 per observation and 52.1% of driver cost, while ENUM cost $0.0356 and 77.0%. Counting the two zero-prefix calls that could not be compared but were still charged raises the all-call ratios to 66.2% and 93.3%. MAIN was cheaper in all six cells. These numbers establish cost only; the quality benchmark is still in progress. See [OPENAI-CAPSTONE-PRODUCER-RESULTS.md](../experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
 
 **The API-key path (`openai/openai-responses`) shares this serializer but stays gated off** in `observe()` until someone measures it: the platform API documents 30-minute retention, itemized `cache_write_tokens`, and key-based scoping, so both its numbers and its economics should differ from the codex backend in hydra's favor.
 
@@ -175,7 +175,7 @@ cd pi-hydra
 npm install        # dev tooling only; users installing the extension inherit nothing
 npm run check      # tsc --strict
 npm test           # vitest on the pure helpers
-# Edit index.ts / utils.ts, then reload pi (Ctrl-R or /reload) to pick up changes
+# Edit the root .ts files, then reload pi (Ctrl-R or /reload) to pick up changes
 ```
 
 There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `protocol.ts` holds the hydra tool's wire contract; `delivery.ts` and `delivery-types.ts` hold the delivery ledger and its shapes (tests in `delivery.test.ts`); `utils.ts` holds the remaining pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.

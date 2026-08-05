@@ -18,7 +18,7 @@
  * trajectory scoring and the probe scoring cannot drift apart.
  *
  * Usage:
- *   node experiments/enum-trajectory-adapt.mjs --rows rows.jsonl --output adapted.jsonl
+ *   node experiments/attic/enum-trajectory-adapt.mjs --rows rows.jsonl --output adapted.jsonl
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

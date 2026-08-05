@@ -26,7 +26,7 @@
  * Requires a ChatGPT subscription login in ~/.pi/agent/auth.json. Costs a
  * few tiny requests of subscription quota.
  *
- * Usage: node experiments/codex-entitlement.mjs [--model gpt-5.6-luna]
+ * Usage: node experiments/attic/codex-entitlement.mjs [--model gpt-5.6-luna]
  */
 
 import { readFileSync } from "node:fs";

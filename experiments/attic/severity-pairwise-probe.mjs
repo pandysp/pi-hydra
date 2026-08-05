@@ -29,7 +29,7 @@
  * are subscription-billed.
  *
  * Usage:
- *   node experiments/severity-pairwise-probe.mjs \
+ *   node experiments/attic/severity-pairwise-probe.mjs \
  *     --rows ~/scratch/2026-08-01-hydra-c2-trajectory/rows.jsonl \
  *     --out  ~/scratch/2026-08-01-hydra-severity-v3
  */

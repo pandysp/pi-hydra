@@ -24,7 +24,7 @@
  * queue ABSORBS steer's semantics: one agent-directed non-emergency channel
  * covering urgent and deferrable alike. `interrupt` stays in both (spec).
  *
- * Usage: node experiments/no-steer-variants.mjs > variants.json
+ * Usage: node experiments/attic/no-steer-variants.mjs > variants.json
  */
 
 import { MAIN, F2 } from "../adaptive-skip-variants.mjs";

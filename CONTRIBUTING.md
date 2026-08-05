@@ -18,7 +18,8 @@ Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the c
 
 ```bash
 npm run check    # tsc --strict
-npm test         # vitest on the pure helpers
+npm test         # vitest: root modules plus the experiments suite
+npm run gates    # experiments invariant gates (CI runs these too)
 ```
 
 Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hydra-heads test-interrupt`); they fire once and revert.
@@ -32,7 +33,7 @@ Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hyd
 
 ## The bar
 
-Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar. If your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in `utils.ts` with tests. Match the style of the file you are editing.
+Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar. If your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in the matching root module with tests (`protocol.ts`, `delivery.ts`, `utils.ts`). Match the style of the file you are editing.
 
 ## Working in the research branch
 

@@ -432,8 +432,12 @@ function ledger(args) {
 			}
 		}
 		if (existsSync(MIRROR_ROOT)) {
-			for (const dir of readdirSync(MIRROR_ROOT)) {
-				if (!entries.some((entry) => (entry.mirrorPath ?? "").includes(dir))) unledgered.push(`mirror: ${dir}`);
+			// Directories only, like the repo side: the mirror root also holds
+			// documentation files, a .git dir, and meta/ (non-run records —
+			// coordination snapshots, reports), none of which are waves.
+			for (const dir of readdirSync(MIRROR_ROOT, { withFileTypes: true })) {
+				if (!dir.isDirectory() || dir.name.startsWith(".") || dir.name === "meta") continue;
+				if (!entries.some((entry) => (entry.mirrorPath ?? "").includes(dir.name))) unledgered.push(`mirror: ${dir.name}`);
 			}
 		}
 		for (const item of unledgered) console.log(`NO LEDGER ENTRY — ${item}`);

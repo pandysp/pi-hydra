@@ -10,7 +10,7 @@
  *      If M was NOT cached by A: read ≈ prefix, write ≈ M + followup.
  *      If M WAS cached by A (hypothesis rejected): read ≈ prefix + M.
  *
- * Usage: node experiments/cache-automatic.mjs [--model claude-haiku-4-5]
+ * Usage: node experiments/attic/cache-automatic.mjs [--model claude-haiku-4-5]
  */
 
 import {

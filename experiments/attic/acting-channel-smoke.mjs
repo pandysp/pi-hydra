@@ -35,9 +35,9 @@
  *   S5  the invariant check (zero spend) — run it first.
  *
  * Usage:
- *   node experiments/acting-channel-smoke.mjs --output rows.jsonl \
+ *   node experiments/attic/acting-channel-smoke.mjs --output rows.jsonl \
  *     --models terra-medium,sonnet-medium --arms T,J,F --samples 2
- *   node experiments/acting-channel-smoke.mjs --output rows.jsonl \
+ *   node experiments/attic/acting-channel-smoke.mjs --output rows.jsonl \
  *     --models terra-medium,sonnet-medium --cases foreman-self-remove --samples 4
  *
  * The second invocation raises n on the self-removal case alone; the resume key

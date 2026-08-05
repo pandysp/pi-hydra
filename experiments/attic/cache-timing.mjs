@@ -24,7 +24,7 @@
  *   - CONTROL probe well after writer completion validates that breakpoint
  *     walk-back lookup (followup marker → M block boundary) works at all.
  *
- * Usage: node experiments/cache-timing.mjs [--model claude-haiku-4-5] [--probe-delays 150,500,...]
+ * Usage: node experiments/attic/cache-timing.mjs [--model claude-haiku-4-5] [--probe-delays 150,500,...]
  */
 
 import {

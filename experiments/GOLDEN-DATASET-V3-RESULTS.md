@@ -63,7 +63,38 @@ Both route to the blinded queue instead of the catalog.
 
 `AC13B`, `SCHED-c-15`, `DISP-o-xd-g20`, `DISP-o-xd-g26`, `SCHED-o-g07`,
 `SCHED-o-g14`, `SCHED-r-d18`, `BF-d39`, `BF-g21R`, `BF-d44`, `SCHED-r-d35`.
-`EXP-o-xe-g21` keeps its v2 anchor until the BF-g21R ruling.
+`EXP-o-xe-g21` keeps its v2 anchor until the BF-g21R ruling. Two items are
+pre-triaged for a fast ruling: `SCHED-r-d35` is mechanically correctable
+(one token, `# Scheduling` -> `# Scheduler`); `BF-d44` needs a
+function-scoped anchor design the current rule cannot express. The queue is
+ruled by Andreas from blinded evidence (per `JUDGE-DESIGN-SELECTED.md`);
+rulings enter the catalog at the next version boundary and are recorded in
+that fold's freeze artifact.
+
+## Anchor-resolution semantics (registered; awaiting Andreas's ratification)
+
+The fold forced three resolution rules that RULE-ANCHOR-V2's text implies
+but does not spell out. They are implemented identically in the reference
+checker (`golden-dataset-frame-sources.mjs`) and the scoring-time liveness
+path (`capstone-score.mjs#anchorLiveAtPoint`, with tests), and are recorded
+here as one reviewable decision because they bind future denominators:
+
+1. `state: "emergent"` resolves against the session END state (checker) and
+   through the gap-claim path at scoring time: no declaration match means
+   "unknown" (no anchor to stand on), declaration plus absent repair tokens
+   means live, declaration plus a repair token means fixed. All four
+   ratified emergent anchors resolve at end and fail at start, so end-only
+   is what was actually voted.
+2. A session-frame record may carry a `state: "seed"` anchor (the rule's
+   whole point: pin only seed bytes or surviving declarations); it resolves
+   against the seed files.
+3. `match: "two-sided"` is live only while BOTH byte-sides hold (code
+   construct present AND stale doc assertion still contradicting); either
+   side repaired means fixed; a missing file means unknown.
+
+Nothing recorded is sensitive to the end-vs-either choice in rule 1 today;
+if Andreas prefers "either", the change is one line in each path with no
+recorded number moving.
 
 ## What this changes downstream
 

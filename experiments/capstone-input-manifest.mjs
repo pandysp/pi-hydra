@@ -7,6 +7,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { argOf } from "./lib.mjs";
 
 export const CAPSTONE_INPUTS = [
@@ -50,15 +51,22 @@ export const CAPSTONE_INPUTS = [
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-export function buildCapstoneInputManifest(datasetPath = "experiments/golden-dataset.json") {
-	const datasetBytes = readFileSync(datasetPath);
+// The capstone's dataset identity is the FROZEN judge basis — the exact
+// provisional dataset shown to the judges — never the live catalog, which
+// moves on version folds while this table stays immutable.
+export function buildCapstoneInputManifest(
+	datasetPath = "experiments/artifacts/2026-08-03-openai-capstone-judge-basis/golden-dataset.json.gz",
+) {
+	const datasetBytes = datasetPath.endsWith(".gz")
+		? gunzipSync(readFileSync(datasetPath))
+		: readFileSync(datasetPath);
 	const dataset = JSON.parse(datasetBytes.toString("utf8"));
 	const active = dataset.issues.filter((issue) => issue.status === "active");
 	return {
 		schemaVersion: 1,
 		status: dataset.provisional
-			? "provisional-v2; regenerate after consensus and freeze"
-			: "valid-v2; freeze identity verified separately",
+			? "frozen provisional judge basis; the live catalog versions independently"
+			: "frozen judge basis; the live catalog versions independently",
 		dataset: {
 			path: datasetPath,
 			version: dataset.version,

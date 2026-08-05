@@ -50,6 +50,30 @@ export function rowKeyOf(sourceKey) {
 
 export function anchorLiveAtPoint(files, issue) {
 	const anchors = issue.anchors;
+	// RULE-ANCHOR-V2 two-sided predicate (doc-staleness): live only while BOTH
+	// byte-sides hold at this point — the code construct present and the stale
+	// doc assertion still contradicting; a repaired side means fixed; a missing
+	// file means the frame cannot answer.
+	if (anchors?.match === "two-sided") {
+		const side = (spec) => {
+			const content = files?.[spec.file];
+			if (content === undefined) return "unknown";
+			const patterns = [spec.present ?? spec.contradicts]
+				.flat()
+				.filter((pattern) => pattern !== undefined);
+			for (const pattern of patterns) {
+				if (!new RegExp(pattern).test(content)) return "fixed";
+			}
+			for (const token of spec.absent ?? []) {
+				if (content.includes(token)) return "fixed";
+			}
+			return "live";
+		};
+		const code = side(anchors.code ?? {});
+		const doc = side(anchors.doc ?? {});
+		if (code === "unknown" || doc === "unknown") return "unknown";
+		return code === "live" && doc === "live" ? "live" : "fixed";
+	}
 	if (!anchors?.file || !anchors?.expression) return "unknown";
 	// A2: an end-state anchor transcribes ONE driver run's post-edit bytes;
 	// against any other run it is a foreign frame and can only answer

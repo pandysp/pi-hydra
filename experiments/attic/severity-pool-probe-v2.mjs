@@ -41,7 +41,7 @@
  * Zero producer spend: judges only, both subscription-billed.
  *
  * Usage:
- *   node experiments/severity-pool-probe-v2.mjs --rows rows.jsonl --output out.json
+ *   node experiments/attic/severity-pool-probe-v2.mjs --rows rows.jsonl --output out.json
  */
 
 import { spawn } from "node:child_process";

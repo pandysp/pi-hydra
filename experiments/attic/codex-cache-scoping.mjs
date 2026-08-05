@@ -37,7 +37,7 @@
  * ("openai-codex"; run `pi` and log in). Costs subscription quota
  * (~75K input tokens ≈ cents) and ~13 minutes of wall clock.
  *
- * Usage: node experiments/codex-cache-scoping.mjs [--model gpt-5.6-luna] [--facts 600]
+ * Usage: node experiments/attic/codex-cache-scoping.mjs [--model gpt-5.6-luna] [--facts 600]
  */
 
 import { readFileSync } from "node:fs";

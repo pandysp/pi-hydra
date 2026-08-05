@@ -12,7 +12,7 @@
  *   3. probe (driver-next-turn shape): prefix + M(no marker) + user(marker)
  *      Expect: read ≈ prefix + M (walk-back hit), write ≈ followup only.
  *
- * Usage: node experiments/cache-thinking-walkback.mjs [--model claude-fable-5] [--effort xhigh]
+ * Usage: node experiments/attic/cache-thinking-walkback.mjs [--model claude-fable-5] [--effort xhigh]
  */
 
 import {

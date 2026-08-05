@@ -14,7 +14,7 @@
  *   H4  N PARALLEL forks including M (marker on M) each pay cache_creation,
  *       i.e. racing cache writes are not deduplicated server-side.
  *
- * Usage: node experiments/cache-latest-message.mjs [--model claude-haiku-4-5] [--padding-sentences 100]
+ * Usage: node experiments/attic/cache-latest-message.mjs [--model claude-haiku-4-5] [--padding-sentences 100]
  */
 
 import {

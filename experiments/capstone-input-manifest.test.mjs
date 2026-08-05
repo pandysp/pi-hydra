@@ -7,7 +7,7 @@ import { buildCapstoneInputManifest, CAPSTONE_INPUTS, renderCapstoneInputManifes
 describe("capstone frozen-input manifest", () => {
 	it("covers every registered frozen trajectory family and matches the committed manifest", () => {
 		const manifest = buildCapstoneInputManifest();
-		expect(manifest.status).toBe("valid-v2; freeze identity verified separately");
+		expect(manifest.status).toBe("frozen provisional judge basis; the live catalog versions independently");
 		expect(manifest.files).toHaveLength(CAPSTONE_INPUTS.length);
 		expect(new Set(manifest.files.map((file) => file.path)).size).toBe(CAPSTONE_INPUTS.length);
 		expect(manifest.files.every((file) => file.bytes > 0 && /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);
@@ -20,12 +20,12 @@ describe("capstone frozen-input manifest", () => {
 		expect(readFileSync("experiments/CAPSTONE-FROZEN-INPUTS.json", "utf8")).toBe(renderCapstoneInputManifest());
 	});
 
-	it("stops calling the input set provisional when the dataset is valid", () => {
+	it("drops the provisional wording when the pinned basis is not provisional", () => {
 		const dir = mkdtempSync(join(tmpdir(), "capstone-final-dataset-"));
 		const dataset = JSON.parse(readFileSync("experiments/golden-dataset.json", "utf8"));
 		delete dataset.provisional;
 		const path = join(dir, "golden-dataset.json");
 		writeFileSync(path, `${JSON.stringify(dataset)}\n`);
-		expect(buildCapstoneInputManifest(path).status).toBe("valid-v2; freeze identity verified separately");
+		expect(buildCapstoneInputManifest(path).status).toBe("frozen judge basis; the live catalog versions independently");
 	});
 });
