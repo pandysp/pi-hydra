@@ -27,9 +27,9 @@ the golden set. Its pre-golden hashes are:
 
 | Input | SHA-256 |
 |---|---|
-| `experiments/completion-protocol-ab.mjs` | `a7a25801065f6f05fb0ec7e3ff51cdd596e071a55eb965d1201b120566849d36` |
+| `experiments/attic/completion-protocol-ab.mjs` | `a7a25801065f6f05fb0ec7e3ff51cdd596e071a55eb965d1201b120566849d36` |
 | `experiments/tool-free-protocol.mjs` | `ccfee0291fcca465925508ec1cba38691898b2ea680aaa0a206c8d08ad273422` |
-| `experiments/envelope-acting-ab.mjs` | `ef8fbd828826cc2d96166d911a0149bf1d936a54aaeb7dcf86d53dbf4d773e2e` |
+| `experiments/attic/envelope-acting-ab.mjs` | `ef8fbd828826cc2d96166d911a0149bf1d936a54aaeb7dcf86d53dbf4d773e2e` |
 | `heads/security.md` | `42c33b0c8570c5a201d55b2dceb1a05cadf47c1ee30240dc34f2e21eb937453b` |
 | `heads/quality.md` | `dd9b0d691c5cff10fa3abe22a2963d174976a91e11433e0a3b4624a7582109c4` |
 

@@ -188,7 +188,7 @@ and that the actual re-judging delta is the 12 cache-only-invalid findings
 (no F2 among them). Staging output: `--output` writes `rejudge-points.json`
 (the 12 sourceKeys). Invocation per judge once approved:
 
-    node experiments/capstone-old-realign.mjs --output ~/scratch/<date>-old-realign
+    node experiments/attic/capstone-old-realign.mjs --output ~/scratch/<date>-old-realign
     node experiments/capstone-trajectory-judge.mjs       --rows-gz experiments/artifacts/2026-08-02-openai-trajectory/rows.jsonl.gz       --payloads-tar experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz       --dataset <provisional-basis-bytes> --eligibility-policy semantic-v2       --points-file <the 12 sourceKeys' points> --judge {sol|opus} --output <checkpoint>
 
 **A5 — fresh-input cache-only re-judge under clarified instructions.** The

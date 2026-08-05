@@ -2,7 +2,7 @@
 
 Pre-registered in `NO-STEER-SPEC.md` (6b7fc38, amended bfb4de5 — both
 before data). Instrument: `experiments/adaptive-skip-probe.mjs` (reused,
-not rebuilt). Variants: `experiments/no-steer-variants.mjs`. 20 calls,
+not rebuilt). Variants: `experiments/attic/no-steer-variants.mjs`. 20 calls,
 zero errors, **$0.6741 spent**. One prefix (`scheduler/opus-high/a1/r1/6`,
 L=20,165), opus-high, 10 samples per variant — the same cell the skip
 study measured MAIN and F2 on, so the baselines are directly comparable.

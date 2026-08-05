@@ -362,7 +362,7 @@ and real acting-head behavior rather than cache metrics alone:
 Example production-path smoke:
 
 ```bash
-node experiments/envelope-acting-ab.mjs \
+node experiments/attic/envelope-acting-ab.mjs \
   --output /tmp/acting-smoke.jsonl \
   --samples 1 --thinking low --models terra --arms split-final3 \
   --cases docs-new-decision,tuner-dismissed-finding,foreman-two-uncovered-risks
@@ -471,7 +471,7 @@ artifacts; they are not promoted into a full-matrix claim here.
 Summarize split or resumed artifacts with:
 
 ```bash
-node experiments/summarize-completion-ab.mjs \
+node experiments/attic/summarize-completion-ab.mjs \
   --quality-control control.jsonl,sample-2.jsonl \
   --quality-treatment treatment.jsonl,sample-2.jsonl \
   --acting-control acting-control.jsonl,acting-sample-2.jsonl \

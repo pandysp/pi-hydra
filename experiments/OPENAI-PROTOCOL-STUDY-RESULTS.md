@@ -48,7 +48,7 @@ unaccepted judge batch contributed findings.
 The deterministic reconstruction is:
 
 ```bash
-node experiments/openai-protocol-study-results.mjs \
+node experiments/attic/openai-protocol-study-results.mjs \
   --rows ~/scratch/2026-08-02-openai-protocol-studies/rows.jsonl \
   --judge ~/scratch/2026-08-02-openai-protocol-studies/judge-sol.jsonl
 ```

@@ -2,7 +2,7 @@
 
 Pre-registered in `NO-STEER-V2-SPEC.md` (612baf0, before data). Instrument
 reused unchanged: `experiments/adaptive-skip-probe.mjs` with the variants
-from `experiments/no-steer-variants.mjs` (MAIN-NS: 686 chars, −10 vs MAIN;
+from `experiments/attic/no-steer-variants.mjs` (MAIN-NS: 686 chars, −10 vs MAIN;
 `steer` absent, `interrupt` retained — asserted before the run). 60 calls,
 zero errors, **$1.4716 spent**. Recorded-payload replay only; no judges,
 no new producer trajectories.

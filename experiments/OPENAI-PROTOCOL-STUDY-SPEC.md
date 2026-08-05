@@ -33,7 +33,7 @@ quality lens. Expected issue ids, target descriptions, severity, and routing
 live outside the prompt. The corpus hash and exact count are emitted by:
 
 ```bash
-node experiments/openai-protocol-study-cases.mjs
+node experiments/attic/openai-protocol-study-cases.mjs
 ```
 
 Frozen value: `44e8d60e94f8a063498478b219e87be8c68c892eb23343a634a92511e2c28c79`
@@ -154,14 +154,14 @@ on any header/hash/credential drift.
 Pre-spend dry run:
 
 ```bash
-node experiments/openai-protocol-study.mjs --dry-run
+node experiments/attic/openai-protocol-study.mjs --dry-run
 ```
 
 Registered execution path:
 
 ```bash
 mkdir -p ~/scratch/2026-08-02-openai-protocol-studies
-node experiments/openai-protocol-study.mjs \
+node experiments/attic/openai-protocol-study.mjs \
   --output ~/scratch/2026-08-02-openai-protocol-studies/rows.jsonl
 ```
 
