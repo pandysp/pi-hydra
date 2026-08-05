@@ -134,7 +134,7 @@ test("replay merges into the recorded payload and never rebuilds it", async () =
 			};
 		},
 	});
-	await replay({ rows, arms: ["MAIN"], config: "opus-high", output, streamFn: stream, head: "quality" });
+	await replay({ rows, arms: ["MAIN"], config: "opus-high", output, apiKey: "fake", streamFn: stream, head: "quality" });
 	assert.equal(seen.length, 2);
 	for (const merged of seen) {
 		// The driver's prefix is replayed byte-identically; only the tail is new.
@@ -152,6 +152,7 @@ test("every arm at a point is charged the writer's cache write", async () => {
 		arms: ["MAIN", "F1"],
 		config: "opus-high",
 		output,
+		apiKey: "fake",
 		streamFn: cachingStream(),
 		head: "quality",
 	});
@@ -179,6 +180,7 @@ test("summarize reports thinking per arm, which is the C1 metric", async () => {
 		arms: ["MAIN", "F2"],
 		config: "opus-high",
 		output,
+		apiKey: "fake",
 		streamFn: scriptedStream({ MAIN: 20, F2: 400 }),
 		head: "quality",
 	});
@@ -194,11 +196,11 @@ test("summarize reports thinking per arm, which is the C1 metric", async () => {
 test("unknown configs and empty point sets fail loudly", async () => {
 	const { rows, output } = fixture();
 	await assert.rejects(
-		() => replay({ rows, arms: ["MAIN"], config: "gpt-9", output, streamFn: scriptedStream({ MAIN: 1 }) }),
+		() => replay({ rows, arms: ["MAIN"], config: "gpt-9", output, apiKey: "fake", streamFn: scriptedStream({ MAIN: 1 }) }),
 		/unknown config/,
 	);
 	await assert.rejects(
-		() => replay({ rows: [], arms: ["MAIN"], config: "opus-high", output, streamFn: scriptedStream({ MAIN: 1 }) }),
+		() => replay({ rows: [], arms: ["MAIN"], config: "opus-high", output, apiKey: "fake", streamFn: scriptedStream({ MAIN: 1 }) }),
 		/no piggyback observation points/,
 	);
 });

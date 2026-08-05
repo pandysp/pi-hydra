@@ -1,7 +1,7 @@
 /**
  * Offline guards for the adaptive-skip probe (`ADAPTIVE-SKIP-SPEC.md`). Zero
- * provider calls: `probe()` takes an injected `streamFn`, and the CLI sits
- * behind an entry-point guard.
+ * provider calls and zero user state: `probe()` takes an injected `streamFn`
+ * and `apiKey`, and the CLI sits behind an entry-point guard.
  */
 
 import test from "node:test";
@@ -104,6 +104,7 @@ test("arbitrary prompt strings are what reaches the provider, unwrapped", async 
 		config: "opus-high",
 		output,
 		pointIds: ["t/0"],
+		apiKey: "fake",
 		streamFn: scriptedStream(seen),
 		random: () => 0,
 	});
@@ -121,6 +122,7 @@ test("the distribution reports mean, median and raw values, not only the skip ra
 		config: "opus-high",
 		output,
 		samples: 2,
+		apiKey: "fake",
 		streamFn: scriptedStream([]),
 		random: () => 0,
 	});
@@ -214,6 +216,7 @@ test("a nonce makes the prompt unique without altering the variant body", async 
 		output,
 		pointIds: ["t/0"],
 		nonceMode: true,
+		apiKey: "fake",
 		streamFn: scriptedStream(seen),
 		random: () => 0.5,
 	});

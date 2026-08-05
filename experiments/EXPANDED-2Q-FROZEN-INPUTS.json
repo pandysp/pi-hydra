@@ -98,8 +98,8 @@
     },
     {
       "path": "experiments/expanded-2q-input-manifest.mjs",
-      "bytes": 3480,
-      "sha256": "ebb98705492a045231eff8616222da2ad16d969d7292a467bd35820691f5c066"
+      "bytes": 3524,
+      "sha256": "7cbf170ea4c2bb3705b18710e2b65d540768b92628d49ab8b675548f43c2b382"
     },
     {
       "path": "experiments/false-positive-catalog.json",
@@ -127,9 +127,14 @@
       "sha256": "38595a2604774e09145920daa2280430aaffbf2c2d6383b9d035c03c27bda3cc"
     },
     {
+      "path": "experiments/model-catalog-snapshot.json",
+      "bytes": 744,
+      "sha256": "b67e4f24d78fdc0032777e8507af8432783865a30b0ac1caa62f8036c253fdc9"
+    },
+    {
       "path": "experiments/model-catalog.mjs",
-      "bytes": 538,
-      "sha256": "2e0bd3abbfbaed22ff735bc7a82ff83e99d14af373e09e34034f2d9f17c27cc0"
+      "bytes": 1364,
+      "sha256": "d27fa5443cfd2162d80614a4556b0ba84d2d08854ff0a2a2154c0cd1a83656e9"
     },
     {
       "path": "experiments/pi-replay-judge-transport.mjs",

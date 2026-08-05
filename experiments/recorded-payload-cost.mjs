@@ -180,15 +180,20 @@ async function runPoint({ point, arms, model, spec, apiKey, prompts, prices, str
 	return measured;
 }
 
-export async function replay({ rows, arms, config, output, streamFn = streamSimple, limit = null, head, lens }) {
+export async function replay({ rows, arms, config, output, apiKey = null, streamFn = streamSimple, limit = null, head, lens }) {
 	const spec = MODEL_SPECS[config];
 	if (!spec) throw new Error(`unknown config: ${config}`);
 	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unresolvable model: ${spec.id}`);
-	const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
-	const credential = auth[spec.provider];
-	if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
-		throw new Error(`missing or expired ${spec.provider} login; run pi and log in first`);
+	// Injectable beside streamFn (as in runCell), so the offline checks run
+	// without a live login: an expired token must never fail an offline gate.
+	if (!apiKey) {
+		const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
+		const credential = auth[spec.provider];
+		if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
+			throw new Error(`missing or expired ${spec.provider} login; run pi and log in first`);
+		}
+		apiKey = credential.access;
 	}
 
 	const points = limit ? recordedPoints(rows).slice(0, limit) : recordedPoints(rows);
@@ -225,7 +230,7 @@ export async function replay({ rows, arms, config, output, streamFn = streamSimp
 			arms,
 			model,
 			spec,
-			apiKey: credential.access,
+			apiKey,
 			prompts,
 			prices,
 			streamFn,

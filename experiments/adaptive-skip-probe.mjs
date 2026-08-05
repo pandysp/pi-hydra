@@ -156,6 +156,7 @@ export async function probe({
 	pointKinds = "piggyback",
 	pointIds = null,
 	nonceMode = false,
+	apiKey = null,
 	streamFn = streamSimple,
 	random = Math.random,
 }) {
@@ -163,10 +164,15 @@ export async function probe({
 	if (!spec) throw new Error(`unknown config: ${config}`);
 	const model = resolveModel(spec.provider, spec.id);
 	if (!model) throw new Error(`unresolvable model: ${spec.id}`);
-	const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
-	const credential = auth[spec.provider];
-	if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
-		throw new Error(`missing or expired ${spec.provider} login; run pi and log in first`);
+	// Injectable beside streamFn (as in runCell), so the offline checks run
+	// without a live login: an expired token must never fail an offline gate.
+	if (!apiKey) {
+		const auth = JSON.parse(readFileSync(`${process.env.HOME}/.pi/agent/auth.json`, "utf8"));
+		const credential = auth[spec.provider];
+		if (!credential?.access || (typeof credential.expires === "number" && credential.expires < Date.now())) {
+			throw new Error(`missing or expired ${spec.provider} login; run pi and log in first`);
+		}
+		apiKey = credential.access;
 	}
 
 	const points = pointsFrom(rows, { pointKinds, pointIds });
@@ -207,7 +213,7 @@ export async function probe({
 						model,
 						{ systemPrompt: "", messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }], tools: [] },
 						{
-							apiKey: credential.access,
+							apiKey,
 							reasoning: spec.reasoning,
 							onPayload: (built) => mergeObservationPayload(captured, built.messages, undefined),
 						},

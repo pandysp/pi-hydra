@@ -21,6 +21,7 @@ export const EXPANDED_2Q_INPUTS = [
 	"experiments/lib.mjs",
 	"experiments/fingerprints.mjs",
 	"experiments/model-catalog.mjs",
+	"experiments/model-catalog-snapshot.json",
 	"experiments/delivery-context-judge-protocol.mjs",
 	"experiments/capstone-trajectory-judge-protocol.mjs",
 	"experiments/expanded-2q-input-manifest.mjs",
