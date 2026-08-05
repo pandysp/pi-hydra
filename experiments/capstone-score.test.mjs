@@ -78,11 +78,15 @@ describe("end-to-end rescore against the frozen artifacts (integration)", () => 
 		const oldPayloads = mkdtempSync(join(tmpdir(), "capstone-rescore-old-"));
 		execFileSync("tar", ["xzf", "experiments/artifacts/2026-08-02-openai-trajectory/payloads.tar.gz", "-C", oldPayloads]);
 		out = mkdtempSync(join(tmpdir(), "capstone-rescore-out-"));
+		// The frozen capstone table was judged against golden v2; score it
+		// against the frozen v2 copy so the live dataset can move on.
 		execFileSync("node", [
 			"experiments/capstone-score.mjs",
 			"--output", out,
 			"--payloads-fresh", payloads,
 			"--payloads-old", oldPayloads,
+			"--dataset", "experiments/artifacts/2026-08-03-golden-dataset-v2-final/repo--experiments--golden-dataset.json.gz",
+			"--expect-version", "0aadc215658a775b",
 		], { stdio: "pipe" });
 	}, 120000);
 

@@ -148,7 +148,15 @@ function main() {
 	};
 
 	// --- frozen inputs -------------------------------------------------------
-	const dataset = JSON.parse(readFileSync("experiments/golden-dataset.json", "utf8"));
+	// The capstone table was judged against golden v2, so a rescore must read
+	// the dataset version it expects — pass the frozen copy explicitly once the
+	// live dataset has moved on (a version-bumped rescore is a deliberate run,
+	// never a test side effect).
+	const datasetPath = argOf(args, "--dataset", "experiments/golden-dataset.json");
+	const datasetBytes = datasetPath.endsWith(".gz")
+		? gunzipSync(readFileSync(datasetPath)).toString("utf8")
+		: readFileSync(datasetPath, "utf8");
+	const dataset = JSON.parse(datasetBytes);
 	if (dataset.version !== EXPECT_VERSION) throw new Error(`dataset is ${dataset.version}, expected ${EXPECT_VERSION}`);
 	const activeById = new Map(dataset.issues.map((issue) => [issue.id, issue]));
 	const activeByTask = new Map();
