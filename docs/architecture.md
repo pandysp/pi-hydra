@@ -175,7 +175,7 @@ cd pi-hydra
 npm install        # dev tooling only; users installing the extension inherit nothing
 npm run check      # tsc --strict
 npm test           # vitest on the pure helpers
-# Edit index.ts / utils.ts, then reload pi (Ctrl-R or /reload) to pick up changes
+# Edit the root .ts files, then reload pi (Ctrl-R or /reload) to pick up changes
 ```
 
 There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `protocol.ts` holds the hydra tool's wire contract; `delivery.ts` and `delivery-types.ts` hold the delivery ledger and its shapes (tests in `delivery.test.ts`); `utils.ts` holds the remaining pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.
