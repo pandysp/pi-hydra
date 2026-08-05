@@ -1,5 +1,9 @@
 # Golden dataset v2 — BUILT (2026-08-04)
 
+> **Superseded as the ruler 2026-08-05** by v3 `d176183abab2d211` (the
+> iteration-2 fold, `GOLDEN-DATASET-V3-RESULTS.md`). Everything below stays
+> exact as the v2 build record.
+
 Version `0aadc215658a775b` — **75 active issues (27 blocking, 48 harmful),
 61 recorded rejections** — built by
 `golden-dataset-v2-build.mjs --adopt-decision A` from the frozen consensus

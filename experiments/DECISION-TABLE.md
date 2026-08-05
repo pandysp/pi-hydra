@@ -1,4 +1,4 @@
-# pi-hydra — decision table (updated 2026-08-04, live evidence inventory)
+# pi-hydra — decision table (updated 2026-08-05, live evidence inventory)
 
 Every measured arm, its cost and its quality, in one place. Cells are only
 compared within a named measurement basis. Completed measurements trace to
@@ -18,24 +18,25 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > Both Opus columns, the 371-finding cross-judge consensus, and the first
 > 18-cell capstone table are complete. That table is a shakedown, not lock-in
 > evidence: the mandatory data pass found material anchor, denominator,
-> precision-unit, eligibility, and one-sided-judge-silence problems. Iteration
-> 2 is partially checkpointed in scratch but has changed no live dataset or
-> score. Andreas has now selected the expanded 2Q / dual-catalog judge
-> architecture in `JUDGE-DESIGN-SELECTED.md`; its matching rule and false
-> severity rubric still require cheap verification before implementation. On
-> 2026-08-02 Andreas made
-> the product choice:
+> precision-unit, eligibility, and one-sided-judge-silence problems.
+> Andreas selected the expanded 2Q / dual-catalog judge architecture
+> (`JUDGE-DESIGN-SELECTED.md`); it is implemented and mechanically verified
+> (45-finding sample terminally valid), and the iteration-2 recovery is
+> executed: golden v3 folded (`GOLDEN-DATASET-V3-RESULTS.md`), the blinded
+> human queue holds 11 items, and the v3 rescore is split by provider quota
+> (Opus half done, Sol half pending). On 2026-08-02 Andreas made the product
+> choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
 > uncertainty, not a benchmark verdict; a provider text split remains open if
 > the later capstone shows ENUM's OpenAI premium does not earn its keep.
 >
-> **CURRENT STOP LINE.** Preserve iteration 1 and the partial iteration-2
-> scratch state exactly. The selected judge design supersedes the four
-> perspective drafts, but it is not yet implemented or benchmarked. Complete
-> its registered cheap verification and reconcile it with the partial wave
-> before resuming iteration 2. Known-case tuning remains forbidden; repeated
-> calls never become extra consensus votes.
+> **CURRENT STOP LINE.** Preserve iteration 1 exactly. Before any iteration-2
+> score is read: Andreas rules the blinded queue (11 dataset-repair items +
+> 12 sample disagreements, including the requested-test vs process-advice
+> rule), the Sol half of the v3 sample completes, and both catalogs are
+> frozen. Known-case tuning remains forbidden; repeated calls never become
+> extra consensus votes.
 
 ## READ FIRST — quality bases differ
 

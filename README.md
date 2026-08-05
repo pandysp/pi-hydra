@@ -20,9 +20,9 @@ A bad assumption caught mid-implementation costs one correction message, and the
 
 An observation pays for its fresh handoff and output plus a cache read instead of rebuilding the whole context. Measured cache hit rates are 97%+ across real Anthropic sessions (the 17K reference measurement hits 99%); codex measures ~84–87% ([why](docs/architecture.md)).
 
-A session costs more than one observation suggests because an always-on head watches every cache commit. On Anthropic's pre-capstone live ENUM trajectories, observer cost ranged from 32.5% to 61.4% of driver cost. In the registered OpenAI producer wave, comparable observations cost 52.1% of driver cost for MAIN and 77.0% for ENUM; retaining every charged call raises those values to 66.2% and 93.3%. These are measured regimes, not a universal surcharge, and the OpenAI values are cost evidence only: quality still awaits Opus and a valid golden v2. Output volume, task, model, and reasoning level all move the number. See the [decision table](experiments/DECISION-TABLE.md) and use `/hydra-stats` for the actual session.
+A session costs more than one observation suggests because an always-on head watches every cache commit. On Anthropic's pre-capstone live ENUM trajectories, observer cost ranged from 32.5% to 61.4% of driver cost. In the registered OpenAI producer wave, comparable observations cost 52.1% of driver cost for MAIN and 77.0% for ENUM; retaining every charged call raises those values to 66.2% and 93.3%. These are measured regimes, not a universal surcharge, and the OpenAI values are cost evidence only: the quality benchmark is still in progress. Output volume, task, model, and reasoning level all move the number. See the [decision table](experiments/DECISION-TABLE.md) and use `/hydra-stats` for the actual session.
 
-The harness in [`experiments/`](experiments/README.md) re-verifies the cache mechanism these numbers rest on against the live APIs: when an entry commits, what an observation can see, and whether the replay stays on the cache. The hit rates and costs above come from real sessions, and `/hydra-stats` shows the same numbers live for your own.
+The harness in [`experiments/`](experiments/INDEX.md) re-verifies the cache mechanism these numbers rest on against the live APIs: when an entry commits, what an observation can see, and whether the replay stays on the cache. The hit rates and costs above come from real sessions, and `/hydra-stats` shows the same numbers live for your own.
 
 ## Compared to subagents
 
@@ -115,7 +115,7 @@ The tool deliberately stops there. Everything the agent does to its heads is vis
 
 ## How it works
 
-hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
+hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/INDEX.md) and the design in [`docs/architecture.md`](docs/architecture.md).
 
 ## Limitations
 

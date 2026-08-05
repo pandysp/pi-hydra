@@ -38,11 +38,9 @@ export const CAPSTONE_INPUTS = [
 	"experiments/trajectory-cost-tasks.mjs",
 	"experiments/trajectory-ground-truth.mjs",
 	"experiments/golden-dataset-score.mjs",
-	"experiments/BENCHMARK-SPEC.md",
-	"experiments/CAPSTONE-JUDGE-SPEC.md",
-	"experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
-	"experiments/OPENAI-CAPSTONE-PRODUCER-SPEC.md",
-	"experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md",
+	// Prose specs/results are deliberately NOT hashed here: a status-note edit
+	// must never change the frozen-input identity (it turned CI red twice).
+	// The identity binds data and code inputs only.
 	"experiments/OPENAI-CAPSTONE-COMPARISON.json",
 	"experiments/capstone-trajectory-judge-protocol.mjs",
 	"experiments/capstone-trajectory-judge.mjs",

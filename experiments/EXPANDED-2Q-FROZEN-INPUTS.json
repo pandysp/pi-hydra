@@ -27,16 +27,6 @@
   ],
   "files": [
     {
-      "path": "experiments/EXPANDED-2Q-IMPLEMENTATION-SPEC.md",
-      "bytes": 16043,
-      "sha256": "8eeb471547683b740bf3ed0007062d79e677321d80b6e3428a8cc76fde0502d6"
-    },
-    {
-      "path": "experiments/JUDGE-DESIGN-SELECTED.md",
-      "bytes": 12289,
-      "sha256": "8d68e611f0ea8ee0f290b3132ab2492edf6aa06c59c79ca8f99adb4fdaaa3d26"
-    },
-    {
       "path": "experiments/JUDGE-TRANSPORT-AB-SAMPLE.json",
       "bytes": 2615,
       "sha256": "a8c0fd3910024ba9ed8f1be5c173e3615d609bc37cb70a78ab516af1788893b4"
@@ -108,8 +98,8 @@
     },
     {
       "path": "experiments/expanded-2q-input-manifest.mjs",
-      "bytes": 3301,
-      "sha256": "f6b41b0b04bba7f1aee8d5bfc16b2bcbbdc5ce2643535b482be73bc4528748dd"
+      "bytes": 3343,
+      "sha256": "ee29f989f9084524331973a1f8aa046f1751c62d35dfb5392ac255c9070019b1"
     },
     {
       "path": "experiments/false-positive-catalog.json",

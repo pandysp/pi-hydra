@@ -1,5 +1,9 @@
 # Capstone scoring — ITERATION 1 (SHAKEDOWN, 2026-08-04)
 
+> Frozen against golden v2 `0aadc215658a775b` by design and immutable. The
+> live ruler moved to v3 `d176183abab2d211` on 2026-08-05
+> (`GOLDEN-DATASET-V3-RESULTS.md`); nothing here is rescored.
+
 **Data pass completed (ITERATION1-DATA-PASS.md):** the registered step-2 read is done; its verdicts qualify several numbers below (intersection-credit floor, per-arm precision units, cache-policy asymmetry, fresh-vs-old basis differences) and supply the iteration-2 work list. Read it before quoting any cell.
 
 **This is not a lock-in table.** Per the registered iteration protocol

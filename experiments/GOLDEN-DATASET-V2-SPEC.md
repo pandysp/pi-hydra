@@ -1,5 +1,8 @@
 # Golden dataset v2 — instrument waves before further benchmarks (SPEC, 2026-08-02)
 
+> Delivered as v2 `0aadc215658a775b`; **superseded as the ruler 2026-08-05**
+> by v3 `d176183abab2d211` (`GOLDEN-DATASET-V3-RESULTS.md`).
+
 Pre-registered before data. Funded by Andreas 2026-08-02: invest dataset
 waves BEFORE judged sol coverage and the G1 contract decision, because
 every pending number scores against this ruler and ruler defects compound

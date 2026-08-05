@@ -10,34 +10,9 @@
   },
   "files": [
     {
-      "path": "experiments/BENCHMARK-SPEC.md",
-      "bytes": 12551,
-      "sha256": "a73f3c759cda63491cd952452951efbc72f70c19f9c978c46c5fcba069fe57ae"
-    },
-    {
-      "path": "experiments/CAPSTONE-JUDGE-SPEC.md",
-      "bytes": 15751,
-      "sha256": "abf9b4f49fca88809d9ccd248b00da809dd85e829b2bc8096f5c1b660dd07a39"
-    },
-    {
       "path": "experiments/OPENAI-CAPSTONE-COMPARISON.json",
       "bytes": 2079,
       "sha256": "3d70a97e638c6b5d0c31c3971332d6890008c4b877c4dbe7df7d87b2d46f0fbf"
-    },
-    {
-      "path": "experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md",
-      "bytes": 7866,
-      "sha256": "bc591ba7a5f9afb03a1682738e7ec3ee83f1ea57bc1fe679fa73425d1b4d9778"
-    },
-    {
-      "path": "experiments/OPENAI-CAPSTONE-PRODUCER-SPEC.md",
-      "bytes": 5146,
-      "sha256": "ccb2fc51bf1d5053cae223d7b46ce47c63d5677a1e109c5955619b894ade6467"
-    },
-    {
-      "path": "experiments/OPENAI-TRAJECTORY-SOL-PASS.md",
-      "bytes": 4618,
-      "sha256": "b7faac9d6ef02de1ebf98c0dd5fc8cc5caeee3137d7e2af5c0ee8118e25732fe"
     },
     {
       "path": "experiments/artifacts/2026-08-01-enum-trajectory/adapted.jsonl.gz",

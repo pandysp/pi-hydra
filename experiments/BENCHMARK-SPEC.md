@@ -164,22 +164,23 @@ approved sequence advanced as follows:
    precision-unit non-comparability, and the one-sided Opus silence pattern.
    Harness fixes landed between iterations in `d50f299`, `0f634da`, and
    `b1e46db`;
-10. **PARTIAL, NOT APPLIED:** iteration 2 steps 1–2 spent judge calls into
-    `~/scratch/2026-08-04-iter2-wave/`. The Opus session limit interrupted the
-    corrected anchor-backfill residue. No live dataset, score, or tracked
-    artifact changed; steps 3–6 remain unspent. See
-    `ITERATION2-JUDGE-WAVE-SPEC.md` for the exact recovery boundary.
+10. **RECOVERED AND FOLDED (2026-08-05):** iteration 2 steps 1–2 spent judge
+    calls, the interrupted residue completed under the frozen old protocol,
+    and the fold produced golden v3 `d176183abab2d211`
+    (`GOLDEN-DATASET-V3-RESULTS.md`, ledger row
+    `2026-08-05-golden-dataset-v3-fold`). Steps 3–5 are superseded by the
+    expanded 2Q pass; the v3 rescore is split by provider quota.
 
 The iteration-1 means are useful shakedown evidence only: ENUM-SO2 found more
 blocking issues and was more precise on average, while MAIN-SO2 cost less. The
 data pass showed that the current judge and denominator machinery is not yet a
 trustworthy lock-in instrument. Andreas selected the expanded 2Q / dual-catalog
-replacement in `JUDGE-DESIGN-SELECTED.md`; its cheap verification and
-reconciliation with the partial wave are now mechanically complete. The active
-gates are semantic approval of the requested-test/process-advice boundary,
-folding 25 settled repair outcomes, deciding the six incomplete residue votes,
-and settling seven dataset-repair items. Iteration 2 must not be presented as
-complete or resumed blindly around those boundaries.
+replacement in `JUDGE-DESIGN-SELECTED.md`; it is implemented, the wave
+reconciliation is folded, and the residue is decided. The active gates are
+Andreas's blinded queue (11 dataset-repair items plus the 12 sample
+disagreements carrying the requested-test/process-advice boundary) and the
+Sol half of the v3 sample. Iteration 2 must not be presented as complete or
+resumed blindly around those boundaries.
 
 The producer-first wave is not an “OpenAI-only capstone result.” It is the
 OpenAI production half of the later capstone. No provisional score may be used

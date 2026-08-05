@@ -1,6 +1,6 @@
 # Architecture
 
-How hydra observes a pi session through near-pure cache reads. For the what and why, start with the [root README](../README.md); the empirical basis for everything here is [`../experiments/`](../experiments/README.md).
+How hydra observes a pi session through near-pure cache reads. For the what and why, start with the [root README](../README.md); the empirical basis for everything here is [`../experiments/`](../experiments/INDEX.md).
 
 ## Commit-point observation
 
@@ -69,7 +69,7 @@ The measurement above is from the earlier turn_end-era architecture. The current
 
 ## Observation timing
 
-Two measured facts fix the timing (the measurements live in [`../experiments/`](../experiments/README.md)):
+Two measured facts fix the timing (the measurements live in [`../experiments/`](../experiments/INDEX.md)):
 
 - A cache entry becomes readable the moment the writing request's response begins (`message_start` ≈ TTFT). Post-commit propagation is indistinguishable from zero; commit+0 free rides verified on haiku and fable, with and without thinking.
 - A response is never cached by the request that produced it. An observation that does not append M itself sees a context that is exactly one assistant message stale.
@@ -178,7 +178,7 @@ npm test           # vitest on the pure helpers
 # Edit index.ts / utils.ts, then reload pi (Ctrl-R or /reload) to pick up changes
 ```
 
-There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `utils.ts` holds the pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.
+There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `protocol.ts` holds the hydra tool's wire contract; `delivery.ts` and `delivery-types.ts` hold the delivery ledger and its shapes (tests in `delivery.test.ts`); `utils.ts` holds the remaining pure logic (decision parsing, payload merge) with tests in `utils.test.ts`.
 
 Smoke-test the delivery pipeline with the hidden diagnostic heads: `/hydra-heads test` forces a `steer` decision, `/hydra-heads test-interrupt` forces an `interrupt`. They are one-shot: after firing once, the set reverts to the last product heads. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
 

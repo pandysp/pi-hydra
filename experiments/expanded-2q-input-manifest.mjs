@@ -15,8 +15,8 @@ export const EXPANDED_2Q_INPUTS = [
 	"experiments/golden-dataset.json",
 	"experiments/false-positive-catalog.json",
 	"experiments/JUDGE-TRANSPORT-AB-SAMPLE.json",
-	"experiments/EXPANDED-2Q-IMPLEMENTATION-SPEC.md",
-	"experiments/JUDGE-DESIGN-SELECTED.md",
+	// Prose specs are deliberately NOT hashed: status edits must never change
+	// the frozen-input identity. Data and code inputs only.
 	"experiments/lib.mjs",
 	"experiments/fingerprints.mjs",
 	"experiments/model-catalog.mjs",
