@@ -1,13 +1,32 @@
 import { describe, expect, it } from "vitest";
-import type { AnthropicPayload, PayloadBlock, PayloadMessage } from "./utils";
+import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
+	advanceObservationLoopGuard,
+	applyAfterChangeDelivery,
+	buildEnumeratedJudgeObservationEnvelope,
+	buildEnumeratedJudgeObservationPrompt,
+	buildObservationEnvelope,
+	buildAnthropicObservationPrompt,
+	buildJudgeObservationEnvelope,
+	buildJudgeObservationPrompt,
 	buildObservationPrompt,
+	classifyCodexShareLoss,
+	decisionFromCompletion,
+	decisionFromLoopStopReason,
 	demoteStaleInterrupt,
+	formatHeadManagementReceipt,
+	footerFormatCorrection,
+	hasDriverContinuationError,
 	headActs,
 	isAnthropicPayload,
+	isFullInputTransport,
+	isOpenAIResponsesPayload,
 	isValidHeadName,
 	mergeObservationPayload,
+	mergeOpenAIObservationPayload,
 	parseDecision,
+	parseEnumeratedDecision,
+	parseFooterDecision,
 	parseHeadFile,
 	parseHeadList,
 	parseShutdownGrace,
@@ -16,6 +35,7 @@ import {
 	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
+	usesSplitObservationHandoff,
 } from "./utils";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
@@ -75,6 +95,154 @@ describe("parseDecision", () => {
 	});
 });
 
+describe("decisionFromCompletion", () => {
+	it("maps public none to the internal noop without a message", () => {
+		expect(decisionFromCompletion("none", "")).toEqual({
+			action: "noop",
+			reason: "observation completed",
+			message: "",
+		});
+	});
+
+	it("preserves routed deliveries and trims their messages", () => {
+		expect(decisionFromCompletion("steer", "  Fix the missing check.  ")).toEqual({
+			action: "steer",
+			reason: "observation completed",
+			message: "Fix the missing check.",
+		});
+	});
+
+	it("enforces message cardinality instead of repairing malformed calls", () => {
+		expect(() => decisionFromCompletion("none", "nothing to report")).toThrow('delivery "none"');
+		expect(() => decisionFromCompletion("print", "   ")).toThrow('delivery "print"');
+	});
+});
+
+describe("formatHeadManagementReceipt", () => {
+	it("combines a runtime-owned fact with the head's explanation", () => {
+		expect(formatHeadManagementReceipt("add", " security ", "  implementation has started  ")).toBe(
+			"Added security — implementation has started",
+		);
+		expect(formatHeadManagementReceipt("remove", "quality", "the review phase ended")).toBe(
+			"Removed quality — the review phase ended",
+		);
+	});
+
+	it("rejects empty names and explanations", () => {
+		expect(() => formatHeadManagementReceipt("add", " ", "needed")).toThrow("non-empty head");
+		expect(() => formatHeadManagementReceipt("remove", "quality", " ")).toThrow("non-empty message");
+	});
+});
+
+describe("applyAfterChangeDelivery", () => {
+	const decision = { action: "steer" as const, reason: "updated policy", message: "tell the driver" };
+
+	it("does nothing without a tracked change or a delivery contract", () => {
+		expect(applyAfterChangeDelivery(decision, "print", false)).toBe(decision);
+		expect(applyAfterChangeDelivery(decision, undefined, true)).toBe(decision);
+	});
+
+	it("makes a changed file the complete work product for after-change noop", () => {
+		expect(applyAfterChangeDelivery(decision, "noop", true)).toEqual({
+			action: "noop",
+			reason: "updated policy",
+			message: "",
+		});
+	});
+
+	it("prints after a change and can recover the note from the decision reason", () => {
+		expect(applyAfterChangeDelivery({ action: "noop", reason: "added accessibility", message: "" }, "print", true)).toEqual({
+			action: "print",
+			reason: "added accessibility",
+			message: "added accessibility",
+		});
+	});
+
+	it("preserves a matching print decision", () => {
+		const print = { action: "print" as const, reason: "crew changed", message: "Added security." };
+		expect(applyAfterChangeDelivery(print, "print", true)).toBe(print);
+	});
+
+	it("forces every parsed post-change delivery through a print contract", () => {
+		for (const action of ["noop", "queue", "steer", "interrupt"] as const) {
+			const decision = { action, reason: "changed", message: action === "noop" ? "" : "finding" };
+			expect(applyAfterChangeDelivery(decision, "print", true).action).toBe("print");
+		}
+	});
+});
+
+describe("advanceObservationLoopGuard", () => {
+	const initial = { iterations: 0 };
+
+	it("continues an active head and counts the completed turn", () => {
+		expect(advanceObservationLoopGuard(initial, { shareLost: false, completed: false, headActive: true, maxIterations: 25 })).toEqual({
+			state: { iterations: 1 },
+			stopReason: null,
+		});
+	});
+
+	it("stops at the hard iteration limit", () => {
+		expect(
+			advanceObservationLoopGuard(
+				{ iterations: 24 },
+				{ shareLost: false, completed: false, headActive: true, maxIterations: 25 },
+			),
+		).toMatchObject({ stopReason: "iteration-limit", state: { iterations: 25 } });
+	});
+
+	it("stops on an enforceable completion without a grace turn", () => {
+		expect(
+			advanceObservationLoopGuard(
+				{ iterations: 1 },
+				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
+			),
+		).toEqual({ state: { iterations: 2 }, stopReason: "completed" });
+	});
+
+	it("stops immediately after external deactivation", () => {
+		expect(
+			advanceObservationLoopGuard(initial, {
+				shareLost: false,
+				completed: false,
+				headActive: false,
+				maxIterations: 25,
+			}),
+		).toMatchObject({ stopReason: "deactivated" });
+	});
+
+	it("lets share loss override completion but accepts completion at the hard boundary", () => {
+		expect(
+			advanceObservationLoopGuard(
+				{ iterations: 1 },
+				{ shareLost: true, completed: true, headActive: false, maxIterations: 25 },
+			).stopReason,
+		).toBe("share-loss");
+		expect(
+			advanceObservationLoopGuard(
+				{ iterations: 24 },
+				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
+			).stopReason,
+		).toBe("completed");
+	});
+});
+
+describe("decisionFromLoopStopReason", () => {
+	it("turns non-completion wind-downs into quiet terminal decisions", () => {
+		expect(decisionFromLoopStopReason("deactivated")).toEqual({
+			action: "noop",
+			reason: "head deactivated mid-observation",
+			message: "",
+		});
+		expect(decisionFromLoopStopReason("share-loss")?.action).toBe("noop");
+		expect(decisionFromLoopStopReason("iteration-limit")?.action).toBe("noop");
+	});
+
+	it("leaves normal completion to the accepted tool result", () => {
+		expect(decisionFromLoopStopReason("completed")).toBeNull();
+		expect(decisionFromLoopStopReason(null)).toBeNull();
+	});
+});
+
 describe("isAnthropicPayload", () => {
 	it("accepts an object with a messages array and rejects everything else", () => {
 		expect(isAnthropicPayload({ messages: [] })).toBe(true);
@@ -107,20 +275,287 @@ describe("headActs", () => {
 	});
 });
 
+describe("usesSplitObservationHandoff", () => {
+	it("uses the split handoff for Codex Responses and the combined prompt for Anthropic", () => {
+		expect(usesSplitObservationHandoff(undefined, "openai-codex-responses")).toBe(true);
+		expect(usesSplitObservationHandoff(undefined, "anthropic-messages")).toBe(false);
+		expect(usesSplitObservationHandoff(undefined, undefined)).toBe(false);
+	});
+
+	it("supports reproducible all-provider A/B overrides", () => {
+		expect(usesSplitObservationHandoff("split", "anthropic-messages")).toBe(true);
+		expect(usesSplitObservationHandoff("current", "openai-codex-responses")).toBe(false);
+	});
+});
+
 describe("buildObservationPrompt", () => {
 	it("bans tools for a judge-only head", () => {
 		const prompt = buildObservationPrompt("quality", "Judge.", []);
-		expect(prompt).toContain("No tools");
+		expect(prompt).toContain("no work tools");
 		expect(prompt).not.toContain("tool access");
+		expect(prompt).toContain('action "complete_observation"');
+		expect(prompt).not.toContain("one JSON object");
 	});
 
 	it("spells out a narrowed allowance", () => {
 		const prompt = buildObservationPrompt("docs", "Keep notes.", ["read", "write"]);
 		expect(prompt).toContain("only these tools: read, write");
+		expect(prompt).not.toContain("queue");
 	});
 
 	it("permits everything when tools are omitted", () => {
 		expect(buildObservationPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
+	});
+
+	it("explains a typed print-after-change contract", () => {
+		const prompt = buildObservationPrompt("foreman", "Re-crew.", ["hydra"], { afterChange: "print" });
+		expect(prompt).toContain('complete with delivery "print"');
+		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
+		expect(prompt).not.toContain("Noop when your work product is the files you wrote");
+	});
+
+	it("includes capability state only for an explicitly Hydra-capable head", () => {
+		expect(buildObservationPrompt("crew", "Re-crew.", ["hydra"], { activeHeads: ["quality", "security"] })).toContain(
+			"active heads are quality, security",
+		);
+		expect(buildObservationPrompt("docs", "Write docs.", ["read", "write"], { activeHeads: ["quality"] })).not.toContain(
+			"Hydra snapshot",
+		);
+	});
+});
+
+describe("buildAnthropicObservationPrompt", () => {
+	it("keeps the frozen Anthropic judge control in one JSON response", () => {
+		const prompt = buildAnthropicObservationPrompt("quality", "Judge.", []);
+		expect(prompt).toContain("one JSON object");
+		expect(prompt).toContain('"action":"noop|print|queue|steer|interrupt"');
+		expect(prompt).toContain("You have no work tools");
+		expect(prompt).not.toContain('action "complete_observation"');
+	});
+
+	it("retains acting tools and programmatic management receipts", () => {
+		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
+			activeHeads: ["foreman", "quality"],
+			deliveryContext: {
+				lastByThisHead: { delivery: "queue", message: "Old internal delivery." },
+				pending: [],
+			},
+		});
+		expect(prompt).toContain("active heads are foreman, quality");
+		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
+		expect(prompt).toContain("removing your own head completes the observation");
+		expect(prompt).not.toContain("queue");
+	});
+});
+
+describe("buildObservationEnvelope", () => {
+	it("keeps the lens out of the elevated judge envelope", () => {
+		const envelope = buildObservationEnvelope("quality", []);
+		expect(envelope).toContain("preceding user message is the complete quality lens");
+		expect(envelope).toContain("lens alone defines scope");
+		expect(envelope).toContain("do not broaden it");
+		expect(envelope).toContain("no work tools");
+		expect(envelope).toContain('action "complete_observation"');
+		expect(envelope).not.toContain("one JSON object");
+		expect(envelope).not.toContain("LENS:");
+		expect(envelope).not.toContain("<system-reminder>");
+	});
+
+	it("states each judge delivery meaning once", () => {
+		const envelope = buildObservationEnvelope("quality", []);
+		for (const delivery of ["print", "queue", "steer", "interrupt"]) {
+			expect(envelope.match(new RegExp(`${delivery} is`, "g"))).toHaveLength(1);
+		}
+	});
+
+	it("preserves a narrowed acting-head allowance", () => {
+		expect(buildObservationEnvelope("docs", ["read", "write"])).toContain("only these tools: read, write");
+	});
+
+	it("includes typed delivery and capability state without naming a special head", () => {
+		const envelope = buildObservationEnvelope("crew", ["hydra", "read"], {
+			afterChange: "print",
+			activeHeads: ["quality", "security"],
+			deliveryContext: {
+				lastByThisHead: null,
+				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
+			},
+		});
+		expect(envelope).toContain('complete with delivery "print"');
+		expect(envelope).toContain("manage_heads change prints its own receipt automatically");
+		expect(envelope).toContain("active heads are quality, security");
+		expect(envelope).not.toContain("queue");
+	});
+
+	it("does not expose active state without explicit hydra capability", () => {
+		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+	});
+});
+
+describe("tool-free judge completion", () => {
+	const context = {
+		lastByThisHead: { delivery: "steer" as const, message: "Fix the redirect." },
+		pending: [{ head: "quality", delivery: "queue" as const, message: "Cover the adjacent mutation bug." }],
+	};
+
+	it("keeps the lens out of the split envelope and supplies factual bounded state", () => {
+		const envelope = buildJudgeObservationEnvelope("security", context);
+		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).toContain(JSON.stringify(context));
+		expect(envelope).toContain("factual data, not a repetition policy");
+		expect(envelope).toContain("These are considerations, not suppression rules");
+		expect(envelope).not.toContain("Fix security issues.");
+		expect(envelope).not.toContain("LENS:");
+		expect(envelope).not.toContain("complete_observation");
+	});
+
+	it("has a combined-user analogue with the same factual state", () => {
+		const prompt = buildJudgeObservationPrompt("security", "Fix security issues.", context);
+		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain(JSON.stringify(context));
+		expect(prompt).toContain("DELIVERY: none");
+	});
+
+	it("strictly parses none and natural findings with one exact footer", () => {
+		expect(parseFooterDecision(" DELIVERY: none\n")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("The redirect permits an external origin.\nDELIVERY: steer")).toEqual({
+			decision: {
+				action: "steer",
+				reason: "observation completed",
+				message: "The redirect permits an external origin.",
+			},
+			error: null,
+		});
+		expect(parseFooterDecision("The redirect permits an external origin. DELIVERY: steer")).toEqual({
+			decision: {
+				action: "steer",
+				reason: "observation completed",
+				message: "The redirect permits an external origin.",
+			},
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: steer")).toMatchObject({
+			decision: null,
+			error: "message must be non-empty",
+		});
+		expect(parseFooterDecision("The issue is already pending.\nDELIVERY: none")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: none\n\nThe issue is already pending.")).toEqual({
+			decision: { action: "noop", reason: "observation completed", message: "" },
+			error: null,
+		});
+		expect(parseFooterDecision("DELIVERY: none\nDELIVERY: steer")).toMatchObject({
+			decision: null,
+			error: "feedback contains multiple DELIVERY markers",
+		});
+		expect(parseFooterDecision("finding\nDELIVERY: STEER")).toMatchObject({ decision: null });
+	});
+
+	it("keeps recovery format-only while making cached driver tools explicitly unavailable", () => {
+		const correction = footerFormatCorrection("missing footer");
+		expect(correction).toContain("Preserve its semantic decision and finding");
+		expect(correction).toContain("cached driver request");
+		expect(correction).toContain("unavailable to this observation");
+		expect(correction).toContain("DELIVERY: print|queue|steer|interrupt");
+	});
+});
+
+describe("enumerated steer-only judge completion", () => {
+	const context = {
+		lastByThisHead: { delivery: "queue" as const, message: "Fix the redirect." },
+		pending: [{ head: "quality", delivery: "queue" as const, message: "Cover the adjacent mutation bug." }],
+	};
+
+	it("renders the same ENUM-SO2 contract for split and combined provider handoffs", () => {
+		const envelope = buildEnumeratedJudgeObservationEnvelope("security", context);
+		const prompt = buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context);
+		for (const text of [envelope, prompt]) {
+			expect(text).toContain(
+				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
+			);
+			expect(text).toContain("List every finding the lens surfaces");
+			expect(text).toContain("Do not rank them or pick one");
+			expect(text).toContain("Steering is the normal and only way to reach the agent and folds in at its next checkpoint");
+			expect(text.toLowerCase()).not.toContain("queue");
+		}
+		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).not.toContain("Fix security issues.");
+		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain('"recipient":"agent"');
+	});
+
+	it("parses an empty findings list as noop", () => {
+		expect(parseEnumeratedDecision('{"findings":[]}')).toEqual({
+			decisions: [{ action: "noop", reason: "no findings", message: "" }],
+			error: null,
+		});
+	});
+
+	it("separates user-only findings from agent-directed findings", () => {
+		expect(
+			parseEnumeratedDecision(
+				JSON.stringify({
+					findings: [
+						{ action: "print", reason: "user owns it", message: "Rotate the external credential." },
+						{ action: "steer", reason: "current defect", message: "Run the migration before merging." },
+					],
+				}),
+			),
+		).toEqual({
+			decisions: [
+				{
+					action: "print",
+					reason: "user owns it",
+					message: "Rotate the external credential.",
+				},
+				{
+					action: "steer",
+					reason: "current defect",
+					message: "Run the migration before merging.",
+				},
+			],
+			error: null,
+		});
+	});
+
+	it("groups agent findings and interrupts only when one of them requests it", () => {
+		expect(
+			parseEnumeratedDecision(
+				JSON.stringify({
+					findings: [
+						{ action: "steer", reason: "fix", message: "Run the migration." },
+						{ action: "interrupt", reason: "emergency", message: "Stop the destructive command." },
+						{ action: "steer", reason: "verify", message: "Re-run the checks." },
+					],
+				}),
+			),
+		).toEqual({
+			decisions: [
+				{
+					action: "interrupt",
+					reason: "fix | emergency | verify",
+					message: "Run the migration. | Stop the destructive command. | Re-run the checks.",
+				},
+			],
+			error: null,
+		});
+	});
+
+	it("accepts a fenced object but rejects hidden queue and malformed findings", () => {
+		expect(parseEnumeratedDecision('```json\n{"findings":[]}\n```').decisions?.[0]?.action).toBe("noop");
+		expect(
+			parseEnumeratedDecision('{"findings":[{"action":"queue","reason":"later","message":"Do it later."}]}'),
+		).toMatchObject({ decisions: null, error: 'finding 1 has invalid action "queue"' });
+		expect(parseEnumeratedDecision('{"findings":[{"action":"steer","reason":"missing message"}]}')).toMatchObject({
+			decisions: null,
+			error: "finding 1 requires a non-empty message",
+		});
 	});
 });
 
@@ -284,17 +719,250 @@ describe("mergeObservationPayload", () => {
 		expect(captured).toEqual(capturedBefore);
 		expect(tail).toEqual(tailBefore);
 	});
+
+	it("inserts a system envelope immediately after the lens without changing marker semantics", () => {
+		const tail: PayloadMessage[] = [
+			{ role: "assistant", content: [{ type: "text", text: "final" }] },
+			promptTail(),
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail, "protocol");
+		expect(merged.messages.slice(2).map((message) => message.role)).toEqual(["assistant", "user", "system"]);
+		expect(blocks(merged.messages[4])[0]).toEqual({ type: "text", text: "protocol" });
+		// The envelope is not mistaken for a tool-loop turn: M still receives
+		// the driver's TTL marker and the envelope stays uncached.
+		expect(blocks(merged.messages[2])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+	});
+
+	it("keeps the system envelope adjacent to the lens across acting-loop turns", () => {
+		const tail: PayloadMessage[] = [
+			promptTail(),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail, "protocol");
+		expect(merged.messages.slice(2).map((message) => message.role)).toEqual(["user", "system", "assistant", "user"]);
+		expect(blocks(merged.messages[5])[0].cache_control).toEqual({ type: "ephemeral" });
+		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
+	});
+
+	it("rejects a split handoff without a lens user message", () => {
+		expect(() =>
+			mergeObservationPayload(capturedFixture(), [{ role: "assistant", content: [{ type: "text", text: "M" }] }], "protocol"),
+		).toThrow("tail has no user prompt");
+	});
+});
+
+describe("isFullInputTransport", () => {
+	it("admits exactly the transports without delta continuation", () => {
+		expect(isFullInputTransport("websocket")).toBe(true);
+		expect(isFullInputTransport("sse")).toBe(true);
+		expect(isFullInputTransport("auto")).toBe(false);
+		expect(isFullInputTransport("websocket-cached")).toBe(false);
+		expect(isFullInputTransport("")).toBe(false);
+		expect(isFullInputTransport("WEBSOCKET")).toBe(false);
+	});
+});
+
+describe("classifyCodexShareLoss", () => {
+	it("clears full-input transports and names everything else", () => {
+		expect(classifyCodexShareLoss("websocket")).toBeNull();
+		expect(classifyCodexShareLoss("sse")).toBeNull();
+		expect(classifyCodexShareLoss("auto")).toContain('pi transport "auto"');
+		expect(classifyCodexShareLoss("websocket-cached")).toContain("delta continuation");
+		expect(classifyCodexShareLoss("")).not.toBeNull();
+	});
+});
+
+describe("hasDriverContinuationError", () => {
+	const errored = (errorMessage: string) => ({ role: "assistant", stopReason: "error", errorMessage });
+
+	it("matches the measured signature and wording variants", () => {
+		expect(hasDriverContinuationError([errored("Codex error: Previous response with id 'resp_02e6a5' not found.")])).toBe(true);
+		expect(hasDriverContinuationError([errored("previous_response_id resp_1 was not found")])).toBe(true);
+		expect(hasDriverContinuationError([errored("The previous response could not be found")])).toBe(true);
+		expect(hasDriverContinuationError([errored("Previous response with id 'resp_1'\nwas not\nfound")])).toBe(true);
+	});
+
+	it("requires an errored assistant message, not just the words", () => {
+		expect(hasDriverContinuationError([{ role: "assistant", stopReason: "stop", errorMessage: "previous response not found" }])).toBe(false);
+		expect(hasDriverContinuationError([{ role: "user", stopReason: "error", errorMessage: "previous response not found" }])).toBe(false);
+		expect(hasDriverContinuationError([errored("rate limit exceeded")])).toBe(false);
+		expect(hasDriverContinuationError([{ role: "assistant", stopReason: "error" }])).toBe(false);
+		expect(hasDriverContinuationError([])).toBe(false);
+	});
+});
+
+describe("isOpenAIResponsesPayload", () => {
+	it("accepts an object with an input array and rejects everything else", () => {
+		expect(isOpenAIResponsesPayload({ input: [] })).toBe(true);
+		expect(isOpenAIResponsesPayload({ input: [{ type: "message" }], model: "gpt-5.6-luna" })).toBe(true);
+		expect(isOpenAIResponsesPayload({ messages: [] })).toBe(false);
+		expect(isOpenAIResponsesPayload({ input: "not an array" })).toBe(false);
+		expect(isOpenAIResponsesPayload(null)).toBe(false);
+		expect(isOpenAIResponsesPayload("input")).toBe(false);
+	});
+});
+
+describe("mergeOpenAIObservationPayload", () => {
+	const capturedFixture = (): OpenAIResponsesPayload => ({
+		model: "gpt-5.6-luna",
+		store: false,
+		stream: true,
+		instructions: "You are pi.",
+		prompt_cache_key: "session-abc",
+		include: ["reasoning.encrypted_content"],
+		input: [
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+			{ type: "function_call", name: "read", call_id: "call_1", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_1", output: "file contents" },
+		],
+		tools: [{ type: "function", name: "read" }],
+	});
+
+	const promptTail = () => ({
+		type: "message",
+		role: "user",
+		content: [{ type: "input_text", text: "observe this" }],
+	});
+
+	it("appends the tail and replays every other captured field byte-true", () => {
+		const captured = capturedFixture();
+		const tail = [promptTail()];
+		const merged = mergeOpenAIObservationPayload(captured, tail);
+
+		expect(merged.input).toEqual([...captured.input, promptTail()]);
+		const { input: _mergedInput, ...mergedRest } = merged;
+		const { input: _capturedInput, ...capturedRest } = capturedFixture();
+		expect(mergedRest).toEqual(capturedRest);
+	});
+
+	it("carries a run-end M through as pi-ai serialized it, reasoning items included", () => {
+		const tail = [
+			{ type: "reasoning", id: "rs_1", encrypted_content: "opaque", summary: [] },
+			{ type: "message", role: "assistant", id: "msg_1", content: [{ type: "output_text", text: "done" }] },
+			promptTail(),
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input.slice(3)).toEqual(structuredClone(tail));
+	});
+
+	it("strips explicit cache breakpoints from the tail (hydra owns marker placement)", () => {
+		const tail = [
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "observe this", prompt_cache_breakpoint: { mode: "explicit" } },
+					{ type: "input_text", text: "and this" },
+				],
+			},
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input[3]).toEqual({
+			type: "message",
+			role: "user",
+			content: [
+				{ type: "input_text", text: "observe this" },
+				{ type: "input_text", text: "and this" },
+			],
+		});
+	});
+
+	it("leaves breakpoints in the captured prefix untouched (the driver's markers are the driver's)", () => {
+		const captured = capturedFixture();
+		const first = captured.input[0] as { content: Array<Record<string, unknown>> };
+		first.content[0].prompt_cache_breakpoint = { mode: "explicit" };
+		const merged = mergeOpenAIObservationPayload(captured, [promptTail()]);
+		// Assert the marker's VALUE survives, not object equality: the merge
+		// may alias prefix items, and an aliased comparison cannot fail.
+		const mergedFirst = merged.input[0] as { content: Array<Record<string, unknown>> };
+		expect(mergedFirst.content[0].prompt_cache_breakpoint).toEqual({ mode: "explicit" });
+		expect(mergedFirst.content[0].text).toBe("hi");
+	});
+
+	it("tolerates tail items without block content", () => {
+		const tail = [
+			{ type: "function_call", name: "read", call_id: "call_2", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_2", output: "ok" },
+			null,
+			{ type: "message", role: "user", content: "plain string content" },
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail);
+		expect(merged.input.slice(3)).toEqual(structuredClone(tail));
+	});
+
+	it("mutates neither the captured payload nor the tail", () => {
+		const captured = capturedFixture();
+		// Seed a marker into the prefix so a regression that strips markers
+		// from captured items (not just the tail) is actually detectable.
+		(captured.input[0] as { content: Array<Record<string, unknown>> }).content[0].prompt_cache_breakpoint = { mode: "explicit" };
+		const tail = [
+			{
+				type: "message",
+				role: "user",
+				content: [{ type: "input_text", text: "observe", prompt_cache_breakpoint: { mode: "explicit" } }],
+			},
+		];
+		const capturedBefore = structuredClone(captured);
+		const tailBefore = structuredClone(tail);
+		mergeOpenAIObservationPayload(captured, tail);
+		expect(captured).toEqual(capturedBefore);
+		expect(tail).toEqual(tailBefore);
+	});
+
+	it("inserts a developer envelope immediately after the lens, after run-end reasoning items", () => {
+		const tail = [
+			{ type: "reasoning", id: "rs_1", encrypted_content: "opaque", summary: [] },
+			{ type: "message", role: "assistant", content: [{ type: "output_text", text: "done" }] },
+			promptTail(),
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail, "protocol");
+		expect(merged.input.slice(3).map((item) => (item as { role?: string }).role ?? (item as { type?: string }).type)).toEqual([
+			"reasoning",
+			"assistant",
+			"user",
+			"developer",
+		]);
+		expect(merged.input[6]).toEqual({
+			type: "message",
+			role: "developer",
+			content: [{ type: "input_text", text: "protocol" }],
+		});
+	});
+
+	it("keeps the developer envelope adjacent to the lens across acting-loop items", () => {
+		const tail = [
+			promptTail(),
+			{ type: "function_call", name: "read", call_id: "call_2", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_2", output: "ok" },
+		];
+		const merged = mergeOpenAIObservationPayload(capturedFixture(), tail, "protocol");
+		expect(merged.input.slice(3).map((item) => (item as { role?: string }).role ?? (item as { type?: string }).type)).toEqual([
+			"user",
+			"developer",
+			"function_call",
+			"function_call_output",
+		]);
+	});
+
+	it("rejects a split handoff without a lens user message", () => {
+		expect(() => mergeOpenAIObservationPayload(capturedFixture(), [{ type: "reasoning" }], "protocol")).toThrow(
+			"tail has no user prompt",
+		);
+	});
 });
 
 describe("parseHeadFile", () => {
 	it("parses a full head file", () => {
-		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\n---\nKeep docs current.";
+		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\nafter-change: noop\n---\nKeep docs current.";
 		expect(parseHeadFile(content)).toEqual({
 			head: {
 				name: "docs",
 				description: "Keeps docs current",
 				tools: ["read", "write"],
 				autostart: true,
+				afterChange: "noop",
 				prompt: "Keep docs current.",
 			},
 		});
@@ -315,7 +983,9 @@ describe("parseHeadFile", () => {
 
 	it("leaves autostart undefined unless literally true", () => {
 		const parsed = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
-		expect(parsed).toEqual({ head: { name: "x", description: "d", tools: undefined, autostart: undefined, prompt: "Body." } });
+		expect(parsed).toEqual({
+			head: { name: "x", description: "d", tools: undefined, autostart: undefined, afterChange: undefined, prompt: "Body." },
+		});
 	});
 
 	it("requires frontmatter, name, description, and a body", () => {
@@ -333,14 +1003,36 @@ describe("parseHeadFile", () => {
 	it("tolerates CRLF line endings and a BOM", () => {
 		const crlf = "---\r\nname: x\r\ndescription: d\r\ntools: read\r\n---\r\nBody.\r\n";
 		expect(parseHeadFile(`\uFEFF${crlf}`)).toEqual({
-			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, prompt: "Body." },
+			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, afterChange: undefined, prompt: "Body." },
 		});
 	});
 
 	it("accepts brackets around a tools list", () => {
 		const parsed = parseHeadFile("---\nname: x\ndescription: d\ntools: [read, write]\n---\nBody.");
 		expect(parsed).toEqual({
-			head: { name: "x", description: "d", tools: ["read", "write"], autostart: undefined, prompt: "Body." },
+			head: {
+				name: "x",
+				description: "d",
+				tools: ["read", "write"],
+				autostart: undefined,
+				afterChange: undefined,
+				prompt: "Body.",
+			},
+		});
+	});
+
+	it("rejects invalid delivery metadata and delivery on a judge-only head", () => {
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: queue\n---\nBody.")).toEqual({
+			error: 'invalid after-change "queue" (expected: noop, print)',
+		});
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: []\nafter-change: noop\n---\nBody.")).toEqual({
+			error: "after-change requires an acting head (tools must not be [])",
+		});
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: print\n---\nBody.")).toEqual({
+			error: "after-change requires write, edit, or omitted tools",
+		});
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: hydra\nafter-change: print\n---\nBody.")).toEqual({
+			error: "after-change requires write, edit, or omitted tools",
 		});
 	});
 
