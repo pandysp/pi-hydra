@@ -25,6 +25,7 @@
   "scripts": {
     "check": "tsc",
     "test": "vitest run",
+    "gates": "node --test experiments/*.check.mjs",
     "manifest:refresh": "node -e 'import(\"./experiments/capstone-input-manifest.mjs\").then(m => require(\"node:fs\").writeFileSync(\"experiments/CAPSTONE-FROZEN-INPUTS.json\", m.renderCapstoneInputManifest()))'",
     "manifest:expanded-2q": "node experiments/expanded-2q-input-manifest.mjs --output experiments/EXPANDED-2Q-FROZEN-INPUTS.json"
   },

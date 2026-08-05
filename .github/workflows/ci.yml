@@ -17,5 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: invariant gates
+        run: npm run gates
       - name: syntax-check experiments
-        run: for f in experiments/*.mjs; do node --check "$f"; done
+        run: for f in experiments/*.mjs experiments/attic/*.mjs; do node --check "$f"; done
