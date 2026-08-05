@@ -19,8 +19,8 @@
  * C2 (evidence vs capitulation) readable.
  *
  * Usage:
- *   node experiments/severity-consensus.mjs --round 1 --state <dir>
- *   node experiments/severity-consensus.mjs --round 2 --state <dir>   # after
+ *   node experiments/attic/severity-consensus.mjs --round 1 --state <dir>
+ *   node experiments/attic/severity-consensus.mjs --round 2 --state <dir>   # after
  *                                    writing analyst-round2.json in <dir>
  * Zero producer spend; both judges are subscription-billed.
  */
@@ -29,8 +29,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
-import { argOf } from "./lib.mjs";
-import { codeContext } from "./severity-pool-probe.mjs";
+import { argOf } from "../lib.mjs";
+import { codeContext } from "../severity-pool-probe.mjs";
 
 const SYSTEM_PROMPT = "You are an independent software-review benchmark judge.";
 const CORRECTION =
@@ -88,7 +88,7 @@ function textOf(message) {
 async function piTransport(spec) {
 	const [{ streamSimple }, { resolveModel }] = await Promise.all([
 		import("@earendil-works/pi-ai/compat"),
-		import("./model-catalog.mjs"),
+		import("../model-catalog.mjs"),
 	]);
 	const model = resolveModel(spec.provider, spec.model);
 	if (!model) throw new Error(`judge model unavailable: ${spec.model}`);

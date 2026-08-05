@@ -14,7 +14,7 @@ import { gunzipSync } from "node:zlib";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { argOf } from "./lib.mjs";
+import { argOf } from "../lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO = resolve(HERE, "..");

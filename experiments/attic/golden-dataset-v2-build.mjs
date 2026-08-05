@@ -16,8 +16,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assemble, mergeDatasets } from "./golden-dataset-assemble.mjs";
-import { TRAJECTORY_TASKS } from "./trajectory-cost-tasks.mjs";
-import { argOf } from "./lib.mjs";
+import { TRAJECTORY_TASKS } from "../trajectory-cost-tasks.mjs";
+import { argOf } from "../lib.mjs";
 
 const args = process.argv.slice(2);
 const REPO = argOf(args, "--repo", resolve(dirname(fileURLToPath(import.meta.url)), ".."));

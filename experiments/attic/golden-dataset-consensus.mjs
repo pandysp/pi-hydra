@@ -33,15 +33,15 @@
  * independence proof. Zero producer spend; both judges subscription-billed.
  *
  * Usage:
- *   node experiments/golden-dataset-consensus.mjs --round 1 --state <dir>
+ *   node experiments/attic/golden-dataset-consensus.mjs --round 1 --state <dir>
  */
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { argOf } from "./lib.mjs";
+import { argOf } from "../lib.mjs";
 import { AXES, PARTICIPANTS, agreed, askJudgeDetailed } from "./severity-consensus.mjs";
-import { codeContext } from "./severity-pool-probe.mjs";
-import { TRAJECTORY_TASKS, setupTask } from "./trajectory-cost-tasks.mjs";
+import { codeContext } from "../severity-pool-probe.mjs";
+import { TRAJECTORY_TASKS, setupTask } from "../trajectory-cost-tasks.mjs";
 import { mkdtempSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";

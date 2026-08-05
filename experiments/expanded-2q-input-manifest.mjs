@@ -7,7 +7,8 @@ import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { argOf } from "./lib.mjs";
 
 export const EXPANDED_2Q_INPUTS = [
-	"package.json",
+	// package-lock.json carries the dependency-resolution identity; package.json
+	// scripts do not and its edits kept forcing regens, so it is not hashed.
 	"package-lock.json",
 	"experiments/artifacts/2026-08-01-trajectory-pilot/payloads.tar.gz",
 	"experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",

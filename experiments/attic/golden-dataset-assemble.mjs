@@ -20,13 +20,14 @@
  *   metadata may carry a source anchor directly. The checker resolves each
  *   one against its declared file and temporal frame.
  *
- * Usage: node experiments/golden-dataset-assemble.mjs --state <dir> [--out experiments/golden-dataset.json]
+ * Usage: node experiments/attic/golden-dataset-assemble.mjs --state <dir> [--out experiments/golden-dataset.json]
  */
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { argOf } from "./lib.mjs";
-import { TRAJECTORY_TASKS } from "./trajectory-cost-tasks.mjs";
+import { argOf } from "../lib.mjs";
+import { realCatalogVersion } from "../dual-catalog.mjs";
+import { TRAJECTORY_TASKS } from "../trajectory-cost-tasks.mjs";
 
 const PREFIX = { scheduler: "SCHED", exporter: "EXP", dispatcher: "DISP" };
 const SOURCE = { P: "planted", R: "reference-review", C: "code-review", O: "observer" };
@@ -130,13 +131,12 @@ export function assemble(stateDir, seedStateDir = null, runId = "2026-08-02-gold
 		accepted.push(record);
 	}
 
-	const canonical = JSON.stringify(accepted.filter((i) => i.status === "active").map((i) => [i.id, i.task, i.statement, i.tier]).sort());
 	const agreedNow = issues.filter((issue) => {
 		const held = participants.map((p) => positions[p][issue.id]);
 		return ["blocking", "anyHarm"].every((axis) => held.every((h) => h[axis] === held[0][axis]));
 	}).length;
 	return {
-		version: createHash("sha256").update(canonical).digest("hex").slice(0, 16),
+		version: realCatalogVersion(accepted),
 		builtFrom: {
 			stateDir: stateDir.replace(process.env.HOME, "~"),
 			seedStateDir: seedStateDir ? seedStateDir.replace(process.env.HOME, "~") : null,
@@ -185,9 +185,10 @@ export function mergeDatasets(base, addition, edits = {}) {
 	if (unknownEdits.length > 0) throw new Error(`edits reference unknown ids: ${[...new Set(unknownEdits)].join(", ")}`);
 	const issues = all.filter((r) => r.status === "active");
 	const rejected = all.filter((r) => r.status !== "active");
-	const canonical = JSON.stringify(issues.map((i) => [i.id, i.task, i.statement, i.tier]).sort());
 	return {
-		version: createHash("sha256").update(canonical).digest("hex").slice(0, 16),
+		// One formula, one implementation (realCatalogVersion): a second inline
+		// copy with a different sort order is a latent unresolvable red state.
+		version: realCatalogVersion(issues),
 		builtFrom: {
 			base: base.version,
 			addition: addition?.builtFrom ?? null,

@@ -98,8 +98,8 @@
     },
     {
       "path": "experiments/expanded-2q-input-manifest.mjs",
-      "bytes": 3343,
-      "sha256": "ee29f989f9084524331973a1f8aa046f1751c62d35dfb5392ac255c9070019b1"
+      "bytes": 3480,
+      "sha256": "ebb98705492a045231eff8616222da2ad16d969d7292a467bd35820691f5c066"
     },
     {
       "path": "experiments/false-positive-catalog.json",
@@ -140,11 +140,6 @@
       "path": "package-lock.json",
       "bytes": 161726,
       "sha256": "9fc8440602df8fb61d1938af1338e4df1c5c799a2b6976e694df67f2daf8d8e2"
-    },
-    {
-      "path": "package.json",
-      "bytes": 1358,
-      "sha256": "9d01ebffe12e794e33e23a22de06aa32e1b9d7b19be164769b6d0fe0fffd7877"
     }
   ]
 }

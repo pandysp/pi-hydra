@@ -689,3 +689,17 @@ test("provider inference errs toward refreshing both", () => {
 	assert.deepEqual(providersFor(["opus-high", "luna-medium"]).sort(), ["anthropic", "openai-codex"]);
 	assert.deepEqual(providersFor(["something-new"]).sort(), ["anthropic", "openai-codex"], "an unknown model must not silently skip a refresh");
 });
+
+// ---------------------------------------------------------------------------
+// 10. The ledger gate itself: artifact integrity must hold on every run.
+// Un-ledgered mirror-only waves stay informational (they are the point of the
+// ledger); artifact PROBLEMS — a ledger row whose repo artifacts fail their
+// manifests — are a hard failure. Previously this only ran when someone
+// remembered `hydra-lab ledger verify`.
+// ---------------------------------------------------------------------------
+
+test("ledger verify reports zero artifact problems", () => {
+	const result = spawnSync("node", ["experiments/hydra-lab.mjs", "ledger", "verify"], { encoding: "utf8" });
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	assert.match(result.stdout, /\b0 artifact problem\(s\)/, result.stdout);
+});

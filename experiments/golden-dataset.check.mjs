@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { TRAJECTORY_TASKS } from "./trajectory-cost-tasks.mjs";
 import { anchorResolution } from "./golden-dataset-frame-sources.mjs";
+import { realCatalogVersion } from "./dual-catalog.mjs";
 
 const DATASET = JSON.parse(readFileSync(new URL("./golden-dataset.json", import.meta.url), "utf8"));
 const FRAME_SOURCES = JSON.parse(gunzipSync(readFileSync(new URL(
@@ -102,9 +103,11 @@ test("ids are unique and stable-looking", () => {
 });
 
 test("the set version is the content hash of its active records", () => {
-	const active = DATASET.issues.filter((i) => i.status === "active");
-	const canonical = JSON.stringify(active.map((i) => [i.id, i.task, i.statement, i.tier]).sort());
-	assert.equal(DATASET.version, createHash("sha256").update(canonical).digest("hex").slice(0, 16), "version does not match content");
+	// One formula, one implementation: bare Array.sort() and localeCompare are
+	// NOT equivalent orderings, and a second inline copy is a latent
+	// unresolvable-red-state (validator and checker demanding different
+	// versions on the first case-divergent record pair).
+	assert.equal(DATASET.version, realCatalogVersion(DATASET.issues), "version does not match content");
 });
 
 test("no planted defect was silently dropped by clustering", () => {
