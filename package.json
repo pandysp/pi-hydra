@@ -23,7 +23,7 @@
     ]
   },
   "scripts": {
-    "check": "tsc",
+    "check": "tsc && node module-state.check.mjs",
     "test": "vitest run",
     "gates": "node --test experiments/*.check.mjs",
     "manifest:refresh": "node -e 'import(\"./experiments/capstone-input-manifest.mjs\").then(m => require(\"node:fs\").writeFileSync(\"experiments/CAPSTONE-FROZEN-INPUTS.json\", m.renderCapstoneInputManifest()))'",
