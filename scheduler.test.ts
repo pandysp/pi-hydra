@@ -99,6 +99,39 @@ describe("head scheduler", () => {
 		expect(h.observed).toEqual([]);
 	});
 
+	// The reporter is the headless stderr fallback, which can fail (EPIPE) at
+	// exactly the moment observations are failing. schedule() leaves the
+	// runner promise floating, so a throw there would land as an unhandled
+	// rejection and take the process down before shutdown finishes.
+	it("survives a reporter that throws and still aborts on shutdown", async () => {
+		const signals: AbortSignal[] = [];
+		let settle: (() => void) | undefined;
+		const scheduler = new HeadScheduler<Seed>({
+			shouldRun: () => true,
+			observe: (_seed, signal) => {
+				signals.push(signal);
+				return new Promise<void>((_resolve, reject) => {
+					settle = () => reject(new Error("provider down"));
+				});
+			},
+			onError: () => {
+				throw new Error("stderr closed");
+			},
+		});
+		scheduler.schedule({ head: "a", tag: "a1" });
+		await tick();
+		settle?.();
+		await tick();
+
+		// The failed run does not gate the head: it observes again.
+		scheduler.schedule({ head: "a", tag: "a2" });
+		await tick();
+		expect(signals).toHaveLength(2);
+
+		await scheduler.shutdown(10);
+		expect(signals[1].aborted).toBe(true);
+	});
+
 	it("reports no error for a failure that races the abort", async () => {
 		const h = createHarness();
 		h.scheduler.schedule({ head: "a", tag: "a1" });

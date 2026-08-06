@@ -71,7 +71,16 @@ export class HeadScheduler<Seed extends { head: string }> {
 					await this.hooks.observe(seed, this.lifecycleAbort.signal);
 				} catch (error) {
 					if (!this.lifecycleAbort.signal.aborted) {
-						this.hooks.onError(seed, error);
+						// A failing reporter must not kill the runner: schedule()
+						// leaves this promise floating, so a throw here would
+						// surface as an unhandled rejection (ctx.ui torn down, or
+						// EPIPE on the headless stderr fallback) and take the
+						// process with it.
+						try {
+							this.hooks.onError(seed, error);
+						} catch {
+							// Nothing left to report the failure to.
+						}
 					}
 				}
 			}
@@ -87,13 +96,19 @@ export class HeadScheduler<Seed extends { head: string }> {
 		if (running.length > 0) {
 			// Clear the timer once the race settles: a pending timeout keeps
 			// the headless process alive for the full grace after the
-			// observations already finished.
+			// observations already finished. allSettled, not all: a rejected
+			// runner must not skip the timer clear, the abort, or the caller's
+			// own shutdown work (pi's cached observer WebSocket is released
+			// after this call returns).
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const timeout = new Promise<void>((resolve) => {
 				timer = setTimeout(resolve, graceMs);
 			});
-			await Promise.race([Promise.all(running), timeout]);
-			clearTimeout(timer);
+			try {
+				await Promise.race([Promise.allSettled(running), timeout]);
+			} finally {
+				clearTimeout(timer);
+			}
 		}
 		this.lifecycleAbort.abort();
 	}

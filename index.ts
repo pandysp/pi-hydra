@@ -69,8 +69,8 @@ import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-
 import type {
 	Action,
 	AfterChangeAction,
-	AnthropicPayload,
 	Decision,
+	HydraConfig,
 	ObservationLoopStopReason,
 	ObservationUsage,
 } from "./utils";
@@ -88,7 +88,7 @@ import {
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
 import { HeadScheduler } from "./scheduler";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
-import type { HydraCall, HydraConfig, ObserveKind } from "./stats";
+import type { HydraCall, ObserveKind } from "./stats";
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
@@ -367,8 +367,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
-	const hitBands = (ctx: ExtensionContext) => hitBandsFor(ctx.model?.api);
-
 	function updateFooter(ctx: ExtensionContext) {
 		const activeHeads = registry.activeSet();
 		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
@@ -379,7 +377,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
-		const { good, fair } = hitBands(ctx);
+		const { good, fair } = hitBandsFor(ctx.model?.api);
 		const hitColor = meanHit === null ? "muted" : meanHit >= good ? "success" : meanHit >= fair ? "warning" : "error";
 		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
@@ -1057,7 +1055,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", (_event, ctx) => {
-		registry.discover(registryGateway(ctx), ctx.cwd);
+		const gateway = registryGateway(ctx);
+		registry.discover(gateway, ctx.cwd);
 		const restored = restoreFromBranch(ctx);
 		// An explicit flag on this launch beats the saved set: present intent
 		// over recorded intent. Flag-seeded sets persist (they are the only
@@ -1066,8 +1065,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const flag = pi.getFlag("hydra-heads");
 		if (typeof flag === "string" && flag.length > 0) {
 			if (flag.trim() === "none") {
-				registry.clearHeadSet(registryGateway(ctx));
-			} else if (!registry.setHeadSet(registryGateway(ctx), parseHeadList(flag))) {
+				registry.clearHeadSet(gateway);
+			} else if (!registry.setHeadSet(gateway, parseHeadList(flag))) {
 				ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${registry.activeSet().join("+") || "no heads"}`, "warning");
 			}
 		} else if (!restored) {
@@ -1248,7 +1247,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext) {
 		const name = params.head.trim();
 		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
-		registry.discover(registryGateway(ctx), ctx.cwd);
+		const gateway = registryGateway(ctx);
+		registry.discover(gateway, ctx.cwd);
 		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
 		const reply = (text: string, changed = false) => ({
 			content: [{ type: "text" as const, text }],
@@ -1268,7 +1268,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			if (registry.isActive(name)) {
 				return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
 			}
-			registry.setHeadSet(registryGateway(ctx), [...registry.activeSet(), name]);
+			registry.setHeadSet(gateway, [...registry.activeSet(), name]);
 			return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 		}
 
@@ -1277,9 +1277,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const remaining = registry.activeSet().filter((active) => active !== name);
 		if (remaining.length > 0) {
-			registry.setHeadSet(registryGateway(ctx), remaining);
+			registry.setHeadSet(gateway, remaining);
 		} else {
-			registry.clearHeadSet(registryGateway(ctx));
+			registry.clearHeadSet(gateway);
 		}
 		return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 	}
@@ -1421,12 +1421,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (selection === null) {
 			return;
 		}
+		const gateway = registryGateway(ctx);
 		if (selection.length === 0) {
-			registry.clearHeadSet(registryGateway(ctx));
+			registry.clearHeadSet(gateway);
 			ctx.ui.notify("hydra: no heads active", "info");
 			return;
 		}
-		if (registry.setHeadSet(registryGateway(ctx), selection)) {
+		if (registry.setHeadSet(gateway, selection)) {
 			ctx.ui.notify(`hydra: heads=${registry.activeSet().join("+")}`, "info");
 		}
 	}
@@ -1447,10 +1448,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				});
 		},
 		handler: async (args, ctx) => {
-			registry.discover(registryGateway(ctx), ctx.cwd);
+			const gateway = registryGateway(ctx);
+			registry.discover(gateway, ctx.cwd);
 			const trimmed = args.trim();
 			if (trimmed === "none") {
-				registry.clearHeadSet(registryGateway(ctx));
+				registry.clearHeadSet(gateway);
 				ctx.ui.notify("hydra: no heads active", "info");
 				return;
 			}
@@ -1466,7 +1468,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				}
 				return;
 			}
-			if (registry.setHeadSet(registryGateway(ctx), parseHeadList(trimmed))) {
+			if (registry.setHeadSet(gateway, parseHeadList(trimmed))) {
 				ctx.ui.notify(`hydra: heads=${registry.activeSet().join("+")}`, "info");
 			}
 		},
@@ -1503,7 +1505,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBands(ctx).target}`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api).target}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,

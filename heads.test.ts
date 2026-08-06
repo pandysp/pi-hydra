@@ -100,6 +100,22 @@ describe("head discovery", () => {
 		]);
 	});
 
+	it("announces project heads again after they disappear and come back", () => {
+		const h = createHarness({ project: { "quality.md": headFile("quality") } });
+		h.registry.discover(h.gateway, "/repo/src");
+
+		// A branch switch takes .pi/hydra away and brings the same file back.
+		h.files.delete(`${PROJECT_DIR}/quality.md`);
+		h.registry.discover(h.gateway, "/repo/src");
+		h.files.set(`${PROJECT_DIR}/quality.md`, headFile("quality"));
+		h.registry.discover(h.gateway, "/repo/src");
+
+		expect(h.announced).toEqual([
+			`hydra: project heads from ${PROJECT_DIR}: quality`,
+			`hydra: project heads from ${PROJECT_DIR}: quality`,
+		]);
+	});
+
 	it("drops a vanished head from the active set and signals the change", () => {
 		const h = createHarness({ user: { "quality.md": headFile("quality"), "security.md": headFile("security") } });
 		h.registry.discover(h.gateway, "/repo");
@@ -184,6 +200,22 @@ describe("active set", () => {
 		h.registry.revertDiagnosticAfterFire(h.gateway, "test");
 		expect(h.registry.activeSet()).toEqual(["quality", "security"]);
 		expect(h.announced.at(-1)).toBe('hydra: diagnostic head "test" fired once; reverting to quality+security');
+	});
+
+	it("does not restore a head whose file vanished while the diagnostic held the set", () => {
+		const h = seeded();
+		h.registry.setHeadSet(h.gateway, ["quality", "security"]);
+		h.registry.setHeadSet(h.gateway, ["test"]);
+
+		// Nothing active vanishes here, so the active-set prune stays quiet;
+		// the set waiting behind the diagnostic must still lose the head.
+		h.files.delete(`${USER_DIR}/security.md`);
+		h.registry.discover(h.gateway, "/repo");
+		expect(h.registry.activeSet()).toEqual(["test"]);
+
+		h.registry.revertDiagnosticAfterFire(h.gateway, "test");
+		expect(h.registry.activeSet()).toEqual(["quality"]);
+		expect(h.persisted.at(-1)).toEqual(["quality"]);
 	});
 
 	it("leaves a product head alone and keeps a diagnostic that shares the set", () => {

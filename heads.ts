@@ -13,9 +13,8 @@
  * the gateway, built per call in index.ts.
  */
 import { dirname, join } from "node:path";
-import type { HydraConfig } from "./stats";
 import { parseHeadFile, sanitizeHeadSet, savedHeadList } from "./utils";
-import type { HeadDefinition } from "./utils";
+import type { HeadDefinition, HydraConfig } from "./utils";
 
 // Diagnostic heads force a fixed decision so the delivery pipeline can be
 // smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
@@ -91,7 +90,8 @@ export class HeadRegistry {
 		const loaded = new Map<string, DiscoveredHead>();
 		let files: string[];
 		try {
-			files = gateway.readDir(dir).sort();
+			// Copy before sorting: the gateway's array is the caller's, not ours.
+			files = [...gateway.readDir(dir)].sort();
 		} catch (error) {
 			// ENOENT means no heads; anything else (EACCES, ENOTDIR) hides
 			// real head files and must not read as deliberate emptiness.
@@ -152,6 +152,9 @@ export class HeadRegistry {
 
 		// Announce project heads once per distinct discovery result, not on
 		// every rediscovery (which runs at each agent_start and tool call).
+		// Losing the project dir clears the memo, so heads that come back
+		// (a branch switch away and back) are announced again rather than
+		// loading silently.
 		if (project.size > 0 && projectDir) {
 			const signature = `${projectDir}|${[...project.keys()].join(",")}|${shadowed.join(",")}`;
 			if (signature !== this.announcedDiscovery) {
@@ -161,16 +164,22 @@ export class HeadRegistry {
 					gateway.notify(`hydra: project head shadows your user head: ${shadowed.join(", ")}`, "warning");
 				}
 			}
+		} else {
+			this.announcedDiscovery = "";
 		}
 
 		// A vanished file must not leave a ghost in the active set; dropping
 		// it with a notice beats observing with a head that no longer exists.
+		// productHeads is pruned unconditionally: while a diagnostic holds the
+		// active set nothing active vanishes, but the one-shot revert would
+		// otherwise restore a head whose file is gone (observed with an empty
+		// instruction and, absent a tools: list, full tool access).
 		const pruned = this.activeHeads.filter((name) => this.exists(name));
+		this.productHeads = this.productHeads.filter((name) => this.exists(name));
 		if (pruned.length !== this.activeHeads.length) {
 			const dropped = this.activeHeads.filter((name) => !this.exists(name));
 			gateway.notify(`hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
 			this.activeHeads = pruned;
-			this.productHeads = this.productHeads.filter((name) => this.exists(name));
 			gateway.onActiveSetChanged();
 		}
 	}

@@ -4,7 +4,7 @@
  * rebuilding state from a session branch. Rendering (the footer and
  * /hydra-stats) stays in index.ts, which owns the UI.
  */
-import type { Action, PersistedDelivery } from "./utils";
+import type { Action, HydraConfig, PersistedDelivery } from "./utils";
 
 export type ObserveKind = "piggyback" | "run-end";
 
@@ -40,17 +40,6 @@ export interface HydraCall {
 	// Acting heads only: model turns in the tool loop and the tools executed.
 	iterations?: number;
 	toolsUsed?: string[];
-}
-
-// The active head set survives resume and branch navigation as the latest
-// "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
-// the saved set (present intent over recorded intent); heads marked
-// autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
-// field names, still read for old sessions.
-export interface HydraConfig {
-	heads: string[];
-	lenses?: string[];
-	lens?: string;
 }
 
 // Healthy differs per provider: ~97%+ on Anthropic, ~84–87% measured on
@@ -134,6 +123,30 @@ function persistedDelivery(value: unknown): PersistedDelivery | null {
 	return candidate as PersistedDelivery;
 }
 
+// A persisted call's numbers go straight into arithmetic and `toFixed` in the
+// footer, which re-renders after every observation. One truncated or skewed
+// entry (a field added later, a half-written session file) would otherwise
+// throw on every render for the rest of the session, so a missing number
+// restores as 0 rather than taking the UI down. The `lens` fallback here is
+// the standing proof that entry skew happens.
+const finite = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
+function persistedCall(data: HydraCall & { lens?: string }): HydraCall {
+	return {
+		...data,
+		head: data.head ?? data.lens ?? "?",
+		timestamp: finite(data.timestamp),
+		turnIndex: finite(data.turnIndex),
+		input: finite(data.input),
+		output: finite(data.output),
+		cacheRead: finite(data.cacheRead),
+		cacheWrite: finite(data.cacheWrite),
+		cost: finite(data.cost),
+		durationMs: finite(data.durationMs),
+		hitRatio: finite(data.hitRatio),
+	};
+}
+
 export interface BranchEntryLike {
 	type: string;
 	customType?: string;
@@ -159,7 +172,7 @@ export function parseBranchEntries(entries: Iterable<BranchEntryLike>): {
 		if (entry.customType === "hydra-call") {
 			const data = entry.data as (HydraCall & { lens?: string }) | undefined;
 			if (data && typeof data === "object") {
-				calls.push({ ...data, head: data.head ?? data.lens ?? "?" });
+				calls.push(persistedCall(data));
 			}
 		} else if (entry.customType === "hydra-config") {
 			const data = entry.data as HydraConfig | undefined;

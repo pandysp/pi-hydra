@@ -73,6 +73,18 @@ describe("parseBranchEntries", () => {
 		expect(calls.map((c) => c.head)).toEqual(["old-name", "quality"]);
 	});
 
+	it("restores a truncated call with zeroed numbers instead of values the footer cannot render", () => {
+		const { calls } = parseBranchEntries([
+			entry("hydra-call", { head: "quality", action: "noop", cost: 0.02 }),
+			entry("hydra-call", call({ hitRatio: Number.NaN })),
+		]);
+		expect(calls).toHaveLength(2);
+		expect(calls[0].hitRatio).toBe(0);
+		expect(calls[0].durationMs).toBe(0);
+		expect(calls[0].cost).toBeCloseTo(0.02);
+		expect(calls[1].hitRatio).toBe(0);
+	});
+
 	it("keeps the last config and distinguishes absent from deliberately empty", () => {
 		expect(parseBranchEntries([]).config).toBeUndefined();
 		const { config } = parseBranchEntries([
