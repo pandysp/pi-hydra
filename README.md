@@ -115,7 +115,7 @@ The tool deliberately stops there. Everything the agent does to its heads is vis
 
 ## How it works
 
-hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a cache read of the committed prefix (mid-run observations measured write=0), fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/INDEX.md) and the design in [`docs/architecture.md`](docs/architecture.md).
+hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits: when a response begins streaming mid-run, and at run end. Each observation is therefore a cache read of the committed prefix (mid-run observations measured write=0), fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/INDEX.md) and the design in [`docs/architecture.md`](docs/architecture.md).
 
 ## Limitations
 
