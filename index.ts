@@ -932,11 +932,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return merged;
 		};
 
+		// pi's runtime substitutes an auth-supplied baseUrl into the model before
+		// streaming (model-runtime: `{ ...model, baseUrl: resolution.auth.baseUrl }`),
+		// and the transports read `model.baseUrl`. `ctx.model` is the unsubstituted
+		// session model, so without this an observation would bypass a gateway the
+		// driver's own requests go through. Read defensively: `baseUrl` is absent
+		// from this result before pi 0.84.
+		const authBaseUrl = (auth as { baseUrl?: string }).baseUrl;
+		const observationModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
+
 		const t0 = Date.now();
 		const outcome =
 			job.completionMode === "enum"
-				? await runJudgeObservation(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
-				: await runObservationLoop(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
+				? await runJudgeObservation(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
+				: await runObservationLoop(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
 		if (!outcome || signal.aborted || job.branchGeneration !== branchGeneration) {
 			return;
 		}
