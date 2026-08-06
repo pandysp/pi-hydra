@@ -288,6 +288,19 @@ export interface HeadDefinition {
 	prompt: string;
 }
 
+/**
+ * The active head set survives resume and branch navigation as the latest
+ * "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
+ * the saved set (present intent over recorded intent); heads marked
+ * autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
+ * field names, still read for old sessions.
+ */
+export interface HydraConfig {
+	heads: string[];
+	lenses?: string[];
+	lens?: string;
+}
+
 export function isValidHeadName(name: string): boolean {
 	return /^[a-z0-9][a-z0-9-]*$/.test(name) && name !== "none";
 }

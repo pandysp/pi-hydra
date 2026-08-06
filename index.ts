@@ -47,7 +47,7 @@
 
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { cleanupSessionResources } from "@earendil-works/pi-ai";
@@ -69,14 +69,15 @@ import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-
 import type {
 	Action,
 	AfterChangeAction,
-	AnthropicPayload,
 	Decision,
-	HeadDefinition,
+	HydraConfig,
 	ObservationLoopStopReason,
 	ObservationUsage,
 } from "./utils";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
 import type { DeliveryGateway } from "./delivery";
+import { DIAGNOSTIC_PROMPTS, HeadRegistry } from "./heads";
+import type { HeadRegistryGateway } from "./heads";
 import type { PersistedDelivery } from "./utils";
 import {
 	hydraToolDescription,
@@ -85,6 +86,9 @@ import {
 	validateHydraToolParams,
 } from "./protocol";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
+import { HeadScheduler } from "./scheduler";
+import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
+import type { HydraCall, ObserveKind } from "./stats";
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
@@ -105,11 +109,8 @@ import {
 	mergeOpenAIObservationPayload,
 	parseDecision,
 	parseEnumeratedDecision,
-	parseHeadFile,
 	parseHeadList,
 	parseShutdownGrace,
-	sanitizeHeadSet,
-	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
 	usesSplitObservationHandoff,
@@ -124,22 +125,6 @@ const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
 // loop that has not produced a decision after this many model turns is not
 // converging and gets wound down (noop, with a warning).
 const MAX_TOOL_ITERATIONS = 25;
-
-// Diagnostic heads force a fixed decision so the delivery pipeline can be
-// smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
-// completions and the picker.
-const DIAGNOSTIC_PROMPTS = {
-	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "steer", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
-	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Call the hydra tool exactly once with action "complete_observation", delivery "interrupt", and message "hydra interrupt fired; if you see this in your context, interrupt delivery works". Do nothing else.</system-reminder>`,
-} as const;
-
-type ObserveKind = "piggyback" | "run-end";
-
-// What hydra can execute for a head: the seven standard tools plus its own.
-// A `tools:` entry outside this set can never run (hydra has no execute for
-// other extensions' tools or MCP), so discovery warns about it; the head
-// still loads, since the rest of its list works.
-const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -156,40 +141,6 @@ function plainMessageText(content: unknown): string | null {
 		parts.push(text);
 	}
 	return parts.join("");
-}
-
-// One observation call, persisted to the session as a custom "hydra-call" entry
-// so /hydra-stats survives resume and branch navigation.
-interface HydraCall {
-	timestamp: number;
-	turnIndex: number;
-	head: string;
-	kind?: ObserveKind;
-	// The provider API the call ran under; healthy hit ratios differ per
-	// provider, so display must not blend them. Absent on entries recorded
-	// before this field existed; the stats default those to Anthropic,
-	// which mislabels the few pre-field codex sessions (e.g. the 2026-07-15
-	// demo) — a display heuristic, acceptable for historical entries only.
-	api?: string;
-	// Historical readers use `action`; new enumerated observations may produce
-	// one user-only group plus one agent group, recorded here without hiding
-	// either delivery. `action` remains the most urgent group for compatibility.
-	action: Action;
-	actions?: Action[];
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cost: number;
-	durationMs: number;
-	// Replay-parity signal, always from the observation's first model call:
-	// an acting head's later loop iterations legitimately pay the growing
-	// tail as fresh input and must not read as a cache regression.
-	hitRatio: number;
-	rawResponse?: string;
-	// Acting heads only: model turns in the tool loop and the tools executed.
-	iterations?: number;
-	toolsUsed?: string[];
 }
 
 interface ObservationSeed {
@@ -223,41 +174,14 @@ interface FeedbackDetails {
 	lens?: string;
 }
 
-// The active head set survives resume and branch navigation as the latest
-// "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
-// the saved set (present intent over recorded intent); heads marked
-// autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
-// field names, still read for old sessions.
-interface HydraConfig {
-	heads: string[];
-	lenses?: string[];
-	lens?: string;
-}
-
-type DiscoveredHead = HeadDefinition & { source: "user" | "project" };
-
 export default function hydraExtension(pi: ExtensionAPI) {
-	// The active head set: one observation fans out per head, in parallel.
-	// Either a single diagnostic head or any number of product heads; the
-	// two never mix, since the diagnostics' one-shot revert restores
-	// productHeads. Empty means hydra observes nothing.
-	let activeHeads: string[] = [];
-	let productHeads: string[] = [];
-
 	pi.registerFlag("hydra-heads", {
 		description: "Initial hydra head set, comma-separated, or `none` (beats the saved session set)",
 		type: "string",
 	});
 
-	// Heads: one markdown file per head, name and capabilities in the
-	// frontmatter, instruction in the body. Two directories, re-read at every
-	// agent_start and hydra tool call so edits apply to the next observation
-	// without a reload. A project head shadows a same-named user head; both
-	// loads are announced, since project files are repo-controlled prompts
-	// (consented through pi's folder trust, like everything else in .pi/).
 	const userHeadDir = join(getAgentDir(), "hydra");
-	let heads = new Map<string, DiscoveredHead>();
-	let announcedDiscovery = "";
+	const registry = new HeadRegistry(userHeadDir);
 
 	// Headless mode implements ctx.ui.notify as a no-op, and headless runs
 	// are exactly where a silent failure costs the most; warnings and errors
@@ -289,19 +213,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 	}
 
-	function findProjectHeadDir(cwd: string): string | null {
-		let current = cwd;
-		while (true) {
-			const candidate = join(current, ".pi", "hydra");
-			if (isDirectory(candidate)) {
-				return candidate;
-			}
-			const parent = dirname(current);
-			if (parent === current) {
-				return null;
-			}
-			current = parent;
-		}
+	// The registry's pi effects, rebuilt per call so messages carry the
+	// caller's context; mirrors deliveryGateway below.
+	function registryGateway(ctx: ExtensionContext): HeadRegistryGateway {
+		return {
+			readDir: (dir) => readdirSync(dir),
+			readFile: (path) => readFileSync(path, "utf8"),
+			isDirectory,
+			announce: (message) => ctx.ui.notify(message, "info"),
+			notify: (message, level) => notifyUser(ctx, message, level),
+			warnOnce: (message) => warnOnce(ctx, message),
+			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
+			onActiveSetChanged: () => updateFooter(ctx),
+		};
 	}
 
 	// The driver's transport, resolved through pi's own SettingsManager so
@@ -335,139 +259,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		return lastReadTransport ?? "auto";
 	}
 
-	function loadHeadsFromDir(ctx: ExtensionContext, dir: string, source: "user" | "project"): Map<string, DiscoveredHead> {
-		const loaded = new Map<string, DiscoveredHead>();
-		let files: string[];
-		try {
-			files = readdirSync(dir).sort();
-		} catch (error) {
-			// ENOENT means no heads; anything else (EACCES, ENOTDIR) hides
-			// real head files and must not read as deliberate emptiness.
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-				warnOnce(ctx, `hydra: cannot read head dir ${dir}: ${errorText(error)}`);
-			}
-			return loaded;
-		}
-		for (const file of files) {
-			if (!file.endsWith(".md")) {
-				continue;
-			}
-			let parsed: ReturnType<typeof parseHeadFile>;
-			try {
-				parsed = parseHeadFile(readFileSync(join(dir, file), "utf8"));
-			} catch (error) {
-				warnOnce(ctx, `hydra: failed to read ${join(dir, file)}: ${errorText(error)}`);
-				continue;
-			}
-			if ("error" in parsed) {
-				warnOnce(ctx, `hydra: skipping ${join(dir, file)}: ${parsed.error}`);
-				continue;
-			}
-			const { head } = parsed;
-			if (head.name in DIAGNOSTIC_PROMPTS) {
-				warnOnce(ctx, `hydra: skipping ${join(dir, file)}: "${head.name}" is a reserved diagnostic name`);
-				continue;
-			}
-			if (loaded.has(head.name)) {
-				warnOnce(ctx, `hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`);
-				continue;
-			}
-			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
-			if (unexecutable.length > 0) {
-				warnOnce(
-					ctx,
-					`hydra: head "${head.name}" lists tools hydra cannot execute: ${unexecutable.join(", ")} (valid: ${EXECUTABLE_TOOL_NAMES.join(", ")})`,
-				);
-			}
-			loaded.set(head.name, { ...head, source });
-		}
-		return loaded;
-	}
-
-	function discoverHeads(ctx: ExtensionContext) {
-		const merged = loadHeadsFromDir(ctx, userHeadDir, "user");
-		const projectDir = findProjectHeadDir(ctx.cwd);
-		const project = projectDir ? loadHeadsFromDir(ctx, projectDir, "project") : new Map<string, DiscoveredHead>();
-		const shadowed: string[] = [];
-		for (const [name, head] of project) {
-			if (merged.has(name)) {
-				shadowed.push(name);
-			}
-			merged.set(name, head);
-		}
-		heads = merged;
-
-		// Announce project heads once per distinct discovery result, not on
-		// every rediscovery (which runs at each agent_start and tool call).
-		if (project.size > 0 && projectDir) {
-			const signature = `${projectDir}|${[...project.keys()].join(",")}|${shadowed.join(",")}`;
-			if (signature !== announcedDiscovery) {
-				announcedDiscovery = signature;
-				ctx.ui.notify(`hydra: project heads from ${projectDir}: ${[...project.keys()].join(", ")}`, "info");
-				if (shadowed.length > 0) {
-					notifyUser(ctx, `hydra: project head shadows your user head: ${shadowed.join(", ")}`, "warning");
-				}
-			}
-		}
-
-		// A vanished file must not leave a ghost in the active set; dropping
-		// it with a notice beats observing with a head that no longer exists.
-		const pruned = activeHeads.filter((name) => headExists(name));
-		if (pruned.length !== activeHeads.length) {
-			const dropped = activeHeads.filter((name) => !headExists(name));
-			notifyUser(ctx, `hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
-			activeHeads = pruned;
-			productHeads = productHeads.filter((name) => headExists(name));
-			updateFooter(ctx);
-		}
-	}
-
-	function headExists(name: string): boolean {
-		return heads.has(name) || name in DIAGNOSTIC_PROMPTS;
-	}
-
-	function headNames(): string[] {
-		return [...heads.keys()].sort();
-	}
-
-	const headCatalog = {
-		exists: (name: string) => headExists(name),
-		isDiagnostic: (name: string) => name in DIAGNOSTIC_PROMPTS,
-	};
-
-	// The one invariant of set changes: productHeads tracks the last set
-	// without a diagnostic, so a diagnostic's one-shot revert has a home.
-	function adoptHeadSet(headsList: string[]) {
-		activeHeads = headsList;
-		if (!headsList.some((name) => name in DIAGNOSTIC_PROMPTS)) {
-			productHeads = headsList;
-		}
-	}
-
-	// Apply a head set from any surface (command, picker, flag, tool).
-	// Returns false when nothing valid was requested; the current set stays.
-	function setHeadSet(ctx: ExtensionContext, requested: string[]): boolean {
-		const next = sanitizeHeadSet(requested, headCatalog);
-		if (next.unknown.length > 0) {
-			notifyUser(ctx, `hydra: unknown head: ${next.unknown.join(", ")}. available: ${headNames().join(", ") || "none"}`, "warning");
-		}
-		if (next.heads.length === 0) {
-			return false;
-		}
-		adoptHeadSet(next.heads);
-		persistConfig();
-		updateFooter(ctx);
-		return true;
-	}
-
-	// The deliberate "observe nothing" state; distinct from setHeadSet, which
-	// refuses to empty the set by accident (e.g. a typo'd name).
-	function clearHeadSet(ctx: ExtensionContext) {
-		adoptHeadSet([]);
-		persistConfig();
-		updateFooter(ctx);
-	}
-
 	function observationHandoffFor(
 		ctx: ExtensionContext,
 		name: string,
@@ -482,7 +273,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
-		const protocol = { afterChange, activeHeads: [...activeHeads], deliveryContext };
+		const protocol = { afterChange, activeHeads: [...registry.activeSet()], deliveryContext };
 		if (!headActs(tools)) {
 			return usesSplitObservationHandoff(ctx.model?.api)
 				? {
@@ -513,15 +304,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				};
 	}
 
-	// A head's executable allowance: diagnostics never act; a head file's
-	// omitted `tools:` means everything, `[]` means judging only.
-	function headTools(name: string): string[] | undefined {
-		if (name in DIAGNOSTIC_PROMPTS) {
-			return [];
-		}
-		return heads.get(name)?.tools;
-	}
-
 	// Driver capture: the exact provider payload of the most recent request,
 	// plus enough run state to know what it represents. responseTimestamp is
 	// the timestamp of the captured request's own response, recorded at its
@@ -533,20 +315,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
 
-	// Conflating single-slot scheduler, per head: every head has at most one
-	// observation in flight and one waiting slot that a newer snapshot
-	// overwrites. Observations always run to completion; staleness is bounded
-	// to one cycle because the slot always holds the newest snapshot. The
-	// granularity is per head (not one global batch) so an acting head's
-	// minutes-long tool loop cannot starve the judging heads, and a head busy
-	// through a commit point still reviews the newest snapshot when it frees
-	// up. session_shutdown awaits the in-flight runs.
-	interface HeadRunner {
-		pending: ObservationSeed | null;
-		running: Promise<void> | null;
-	}
-	const runners = new Map<string, HeadRunner>();
-	const lifecycleAbort = new AbortController();
+	const scheduler = new HeadScheduler<ObservationSeed>({
+		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration,
+		observe: async (seed, signal) => {
+			// Delivery facts are deliberately late-bound. A conflated slot can
+			// wait behind an earlier observation that routes feedback; freezing
+			// the ledger at scheduling time would make the later observer reason
+			// from facts that are no longer true. The lens itself remains frozen.
+			const job: Observation = {
+				...seed,
+				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.afterChange),
+			};
+			await observe(job, signal);
+		},
+		onError: (seed, error) => notifyUser(seed.ctx, `hydra: observe error: ${errorText(error)}`, "error"),
+	});
 	let shuttingDown = false;
 
 	// The observer's backend session identity for codex observations, one
@@ -577,60 +360,24 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// Stats and successful delivery facts, rebuilt from the current session
 	// branch on restore. Live queue state never crosses branch navigation.
-	let calls: HydraCall[] = [];
+	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
-	function cumulative(currentApi: string | undefined) {
-		let cost = 0;
-		let read = 0;
-		let write = 0;
-		let input = 0;
-		let hitRead = 0;
-		let hitReadable = 0;
-		for (const call of calls) {
-			cost += call.cost;
-			read += call.cacheRead;
-			write += call.cacheWrite;
-			input += call.input;
-			// Money and token totals are session-wide; the mean hit ratio
-			// only aggregates calls comparable to the current model, so a
-			// mid-session provider switch cannot recolor healthy history
-			// against the wrong band. Entries without api predate codex
-			// support and were all Anthropic.
-			if (currentApi === undefined || (call.api ?? "anthropic-messages") === currentApi) {
-				hitRead += call.cacheRead;
-				hitReadable += call.cacheRead + call.cacheWrite + call.input;
-			}
-		}
-		// null, not 0: "no comparable calls yet" (right after a provider
-		// switch) must not render as a total cache miss.
-		return { cost, read, write, input, meanHit: hitReadable > 0 ? (hitRead / hitReadable) * 100 : null };
-	}
-
-	// Healthy differs per provider: ~97%+ on Anthropic, ~84–87% measured on
-	// codex, where the newest turn always rides inside the backend's commit
-	// window and is paid as fresh input. The codex "good" bar sits below
-	// the measured band to absorb backend volatility. One table for the
-	// footer color and the /hydra-stats target, so the two cannot drift.
-	const HIT_BANDS = {
-		codex: { good: 80, fair: 60, target: "84%+ (codex)" },
-		default: { good: 97, fair: 90, target: "97%+" },
-	} as const;
-	const hitBands = (ctx: ExtensionContext) => (ctx.model?.api === "openai-codex-responses" ? HIT_BANDS.codex : HIT_BANDS.default);
-
 	function updateFooter(ctx: ExtensionContext) {
+		const activeHeads = registry.activeSet();
 		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
+		const calls = stats.all();
 		if (calls.length === 0) {
 			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
 			return;
 		}
-		const { cost, meanHit } = cumulative(ctx.model?.api);
+		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
-		const { good, fair } = hitBands(ctx);
+		const { good, fair } = hitBandsFor(ctx.model?.api);
 		const hitColor = meanHit === null ? "muted" : meanHit >= good ? "success" : meanHit >= fair ? "warning" : "error";
 		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
@@ -643,86 +390,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	function persistConfig() {
-		pi.appendEntry<HydraConfig>("hydra-config", { heads: activeHeads });
-	}
-
-	function applyConfig(ctx: ExtensionContext, config: HydraConfig) {
-		const saved = savedHeadList(config);
-		if (saved === null) {
-			return;
-		}
-		if (saved.length === 0) {
-			// A deliberately emptied set is respected on restore.
-			adoptHeadSet([]);
-			return;
-		}
-		const next = sanitizeHeadSet(saved, headCatalog);
-		if (next.unknown.length > 0) {
-			notifyUser(ctx, `hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
-		}
-		if (next.heads.length > 0) {
-			adoptHeadSet(next.heads);
-		}
-	}
-
-	function persistedDelivery(value: unknown): PersistedDelivery | null {
-		if (typeof value !== "object" || value === null) return null;
-		const candidate = value as Partial<PersistedDelivery>;
-		if (
-			typeof candidate.head !== "string" ||
-			candidate.head.length === 0 ||
-			(candidate.delivery !== "print" &&
-				candidate.delivery !== "queue" &&
-				candidate.delivery !== "steer" &&
-				candidate.delivery !== "interrupt") ||
-			typeof candidate.message !== "string" ||
-			candidate.message.length === 0 ||
-			typeof candidate.timestamp !== "number" ||
-			!Number.isFinite(candidate.timestamp)
-		) {
-			return null;
-		}
-		return candidate as PersistedDelivery;
-	}
-
 	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		branchGeneration++;
-		calls = [];
-		const deliveries: PersistedDelivery[] = [];
-		let config: HydraConfig | undefined;
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "custom") {
-				continue;
-			}
-			if (entry.customType === "hydra-call") {
-				const data = entry.data as (HydraCall & { lens?: string }) | undefined;
-				if (data && typeof data === "object") {
-					calls.push({ ...data, head: data.head ?? data.lens ?? "?" });
-				}
-			} else if (entry.customType === "hydra-config") {
-				const data = entry.data as HydraConfig | undefined;
-				if (data && typeof data === "object") {
-					config = data;
-				}
-			} else if (entry.customType === "hydra-delivery") {
-				const data = persistedDelivery(entry.data);
-				if (data) deliveries.push(data);
-			}
-		}
+		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
+		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
 		if (config) {
-			applyConfig(ctx, config);
+			registry.applyConfig(registryGateway(ctx), config);
 		}
 		updateFooter(ctx);
 		return config !== undefined;
-	}
-
-	// Cold-start default: the heads whose files say autostart. Consulted only
-	// when the session has neither a flag nor a saved set, and deliberately
-	// not persisted, so tomorrow's session reads tomorrow's files.
-	function applyAutostart() {
-		adoptHeadSet([...heads.values()].filter((head) => head.autostart).map((head) => head.name).sort());
 	}
 
 	// One observation's outcome. Judge-only heads return enumerated JSON;
@@ -968,20 +645,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
-		calls.push(call);
+		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
 
-		// Diagnostic heads are one-shot: revert before routing, otherwise an
-		// interrupt delivery re-triggers itself forever (each injected message
-		// starts a run whose run-end observation would interrupt again).
-		if (job.head in DIAGNOSTIC_PROMPTS && activeHeads.length === 1 && activeHeads[0] === job.head) {
-			activeHeads = productHeads;
-			persistConfig();
-			job.ctx.ui.notify(
-				`hydra: diagnostic head "${job.head}" fired once; reverting to ${productHeads.join("+") || "no heads"}`,
-				"info",
-			);
-		}
+		registry.revertDiagnosticAfterFire(registryGateway(job.ctx), job.head);
 		updateFooter(job.ctx);
 
 		// A decision formed on an outdated snapshot may steer but no longer
@@ -1189,7 +856,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						const advanced = advanceObservationLoopGuard(loopGuard, {
 							shareLost,
 							completed: toolState.completion !== null || toolState.selfRemoved,
-							headActive: activeHeads.includes(job.head),
+							headActive: registry.isActive(job.head),
 							maxIterations: MAX_TOOL_ITERATIONS,
 						});
 						loopGuard = advanced.state;
@@ -1253,7 +920,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			response.stopReason === "toolUse" &&
 			toolState.completion === null &&
 			!toolState.selfRemoved &&
-			activeHeads.includes(job.head)
+			registry.isActive(job.head)
 		) {
 			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
@@ -1366,57 +1033,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeFeedback(deliveryLedger, deliveryGateway(ctx), routed, decisionHead, staleSnapshot);
 	}
 
-	// Run one head's observations to completion, newest snapshot first
-	// (conflating whatever piled up while busy). Heads run in parallel with
-	// each other: mid-run they are all pure cache reads; at run-end each fork
-	// pays M's write (the measured economics are in docs/architecture.md).
-	async function runHead(runner: HeadRunner): Promise<void> {
-		try {
-			while (runner.pending && !lifecycleAbort.signal.aborted) {
-				const seed = runner.pending;
-				runner.pending = null;
-				if (!activeHeads.includes(seed.head) || seed.branchGeneration !== branchGeneration) {
-					continue; // deactivated or left behind by branch navigation
-				}
-				// Delivery facts are deliberately late-bound. A conflated slot can
-				// wait behind an earlier observation that routes feedback; freezing
-				// the ledger at scheduling time would make the later observer reason
-				// from facts that are no longer true. The lens itself remains frozen.
-				const job: Observation = {
-					...seed,
-					...observationHandoffFor(
-						seed.ctx,
-						seed.head,
-						seed.tools,
-						seed.instruction,
-						seed.afterChange,
-					),
-				};
-				try {
-					await observe(job, lifecycleAbort.signal);
-				} catch (error) {
-					if (!lifecycleAbort.signal.aborted) {
-						notifyUser(job.ctx, `hydra: observe error: ${errorText(error)}`, "error");
-					}
-				}
-			}
-		} finally {
-			runner.running = null;
-		}
-	}
-
 	// One observation per active head, all from the same captured snapshot.
 	// An empty set observes nothing.
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
-		for (const name of activeHeads) {
-			const tools = headTools(name);
-			const head = heads.get(name);
-			let runner = runners.get(name);
-			if (!runner) {
-				runner = { pending: null, running: null };
-				runners.set(name, runner);
-			}
-			runner.pending = {
+		for (const name of registry.activeSet()) {
+			const tools = registry.headTools(name);
+			const head = registry.get(name);
+			scheduler.schedule({
 				ctx,
 				payload: capturedPayload,
 				assistant,
@@ -1427,15 +1050,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				tools,
 				kind,
 				branchGeneration,
-			};
-			if (!runner.running) {
-				runner.running = runHead(runner);
-			}
+			});
 		}
 	}
 
 	pi.on("session_start", (_event, ctx) => {
-		discoverHeads(ctx);
+		const gateway = registryGateway(ctx);
+		registry.discover(gateway, ctx.cwd);
 		const restored = restoreFromBranch(ctx);
 		// An explicit flag on this launch beats the saved set: present intent
 		// over recorded intent. Flag-seeded sets persist (they are the only
@@ -1444,12 +1065,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const flag = pi.getFlag("hydra-heads");
 		if (typeof flag === "string" && flag.length > 0) {
 			if (flag.trim() === "none") {
-				clearHeadSet(ctx);
-			} else if (!setHeadSet(ctx, parseHeadList(flag))) {
-				ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${activeHeads.join("+") || "no heads"}`, "warning");
+				registry.clearHeadSet(gateway);
+			} else if (!registry.setHeadSet(gateway, parseHeadList(flag))) {
+				ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${registry.activeSet().join("+") || "no heads"}`, "warning");
 			}
 		} else if (!restored) {
-			applyAutostart();
+			registry.applyAutostart();
 		}
 		updateFooter(ctx);
 	});
@@ -1478,7 +1099,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 		}
 		// Pick up head edits made since the last run (the in-session tuning loop).
-		discoverHeads(ctx);
+		registry.discover(registryGateway(ctx), ctx.cwd);
 	});
 
 	pi.on("turn_start", (event) => {
@@ -1486,7 +1107,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_provider_request", (event) => {
-		if (activeHeads.length === 0) {
+		if (registry.activeSet().length === 0) {
 			// Forget the old snapshot rather than freezing it: an in-flight
 			// observation from before the gap must compare as stale (the
 			// demotion clamp keys on payload identity), and a head added
@@ -1537,7 +1158,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (capturedPayload && responseTimestamp === null) {
 			responseTimestamp = (event.message as AssistantMessage).timestamp ?? null;
 		}
-		if (activeHeads.length === 0 || !capturedPayload) {
+		if (registry.activeSet().length === 0 || !capturedPayload) {
 			return;
 		}
 		if (awaitingFirstResponseOfRun) {
@@ -1572,11 +1193,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// activation); the notice is only worth showing when heads exist.
 		if (ctx.model?.api === "openai-codex-responses" && codexShareLostReason === null && hasDriverContinuationError(event.messages)) {
 			codexShareLostReason = "a driver continuation error (hydra backed off to keep the driver safe)";
-			if (activeHeads.length > 0) {
+			if (registry.activeSet().length > 0) {
 				notifyUser(ctx, "hydra: the driver hit a continuation error; codex observations retreat to their own cache scope for the rest of this session", "warning");
 			}
 		}
-		if (activeHeads.length === 0 || !capturedPayload || !capturedThisRun) {
+		if (registry.activeSet().length === 0 || !capturedPayload || !capturedThisRun) {
 			return;
 		}
 		// selectFinalAssistant guarantees role "assistant" with block content.
@@ -1589,21 +1210,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		shuttingDown = true;
-		// Let the in-flight observations finish (bounded), then cancel; this
-		// is the sole lifecycle abort.
-		const running = [...runners.values()].flatMap((runner) => runner.running ?? []);
-		if (running.length > 0) {
-			// Clear the timer once the race settles: a pending timeout keeps
-			// the headless process alive for the full grace after the
-			// observations already finished.
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const timeout = new Promise<void>((resolve) => {
-				timer = setTimeout(resolve, parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS));
-			});
-			await Promise.race([Promise.all(running), timeout]);
-			clearTimeout(timer);
-		}
-		lifecycleAbort.abort();
+		await scheduler.shutdown(parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS));
 		// pi owns and cleans the driver's provider session. Codex observations
 		// may fall back to hydra's separate session id, so hydra must release
 		// that session's cached WebSocket itself or a headless process remains
@@ -1640,38 +1247,39 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext) {
 		const name = params.head.trim();
 		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
-		discoverHeads(ctx);
-		const activeLabel = () => (activeHeads.length > 0 ? activeHeads.join(", ") : "none");
+		const gateway = registryGateway(ctx);
+		registry.discover(gateway, ctx.cwd);
+		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
 		const reply = (text: string, changed = false) => ({
 			content: [{ type: "text" as const, text }],
 			details: {
 				action: params.action,
 				operation: params.operation,
 				head: name,
-				heads: [...activeHeads],
+				heads: [...registry.activeSet()],
 				changed,
 			},
 		});
 
 		if (params.operation === "add") {
-			if (!headExists(name)) {
-				throw new Error(`Unknown head "${name}". Available: ${headNames().join(", ") || "none"}.`);
+			if (!registry.exists(name)) {
+				throw new Error(`Unknown head "${name}". Available: ${registry.names().join(", ") || "none"}.`);
 			}
-			if (activeHeads.includes(name)) {
+			if (registry.isActive(name)) {
 				return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
 			}
-			setHeadSet(ctx, [...activeHeads, name]);
+			registry.setHeadSet(gateway, [...registry.activeSet(), name]);
 			return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 		}
 
-		if (!activeHeads.includes(name)) {
+		if (!registry.isActive(name)) {
 			return reply(`"${name}" is not active. Observing with: ${activeLabel()}.`);
 		}
-		const remaining = activeHeads.filter((active) => active !== name);
+		const remaining = registry.activeSet().filter((active) => active !== name);
 		if (remaining.length > 0) {
-			setHeadSet(ctx, remaining);
+			registry.setHeadSet(gateway, remaining);
 		} else {
-			clearHeadSet(ctx);
+			registry.clearHeadSet(gateway);
 		}
 		return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 	}
@@ -1750,14 +1358,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// questionnaire example's mold; enter applies the checked set (the same
 	// declarative semantics as the typed form), escape cancels.
 	async function openHeadPicker(ctx: ExtensionContext): Promise<void> {
-		const items = [...heads.values()].sort((a, b) => a.name.localeCompare(b.name));
+		const items = registry.list().sort((a, b) => a.name.localeCompare(b.name));
 		if (items.length === 0) {
 			notifyUser(ctx, `hydra: no heads found. Drop a markdown file into ${userHeadDir} (see docs/heads.md).`, "warning");
 			return;
 		}
 		const selection = await ctx.ui.custom<string[] | null>((tui, theme, _keybindings, done) => {
 			let cursor = 0;
-			const checked = new Set(activeHeads.filter((name) => heads.has(name)));
+			const checked = new Set(registry.activeSet().filter((name) => registry.get(name) !== undefined));
 
 			function handleInput(data: string) {
 				if (matchesKey(data, Key.escape)) {
@@ -1813,13 +1421,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (selection === null) {
 			return;
 		}
+		const gateway = registryGateway(ctx);
 		if (selection.length === 0) {
-			clearHeadSet(ctx);
+			registry.clearHeadSet(gateway);
 			ctx.ui.notify("hydra: no heads active", "info");
 			return;
 		}
-		if (setHeadSet(ctx, selection)) {
-			ctx.ui.notify(`hydra: heads=${activeHeads.join("+")}`, "info");
+		if (registry.setHeadSet(gateway, selection)) {
+			ctx.ui.notify(`hydra: heads=${registry.activeSet().join("+")}`, "info");
 		}
 	}
 
@@ -1831,18 +1440,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const split = prefix.match(/^(.*[,\s])?([^,\s]*)$/);
 			const base = split?.[1] ?? "";
 			const partial = split?.[2] ?? "";
-			return [...headNames(), "none"]
+			return [...registry.names(), "none"]
 				.filter((name) => name.startsWith(partial))
 				.map((name) => {
-					const source = heads.get(name)?.source;
+					const source = registry.get(name)?.source;
 					return { value: base + name, label: source === "project" ? `${name} (project)` : name };
 				});
 		},
 		handler: async (args, ctx) => {
-			discoverHeads(ctx);
+			const gateway = registryGateway(ctx);
+			registry.discover(gateway, ctx.cwd);
 			const trimmed = args.trim();
 			if (trimmed === "none") {
-				clearHeadSet(ctx);
+				registry.clearHeadSet(gateway);
 				ctx.ui.notify("hydra: no heads active", "info");
 				return;
 			}
@@ -1850,16 +1460,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				if (ctx.hasUI) {
 					await openHeadPicker(ctx);
 				} else {
-					const roster = [...heads.values()].map((head) => `  ${head.name} (${head.source}): ${head.description}`);
+					const roster = registry.list().map((head) => `  ${head.name} (${head.source}): ${head.description}`);
 					ctx.ui.notify(
-						[`hydra: active: ${activeHeads.join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
+						[`hydra: active: ${registry.activeSet().join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
 						"info",
 					);
 				}
 				return;
 			}
-			if (setHeadSet(ctx, parseHeadList(trimmed))) {
-				ctx.ui.notify(`hydra: heads=${activeHeads.join("+")}`, "info");
+			if (registry.setHeadSet(gateway, parseHeadList(trimmed))) {
+				ctx.ui.notify(`hydra: heads=${registry.activeSet().join("+")}`, "info");
 			}
 		},
 	});
@@ -1867,11 +1477,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.registerCommand("hydra-stats", {
 		description: "Show hydra observation statistics",
 		handler: async (_args, ctx) => {
+			const calls = stats.all();
 			if (calls.length === 0) {
 				ctx.ui.notify("hydra: no observations yet", "info");
 				return;
 			}
-			const { cost, read, write, input, meanHit } = cumulative(ctx.model?.api);
+			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
 			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
@@ -1894,7 +1505,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBands(ctx).target}`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api).target}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,
