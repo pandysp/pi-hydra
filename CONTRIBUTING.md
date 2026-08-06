@@ -21,7 +21,7 @@ npm run check    # tsc --strict
 npm test         # vitest on the pure helpers
 ```
 
-Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hydra-heads test-interrupt`); they fire once and revert.
+Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
 
 ## What's welcome
 
@@ -32,4 +32,7 @@ Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hyd
 
 ## The bar
 
-Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar. If your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in `utils.ts` with tests. Match the style of the file you are editing.
+- Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar.
+- If your change touches the replay or marker logic, run the verification procedures in [`docs/architecture.md`](docs/architecture.md) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
+- Pure logic goes in `utils.ts` with tests.
+- Match the style of the file you are editing.
