@@ -172,7 +172,7 @@ The final paired OpenAI A/B covered luna, terra, and sol at low through xhigh: 1
 
 ## Module map
 
-There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `protocol.ts` holds the hydra tool's wire contract; `delivery.ts` and `delivery-types.ts` hold the delivery ledger and its shapes (tests in `delivery.test.ts`); `utils.ts` holds the remaining pure logic (decision parsing, payload merge) with tests in `utils.test.ts`. Setup, checks, and the delivery smoke test are in [CONTRIBUTING.md](../CONTRIBUTING.md).
+There is no build step; pi loads `.ts` via [jiti](https://github.com/unjs/jiti). `index.ts` holds the pi wiring (events, scheduler, commands, rendering); `protocol.ts` holds the hydra tool's wire contract; `delivery.ts` holds the delivery ledger (tests in `delivery.test.ts`); `utils.ts` holds the shared types and the remaining pure logic (decision parsing, payload merge) with tests in `utils.test.ts`. Setup, checks, and the delivery smoke test are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Verifying cache parity
 

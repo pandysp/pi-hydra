@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring), `protocol.ts` (the hydra tool's wire contract), `delivery.ts` + `delivery-types.ts` (the delivery ledger and its shapes), `utils.ts` (pure logic, tested), `experiments/` (the measurement harness behind the cache mechanism and the observation-contract research).
+Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring), `protocol.ts` (the hydra tool's wire contract), `delivery.ts` (the delivery ledger), `utils.ts` (shared types and pure logic, tested), `experiments/` (the measurement harness behind the cache mechanism and the observation-contract research).
 
 ## Setup
 

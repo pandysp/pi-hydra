@@ -129,7 +129,7 @@ hydra captures the agent's provider requests byte-for-byte and replays them, wit
 
 - **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: five root modules ([CONTRIBUTING.md](CONTRIBUTING.md) maps them) and an experiments harness that re-verifies the cache mechanism against the live APIs. A full cache-probe run costs under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: four root modules ([CONTRIBUTING.md](CONTRIBUTING.md) maps them) and an experiments harness that re-verifies the cache mechanism against the live APIs. A full cache-probe run costs under a dollar.
 
 ## History
 
