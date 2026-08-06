@@ -34,6 +34,24 @@ describe("hydra tool protocol", () => {
 		).toBeNull();
 	});
 
+	it("returns null for a management call, invalid arguments, or no tool calls", () => {
+		expect(
+			completionFromHydraToolCalls([
+				{
+					type: "toolCall",
+					name: "hydra",
+					arguments: { action: "manage_heads", operation: "add", head: "docs", message: "phase change" },
+				},
+			]),
+		).toBeNull();
+		expect(
+			completionFromHydraToolCalls([
+				{ type: "toolCall", name: "hydra", arguments: { action: "complete_observation", message: "missing delivery" } },
+			]),
+		).toBeNull();
+		expect(completionFromHydraToolCalls([])).toBeNull();
+	});
+
 	it("advertises one flat schema with the two public actions", () => {
 		const schema = hydraToolParameters as {
 			required?: string[];
@@ -83,6 +101,21 @@ describe("hydra tool protocol", () => {
 		).toThrow("does not accept operation or head");
 	});
 
+	it("rejects the remaining cross-branch field mistakes", () => {
+		expect(() =>
+			validateHydraToolParams({
+				action: "manage_heads",
+				operation: "remove",
+				head: "docs",
+				delivery: "none",
+				message: "m",
+			}),
+		).toThrow("does not accept delivery");
+		expect(() => validateHydraToolParams({ action: "complete_observation", message: "m" })).toThrow(
+			"requires delivery",
+		);
+	});
+
 	it("treats completion and only successful-intent self-removal as terminal shapes", () => {
 		expect(isTerminalHydraAction({ action: "complete_observation", delivery: "none", message: "" }, "foreman")).toBe(true);
 		expect(
@@ -98,6 +131,11 @@ describe("hydra tool protocol", () => {
 			),
 		).toBe(false);
 		expect(isTerminalHydraAction({ action: "remove", head: "foreman" }, "foreman")).toBe(false);
+		expect(
+			isTerminalHydraAction({ action: "manage_heads", operation: "add", head: "foreman", message: "m" }, "foreman"),
+		).toBe(false);
+		expect(isTerminalHydraAction(null, "foreman")).toBe(false);
+		expect(isTerminalHydraAction("complete_observation", "foreman")).toBe(false);
 	});
 
 	it("defines delivery by who must act and when", () => {
