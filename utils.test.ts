@@ -273,14 +273,9 @@ describe("headActs", () => {
 
 describe("usesSplitObservationHandoff", () => {
 	it("uses the split handoff for Codex Responses and the combined prompt for Anthropic", () => {
-		expect(usesSplitObservationHandoff(undefined, "openai-codex-responses")).toBe(true);
-		expect(usesSplitObservationHandoff(undefined, "anthropic-messages")).toBe(false);
-		expect(usesSplitObservationHandoff(undefined, undefined)).toBe(false);
-	});
-
-	it("supports reproducible all-provider A/B overrides", () => {
-		expect(usesSplitObservationHandoff("split", "anthropic-messages")).toBe(true);
-		expect(usesSplitObservationHandoff("current", "openai-codex-responses")).toBe(false);
+		expect(usesSplitObservationHandoff("openai-codex-responses")).toBe(true);
+		expect(usesSplitObservationHandoff("anthropic-messages")).toBe(false);
+		expect(usesSplitObservationHandoff(undefined)).toBe(false);
 	});
 });
 

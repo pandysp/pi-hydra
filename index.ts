@@ -77,7 +77,7 @@ import type {
 } from "./utils";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
 import type { DeliveryGateway } from "./delivery";
-import type { PersistedDelivery } from "./delivery-types";
+import type { PersistedDelivery } from "./utils";
 import {
 	hydraToolDescription,
 	hydraToolParameters,
@@ -484,7 +484,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const deliveryContext = deliveryLedger.contextFor(name);
 		const protocol = { afterChange, activeHeads: [...activeHeads], deliveryContext };
 		if (!headActs(tools)) {
-			return usesSplitObservationHandoff(handoffOverride, ctx.model?.api)
+			return usesSplitObservationHandoff(ctx.model?.api)
 				? {
 						prompt: instruction,
 						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext),
@@ -501,7 +501,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				completionMode: "json",
 			};
 		}
-		return usesSplitObservationHandoff(handoffOverride, ctx.model?.api)
+		return usesSplitObservationHandoff(ctx.model?.api)
 			? {
 					prompt: instruction,
 					envelope: buildObservationEnvelope(name, tools, protocol),
@@ -561,11 +561,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// gate exists to prevent — set it only in a throwaway session; the
 	// recipe lives in docs/architecture.md ("Verifying the tripwire").
 	const unsafeForceShare = process.env.HYDRA_UNSAFE_FORCE_SHARE === "1";
-	// Internal reproducibility override: "current" forces the combined-user
-	// control and "split" forces the elevated-role treatment on every provider.
-	// Unset uses the evidence-backed provider default.
-	const handoffOverride = process.env.HYDRA_OBSERVER_HANDOFF;
-
 	// Once codex cache sharing is lost it stays lost for this session
 	// runtime (monotone; /new, fork, and resume re-create the extension): after a transport flip, the driver may hold continuation
 	// state that shared-mode observations already evicted, and re-upgrading
