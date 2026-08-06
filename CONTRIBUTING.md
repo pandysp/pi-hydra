@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring), `protocol.ts` (the hydra tool's wire contract), `delivery.ts` (the delivery ledger), `utils.ts` (shared types and pure logic, tested), `experiments/` (the measurement harness behind the cache mechanism and the observation-contract research).
+Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring and the observation engine), `heads.ts` (the head registry), `scheduler.ts` (the per-head observation scheduler), `stats.ts` (the observation log), `protocol.ts` (the hydra tool's wire contract), `delivery.ts` (the delivery ledger), `utils.ts` (shared types and pure logic, tested), `experiments/` (the measurement harness behind the cache mechanism and the observation-contract research).
 
 ## Setup
 
@@ -35,7 +35,7 @@ Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces
 
 - Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar.
 - If your change touches the replay or marker logic, run the verification procedures in [`docs/architecture.md`](docs/architecture.md) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
-- Pure logic goes in the matching root module with tests (`protocol.ts`, `delivery.ts`, `utils.ts`).
+- Pure logic goes in the matching root module with tests (`protocol.ts`, `delivery.ts`, `heads.ts`, `scheduler.ts`, `stats.ts`, `utils.ts`).
 - Match the style of the file you are editing.
 
 ## Working in the research branch
