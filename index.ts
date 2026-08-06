@@ -85,6 +85,8 @@ import {
 	validateHydraToolParams,
 } from "./protocol";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
+import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
+import type { HydraCall, HydraConfig, ObserveKind } from "./stats";
 import {
 	advanceObservationLoopGuard,
 	applyAfterChangeDelivery,
@@ -133,8 +135,6 @@ const DIAGNOSTIC_PROMPTS = {
 	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Call the hydra tool exactly once with action "complete_observation", delivery "interrupt", and message "hydra interrupt fired; if you see this in your context, interrupt delivery works". Do nothing else.</system-reminder>`,
 } as const;
 
-type ObserveKind = "piggyback" | "run-end";
-
 // What hydra can execute for a head: the seven standard tools plus its own.
 // A `tools:` entry outside this set can never run (hydra has no execute for
 // other extensions' tools or MCP), so discovery warns about it; the head
@@ -156,40 +156,6 @@ function plainMessageText(content: unknown): string | null {
 		parts.push(text);
 	}
 	return parts.join("");
-}
-
-// One observation call, persisted to the session as a custom "hydra-call" entry
-// so /hydra-stats survives resume and branch navigation.
-interface HydraCall {
-	timestamp: number;
-	turnIndex: number;
-	head: string;
-	kind?: ObserveKind;
-	// The provider API the call ran under; healthy hit ratios differ per
-	// provider, so display must not blend them. Absent on entries recorded
-	// before this field existed; the stats default those to Anthropic,
-	// which mislabels the few pre-field codex sessions (e.g. the 2026-07-15
-	// demo) — a display heuristic, acceptable for historical entries only.
-	api?: string;
-	// Historical readers use `action`; new enumerated observations may produce
-	// one user-only group plus one agent group, recorded here without hiding
-	// either delivery. `action` remains the most urgent group for compatibility.
-	action: Action;
-	actions?: Action[];
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cost: number;
-	durationMs: number;
-	// Replay-parity signal, always from the observation's first model call:
-	// an acting head's later loop iterations legitimately pay the growing
-	// tail as fresh input and must not read as a cache regression.
-	hitRatio: number;
-	rawResponse?: string;
-	// Acting heads only: model turns in the tool loop and the tools executed.
-	iterations?: number;
-	toolsUsed?: string[];
 }
 
 interface ObservationSeed {
@@ -220,17 +186,6 @@ interface FeedbackDetails {
 	action: Action;
 	reason: string;
 	// Pre-rename entries persisted `lens`; the renderer falls back to it.
-	lens?: string;
-}
-
-// The active head set survives resume and branch navigation as the latest
-// "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
-// the saved set (present intent over recorded intent); heads marked
-// autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
-// field names, still read for old sessions.
-interface HydraConfig {
-	heads: string[];
-	lenses?: string[];
 	lens?: string;
 }
 
@@ -577,58 +532,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// Stats and successful delivery facts, rebuilt from the current session
 	// branch on restore. Live queue state never crosses branch navigation.
-	let calls: HydraCall[] = [];
+	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
-	function cumulative(currentApi: string | undefined) {
-		let cost = 0;
-		let read = 0;
-		let write = 0;
-		let input = 0;
-		let hitRead = 0;
-		let hitReadable = 0;
-		for (const call of calls) {
-			cost += call.cost;
-			read += call.cacheRead;
-			write += call.cacheWrite;
-			input += call.input;
-			// Money and token totals are session-wide; the mean hit ratio
-			// only aggregates calls comparable to the current model, so a
-			// mid-session provider switch cannot recolor healthy history
-			// against the wrong band. Entries without api predate codex
-			// support and were all Anthropic.
-			if (currentApi === undefined || (call.api ?? "anthropic-messages") === currentApi) {
-				hitRead += call.cacheRead;
-				hitReadable += call.cacheRead + call.cacheWrite + call.input;
-			}
-		}
-		// null, not 0: "no comparable calls yet" (right after a provider
-		// switch) must not render as a total cache miss.
-		return { cost, read, write, input, meanHit: hitReadable > 0 ? (hitRead / hitReadable) * 100 : null };
-	}
-
-	// Healthy differs per provider: ~97%+ on Anthropic, ~84–87% measured on
-	// codex, where the newest turn always rides inside the backend's commit
-	// window and is paid as fresh input. The codex "good" bar sits below
-	// the measured band to absorb backend volatility. One table for the
-	// footer color and the /hydra-stats target, so the two cannot drift.
-	const HIT_BANDS = {
-		codex: { good: 80, fair: 60, target: "84%+ (codex)" },
-		default: { good: 97, fair: 90, target: "97%+" },
-	} as const;
-	const hitBands = (ctx: ExtensionContext) => (ctx.model?.api === "openai-codex-responses" ? HIT_BANDS.codex : HIT_BANDS.default);
+	const hitBands = (ctx: ExtensionContext) => hitBandsFor(ctx.model?.api);
 
 	function updateFooter(ctx: ExtensionContext) {
 		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
+		const calls = stats.all();
 		if (calls.length === 0) {
 			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
 			return;
 		}
-		const { cost, meanHit } = cumulative(ctx.model?.api);
+		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
 		const { good, fair } = hitBands(ctx);
 		const hitColor = meanHit === null ? "muted" : meanHit >= good ? "success" : meanHit >= fair ? "warning" : "error";
@@ -666,50 +586,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 	}
 
-	function persistedDelivery(value: unknown): PersistedDelivery | null {
-		if (typeof value !== "object" || value === null) return null;
-		const candidate = value as Partial<PersistedDelivery>;
-		if (
-			typeof candidate.head !== "string" ||
-			candidate.head.length === 0 ||
-			(candidate.delivery !== "print" &&
-				candidate.delivery !== "queue" &&
-				candidate.delivery !== "steer" &&
-				candidate.delivery !== "interrupt") ||
-			typeof candidate.message !== "string" ||
-			candidate.message.length === 0 ||
-			typeof candidate.timestamp !== "number" ||
-			!Number.isFinite(candidate.timestamp)
-		) {
-			return null;
-		}
-		return candidate as PersistedDelivery;
-	}
-
 	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		branchGeneration++;
-		calls = [];
-		const deliveries: PersistedDelivery[] = [];
-		let config: HydraConfig | undefined;
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "custom") {
-				continue;
-			}
-			if (entry.customType === "hydra-call") {
-				const data = entry.data as (HydraCall & { lens?: string }) | undefined;
-				if (data && typeof data === "object") {
-					calls.push({ ...data, head: data.head ?? data.lens ?? "?" });
-				}
-			} else if (entry.customType === "hydra-config") {
-				const data = entry.data as HydraConfig | undefined;
-				if (data && typeof data === "object") {
-					config = data;
-				}
-			} else if (entry.customType === "hydra-delivery") {
-				const data = persistedDelivery(entry.data);
-				if (data) deliveries.push(data);
-			}
-		}
+		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
+		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
 		if (config) {
 			applyConfig(ctx, config);
@@ -968,7 +848,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
-		calls.push(call);
+		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
 
 		// Diagnostic heads are one-shot: revert before routing, otherwise an
@@ -1867,11 +1747,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	pi.registerCommand("hydra-stats", {
 		description: "Show hydra observation statistics",
 		handler: async (_args, ctx) => {
+			const calls = stats.all();
 			if (calls.length === 0) {
 				ctx.ui.notify("hydra: no observations yet", "info");
 				return;
 			}
-			const { cost, read, write, input, meanHit } = cumulative(ctx.model?.api);
+			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
 			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
