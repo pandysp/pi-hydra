@@ -85,6 +85,7 @@ import {
 	validateHydraToolParams,
 } from "./protocol";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
+import { HeadScheduler } from "./scheduler";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
 import type { HydraCall, HydraConfig, ObserveKind } from "./stats";
 import {
@@ -488,20 +489,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
 
-	// Conflating single-slot scheduler, per head: every head has at most one
-	// observation in flight and one waiting slot that a newer snapshot
-	// overwrites. Observations always run to completion; staleness is bounded
-	// to one cycle because the slot always holds the newest snapshot. The
-	// granularity is per head (not one global batch) so an acting head's
-	// minutes-long tool loop cannot starve the judging heads, and a head busy
-	// through a commit point still reviews the newest snapshot when it frees
-	// up. session_shutdown awaits the in-flight runs.
-	interface HeadRunner {
-		pending: ObservationSeed | null;
-		running: Promise<void> | null;
-	}
-	const runners = new Map<string, HeadRunner>();
-	const lifecycleAbort = new AbortController();
+	const scheduler = new HeadScheduler<ObservationSeed>({
+		shouldRun: (seed) => activeHeads.includes(seed.head) && seed.branchGeneration === branchGeneration,
+		observe: async (seed, signal) => {
+			// Delivery facts are deliberately late-bound. A conflated slot can
+			// wait behind an earlier observation that routes feedback; freezing
+			// the ledger at scheduling time would make the later observer reason
+			// from facts that are no longer true. The lens itself remains frozen.
+			const job: Observation = {
+				...seed,
+				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.afterChange),
+			};
+			await observe(job, signal);
+		},
+		onError: (seed, error) => notifyUser(seed.ctx, `hydra: observe error: ${errorText(error)}`, "error"),
+	});
 	let shuttingDown = false;
 
 	// The observer's backend session identity for codex observations, one
@@ -1246,57 +1248,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeFeedback(deliveryLedger, deliveryGateway(ctx), routed, decisionHead, staleSnapshot);
 	}
 
-	// Run one head's observations to completion, newest snapshot first
-	// (conflating whatever piled up while busy). Heads run in parallel with
-	// each other: mid-run they are all pure cache reads; at run-end each fork
-	// pays M's write (the measured economics are in docs/architecture.md).
-	async function runHead(runner: HeadRunner): Promise<void> {
-		try {
-			while (runner.pending && !lifecycleAbort.signal.aborted) {
-				const seed = runner.pending;
-				runner.pending = null;
-				if (!activeHeads.includes(seed.head) || seed.branchGeneration !== branchGeneration) {
-					continue; // deactivated or left behind by branch navigation
-				}
-				// Delivery facts are deliberately late-bound. A conflated slot can
-				// wait behind an earlier observation that routes feedback; freezing
-				// the ledger at scheduling time would make the later observer reason
-				// from facts that are no longer true. The lens itself remains frozen.
-				const job: Observation = {
-					...seed,
-					...observationHandoffFor(
-						seed.ctx,
-						seed.head,
-						seed.tools,
-						seed.instruction,
-						seed.afterChange,
-					),
-				};
-				try {
-					await observe(job, lifecycleAbort.signal);
-				} catch (error) {
-					if (!lifecycleAbort.signal.aborted) {
-						notifyUser(job.ctx, `hydra: observe error: ${errorText(error)}`, "error");
-					}
-				}
-			}
-		} finally {
-			runner.running = null;
-		}
-	}
-
 	// One observation per active head, all from the same captured snapshot.
 	// An empty set observes nothing.
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
 		for (const name of activeHeads) {
 			const tools = headTools(name);
 			const head = heads.get(name);
-			let runner = runners.get(name);
-			if (!runner) {
-				runner = { pending: null, running: null };
-				runners.set(name, runner);
-			}
-			runner.pending = {
+			scheduler.schedule({
 				ctx,
 				payload: capturedPayload,
 				assistant,
@@ -1307,10 +1265,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				tools,
 				kind,
 				branchGeneration,
-			};
-			if (!runner.running) {
-				runner.running = runHead(runner);
-			}
+			});
 		}
 	}
 
@@ -1469,21 +1424,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		shuttingDown = true;
-		// Let the in-flight observations finish (bounded), then cancel; this
-		// is the sole lifecycle abort.
-		const running = [...runners.values()].flatMap((runner) => runner.running ?? []);
-		if (running.length > 0) {
-			// Clear the timer once the race settles: a pending timeout keeps
-			// the headless process alive for the full grace after the
-			// observations already finished.
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const timeout = new Promise<void>((resolve) => {
-				timer = setTimeout(resolve, parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS));
-			});
-			await Promise.race([Promise.all(running), timeout]);
-			clearTimeout(timer);
-		}
-		lifecycleAbort.abort();
+		await scheduler.shutdown(parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS));
 		// pi owns and cleans the driver's provider session. Codex observations
 		// may fall back to hydra's separate session id, so hydra must release
 		// that session's cached WebSocket itself or a headless process remains
