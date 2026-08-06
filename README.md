@@ -6,23 +6,23 @@
 
 ![A pi session: the head picker adds a security head, then as the agent builds a Flask app the security head catches debug=True (a Werkzeug RCE) and an open-redirect risk and steers the fix into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head reviews through its own lens (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and answers with one of five decisions: stay quiet, print a note for you, queue feedback, steer the agent between turns, or interrupt and stop the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs a cache read instead of a context rebuild; a session with an always-on head costs roughly 30% more ([What it costs](#what-it-costs)).
+hydra is a [pi](https://pi.dev/) extension that adds live oversight to your coding agent: heads that review the agent's work while the agent is still working. Each head reviews through its own lens (quality, security, simplifier, API design, or anything you write). It sees exactly what the agent sees, judges every step, and delivers each finding: print a note for you, steer the agent at its next checkpoint, or interrupt the run. Heads can act, too: by default a head may read, search, run, and write through the agent's own tools before it decides (a docs head keeps notes current while the agent codes). One body, many heads: the agent carries the context, and each additional head reads that context straight from the prompt cache. An observation costs a cache read instead of a context rebuild; total overhead depends on provider, task, and how much the head reports ([What it costs](#what-it-costs)).
 
 ## Why
 
 Review usually happens after the work. The PR is finished, a reviewer (human or agent) loads the whole trajectory into fresh context at full price, and the findings arrive when the design is already set, so fixing them means rework. The same goes for evaluating agent behavior: replaying a finished trajectory into an eval agent costs full input price and happens too late to change anything.
 
-hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observation prompt plus a cache read instead of a full context rebuild (numbers in [What it costs](#what-it-costs)). The decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
+hydra inverts this. Observation happens during the run, at the exact moments the agent's own prompt cache commits, so a second perspective costs the observation prompt plus a cache read (numbers in [What it costs](#what-it-costs)). The decision usually lands while the agent's response is still streaming, early enough to steer the next step instead of rewriting a finished PR.
 
 A bad assumption caught mid-implementation costs one correction message, and the same assumption caught in review costs a refactor.
 
 ## What it costs
 
-An observation costs its prompt (~220 tokens) plus a cache read at 10% of input price. On a 17K-token session that is about half a cent. Measured cache hit rates are 97%+ across real sessions; the 17K reference measurement hits 99%.
+An observation pays for its fresh handoff and output plus a cache read. Measured cache hit rates are 97%+ across real Anthropic sessions (a 17K-token session measured 99%); OpenAI Codex measures ~84–87% ([why](docs/architecture.md#cache-hit-ratio)).
 
-A session costs more than the per-observation number suggests. An always-on head observes at every cache commit, and a session has many of those. Measured across real sessions, one head adds roughly 30% to total session cost: a driver session that would cost $1.00 costs about $1.30.
+A session costs more than one observation suggests because an always-on head watches every cache commit. On live Anthropic sessions, an always-on head cost between 32.5% and 61.4% of what the driver itself cost (the driver is pi's main agent, the one you talk to). On OpenAI Codex, the registered measurement wave put the shipped judge contract at 77.0% of driver cost over its 108 cache-comparable observations, and a single-finding baseline contract at 52.1% over 103; keeping every charged call, cache misses included, raises those ratios to 93.3% and 66.2%. These are measured regimes, not a universal surcharge, and the OpenAI values are cost evidence only: the quality benchmark is still in progress. Output volume, task, model, and reasoning level all move the number. Per-arm and per-configuration numbers are in the [decision table](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/DECISION-TABLE.md); `/hydra-stats` shows the same accounting for your own session.
 
-The harness in [`experiments/`](experiments/README.md) re-verifies the cache mechanism these numbers rest on against the live API: when an entry commits, what an observation can see, and whether the replay stays on the cache. The hit rates and costs above come from real sessions, and `/hydra-stats` shows the same numbers live for your own.
+The harness in [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md) re-verifies the cache mechanism these numbers rest on against the live APIs: when an entry commits, what an observation can see, and whether the replay stays on the cache. The hit rates and costs above come from real sessions, and `/hydra-stats` shows the same numbers live for your own.
 
 ## Compared to subagents
 
@@ -32,7 +32,7 @@ pi's core ships four tools and no subagents; heads and subagents both arrive as 
 |---|---|---|
 | Context | fresh, isolated by default; zero anchoring to the driver's assumptions | the driver's payload byte-for-byte; fully anchored to the driver's assumptions |
 | Model | free: a stronger model for a real second opinion, or a cheap one for grunt work | locked to the driver's, always (the cache is model-specific) |
-| Cost | a full-price context rebuild per review | a cache read per observation, and roughly 30% of session cost for an always-on head |
+| Cost | a full-price context rebuild per review | a cache read plus the head's fresh handoff and output per observation; session overhead varies materially by provider and task |
 | Timing | on its own clock: Explore, Plan, a parallel worktree refactor, or a finished-artifact audit | live, at the driver's commit points, in time to steer the next step |
 | Direction | spawned downward; can be `steer`ed downward (parent → child) and returns a final message | watches the same run; can `steer` or pull the cord upward (head → agent) |
 | What crosses | passive data, inert until the parent reads and acts on it | an act: a `steer` or `interrupt` that fires whether the agent agrees or not |
@@ -41,7 +41,7 @@ Reach for a subagent when fresh eyes, a stronger model, or heavy isolated work i
 
 ## Quick start
 
-You need [pi](https://pi.dev/) with an Anthropic model (hydra's cache-parity replay is validated on the Anthropic Messages API).
+You need [pi](https://pi.dev/) with an Anthropic model or an OpenAI Codex (ChatGPT subscription) model. Cache-parity replay is validated on Anthropic models and on codex GPT-5.6; older codex models are not blocked, but their cache economics are unmeasured. The economics differ per provider ([details](docs/architecture.md#openai-codex-support)).
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
@@ -49,7 +49,7 @@ mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/hea
 pi
 ```
 
-(The copy reads from the clone `pi install` just made, so the examples match the installed version. Or skip the copy and ask your agent to write a head: the `hydra` tool teaches it the format. For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md). To install for your whole team, `pi install -l` records the package in the repo's `.pi/settings.json`, and pi installs it for everyone on startup.)
+The copy reads from the clone `pi install` just made, so the examples match the installed version. You can also skip the copy and ask your agent to write a head; the `hydra` tool teaches it the format. To install for your whole team, `pi install -l` records the package in the repo's `.pi/settings.json`, and pi installs it for everyone on startup. For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The example `quality` head is marked `autostart`, so after the first agent run you will see observations arrive in the footer:
 
@@ -73,14 +73,16 @@ A head is one markdown file: frontmatter for identity and capabilities, body for
 name: docs-keeper
 description: Keeps docs/notes.md current with decisions as they happen
 tools: read, write, edit, ls
+after-change: noop
 ---
-You maintain docs/notes.md. When the conversation contains a decision,
-constraint, or surprise not yet in the file, read it, add the missing
-entry, and keep entries one line each. Your decision is usually noop:
-the file is your work product. Do not edit anything else.
+PURPOSE: Maintain docs/notes.md as durable memory for future work.
+ACT WHEN: The driver trajectory establishes a new project decision or
+constraint that is not already recorded.
+WORK: Read docs/notes.md and add exactly one one-line entry. Edit nothing else.
+DELIVER: Complete with none; the file is the work product.
 ```
 
-Your heads live in `~/.pi/agent/hydra/`; a repo can ship its own in `.pi/hydra/` (a project head overrides a same-named user head, so a team can specialize your generic heads with ones that know the codebase). Files are re-read at the start of every run, so editing a head tunes the very next observation. `tools:` defaults to everything the agent has; `tools: []` makes a judge-only head; a list narrows to a subset. `autostart: true` puts a head in the active set of every fresh session. The full format and a library of example perspectives are in [`docs/heads.md`](docs/heads.md).
+Your heads live in `~/.pi/agent/hydra/`; a repo can ship its own in `.pi/hydra/` (a project head overrides a same-named user head, so a team can specialize your generic heads with ones that know the codebase). Files are re-read at the start of every run, so editing a head tunes the very next observation. `tools:` defaults to everything the agent has; `tools: []` makes a judge-only head; a list narrows to a subset. `after-change: noop|print` gives a writing head deterministic delivery after a successful `write` or `edit`. `autostart: true` puts a head in the active set of every fresh session. The full format and a library of example perspectives are in [`docs/heads.md`](docs/heads.md).
 
 ### Commands
 
@@ -94,43 +96,44 @@ The active head set persists per session and survives resume. For headless runs 
 
 ### Decisions
 
-Every observation ends in a decision that names the finding's delivery: when and how it reaches the agent, if at all.
+Judge-only heads (`tools: []`) return one JSON findings array on both providers. Each finding chooses its own delivery; an empty array means nothing warrants feedback. OpenAI receives the raw lens plus a developer envelope, while Anthropic receives one combined prompt. Acting OpenAI heads still call the typed `hydra` tool once with `action: "complete_observation"`; acting Anthropic heads return one compact JSON decision because a native completion call measured substantially slower and more expensive there.
 
-- `noop`: nothing to report, nothing delivered.
 - `print`: a note to you. Renders in the TUI, never enters the agent's context.
-- `queue`: waits until the run ends, then joins the context of the agent's next turn.
-- `steer`: injected as a real user message between turns of the current run, so the agent corrects course while still working.
+- `steer`: the normal and only agent-directed delivery. It folds in as a real user message at the agent's next checkpoint, whether the finding can wait or not.
 - `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
+- `none` (acting completions only): nothing to report. A judge-only head signals silence with an empty findings array instead; `none` is not a valid finding action, and one invalid action makes hydra discard every finding in that response. `/hydra-stats` labels silent outcomes `noop`.
 
-Queue against steer is a timeliness choice; interrupt is for findings that cannot wait for the run to end. There is no setting that caps any of this: when a head may pull the cord is part of its instruction, and the file is the audit trail.
+For an enumerated judge response, hydra preserves every message exactly once and groups by recipient: all `print` findings become one user-only note, while all `steer`/`interrupt` findings become one agent message. The agent message interrupts only when at least one of its findings chose `interrupt`; otherwise it steers. A mixed response therefore creates at most two deliveries without leaking a user-only finding into the agent's context. Acting completions require an exactly empty message for `none` and a non-empty message otherwise. Malformed judge output and malformed Anthropic acting output become `noop`; OpenAI rejects malformed typed calls. `after-change` only fixes delivery after a successful `write` or `edit`; it never decides whether the head should act and does nothing on observations without one. The old `queue` route remains implemented for compatibility but is no longer offered in model-facing prompts or schemas; `steer` covers the waitable case, since it already folds in at the agent's next checkpoint.
 
 ### The agent manages its own heads
 
-hydra registers a `hydra` tool the agent can call: `add` a head to the active set, `remove` one. Head files themselves the agent manages like any other file, with its ordinary tools: writing a head makes it available immediately (files are re-discovered on every tool call), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
+hydra registers one discriminated tool. The agent uses `action: "manage_heads"` with `operation: "add"|"remove"`, one head name, and a short message explaining why the change fits the current trajectory. The head files themselves are ordinary files the agent manages with its ordinary tools: a written head becomes available at the next run or `hydra` tool call (the discovery points), and every change lands as a visible write in the session, auditable and diffable. A workflow can swap heads per phase: design wants devil's-advocate thinking, execution wants quality and security, review wants simplifier.
+
+The same action is available to a head only when its `tools:` allowance includes `hydra` (or is omitted). A real observer-originated set change automatically prints one factual receipt plus the head's explanation; idempotent and failed changes print nothing. Removing itself is terminal, so a foreman can print and leave in one enforced action. Other acting OpenAI observations finish through `complete_observation`; acting Anthropic observations return the corresponding decision as JSON. Judge-only heads use the enumerated contract above.
 
 The tool deliberately stops there. Everything the agent does to its heads is visible and reversible: set changes are announced, head files are plain markdown you can read and `git diff`. Turning hydra off entirely is pi's extension enable/disable, which the agent cannot touch.
 
 ## How it works
 
-hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits. Each observation is therefore a near-pure cache read, fresh through the latest tool results, and the cache stays warm for the agent. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](experiments/README.md) and the design in [`docs/architecture.md`](docs/architecture.md).
+hydra captures the agent's provider requests byte-for-byte and replays them, with one observation prompt appended, at the moments the agent's own prompt cache commits: when a response begins streaming mid-run, and at run end. Each observation is therefore a cache read of the committed prefix (mid-run observations measured write=0), fresh through the latest tool results, and on Anthropic (and codex in shared mode) the cache stays warm for the agent too. Every mechanism behind that sentence is measured; the measurements live in [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md) and the design in [`docs/architecture.md`](docs/architecture.md).
 
 ## Limitations
 
-- Anthropic only for now. The cache-parity replay is validated on the Anthropic Messages API; nothing else is verified.
+- Two providers for now: Anthropic (Messages API) and OpenAI Codex (ChatGPT backend, GPT-5.6). On codex, set pi's `"transport": "websocket"`: observations then share the driver's cache from the first turn. Under the default `"auto"`, hydra observes in its own cache scope to keep the driver's delta continuation safe, and the first observations pay a cold start ([measured](docs/architecture.md#openai-codex-support)). Anthropic delivers the 97%+ hit ratio; codex measures ~84–87%. Nothing else is verified: hydra targets subscription auth on both providers, and the OpenAI API-key path shares the code but stays disabled unless someone measures it.
 - A head always runs the driver's model. The cache is model-specific, so a head cannot use a stronger or cheaper model than the driver's; that is what subagents are for.
+- A head is not an independent reviewer. It reads the driver's exact context, so it inherits the driver's framing, assumptions, and blind spots. It catches problems while they are cheap, and it does not replace a black-box review of the finished work.
 - A long generation streams to completion unjudged. Decisions form on committed request snapshots, so the cord is pulled between turns, never mid-stream ([Where this is going](#where-this-is-going)).
-- An always-on head adds roughly 30% to session cost ([What it costs](#what-it-costs)). A head observes at every commit point, so a single review at the end of a session is cheaper as a subagent; what the 30% buys is a review at every step that can steer.
-- A head is not an independent reviewer. It reads the driver's exact context, so it inherits the driver's framing, its assumptions and its blind spots. It catches problems while they are cheap, and it does not replace a black-box review of the finished work.
+- An always-on head adds material, variable session cost ([What it costs](#what-it-costs)); the measured always-on-head trajectories are substantially costlier on OpenAI than on Anthropic. On subscription codex that spend comes out of the same account quota as the agent's own work.
 
 ## Where this is going
 
 - **Mid-generation interrupts.** Every decision today is formed from a committed request snapshot, so a single long-running LLM call streams to completion unjudged; the cord can only be pulled between turns. Interrupting a runaway generation while it streams would mean reasoning over message deltas, with no cache parity since the content is mid-flight.
 
-If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: one extension file, one pure-logic module with tests, and an experiments harness that re-verifies every cache claim against the live API. A full run costs under a dollar.
+If that interests you, issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The codebase is small on purpose: five root modules ([docs/architecture.md](docs/architecture.md) maps them) and an experiments harness that re-verifies the cache mechanism against the live APIs. A full cache-probe run costs under a dollar.
 
 ## History
 
-hydra began as **andon**, named for Toyota's emergency cord: any worker can stop the line when they spot a defect. The original was a bash and tmux contraption that reverse-engineered Claude Code's prompt pipeline to get cache parity, and its only job was interrupting the agent on urgent findings. The project has since outgrown interrupt-only (heads steer, queue, act, or stay quiet), and the pi extension replaced all of the reverse engineering with first-class hooks. The original lives in [`archive/`](archive/README.md), including the manufacturing-inspired manifesto that still explains the philosophy.
+hydra began as **andon**, named for Toyota's emergency cord: any worker can stop the line when they spot a defect. The original was a bash and tmux contraption that reverse-engineered Claude Code's prompt pipeline to get cache parity, and its only job was interrupting the agent on urgent findings. The project has since outgrown interrupt-only (heads steer, act, enumerate findings, or stay quiet), and the pi extension replaced all of the reverse engineering with first-class hooks. The original lives in [`archive/`](archive/README.md), including the manufacturing-inspired manifesto that still explains the philosophy.
 
 ## License
 

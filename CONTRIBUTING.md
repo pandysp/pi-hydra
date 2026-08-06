@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring), `utils.ts` (pure logic, tested), `experiments/` (the measurement harness behind every cache claim).
+Issues and PRs are welcome. The codebase is deliberately small: `index.ts` (pi wiring), `protocol.ts` (the hydra tool's wire contract), `delivery.ts` + `delivery-types.ts` (the delivery ledger and its shapes), `utils.ts` (pure logic, tested), `experiments/` (the measurement harness behind the cache mechanism and the observation-contract research).
 
 ## Setup
 
@@ -21,15 +21,18 @@ npm run check    # tsc --strict
 npm test         # vitest on the pure helpers
 ```
 
-Smoke-test delivery with the hidden diagnostic heads (`/hydra-heads test`, `/hydra-heads test-interrupt`); they fire once and revert.
+Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
 
 ## What's welcome
 
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
 - Steps toward mid-generation interrupts (see "Where this is going" in the README)
-- Provider support beyond Anthropic (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
-- Replications or extensions of the [`experiments/`](experiments/README.md)
+- Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
+- Replications or extensions of the [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md)
 
 ## The bar
 
-Every claim about cache behavior must be backed by a measurement. The experiments harness re-verifies the cache mechanism against the live API, and a full run costs under a dollar. If your change touches the replay or marker logic, run the re-verification procedure in [`docs/architecture.md`](docs/architecture.md) and put the numbers in the PR. Pure logic goes in `utils.ts` with tests. Match the style of the file you are editing.
+- Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar.
+- If your change touches the replay or marker logic, run the verification procedures in [`docs/architecture.md`](docs/architecture.md) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
+- Pure logic goes in `utils.ts` with tests.
+- Match the style of the file you are editing.
