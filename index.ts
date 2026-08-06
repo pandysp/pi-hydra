@@ -51,7 +51,7 @@ import { dirname, join } from "node:path";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { cleanupSessionResources } from "@earendil-works/pi-ai";
-import type { Api, AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, ProviderHeaders, ToolCall } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	createBashTool,
@@ -1060,11 +1060,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Judge-only heads make one provider call with no executable tools. ENUM's
 	// measured fail-open contract records malformed output as noop; it never
 	// spends a recovery turn or silently infers a partial list.
+	// `headers` is ProviderHeaders: since pi 0.84 a null value is a header-deletion
+	// marker, not an absent header. Forward them unchanged, as pi documents --
+	// filtering or coercing here would resurrect a header pi intends to delete.
 	async function runJudgeObservation(
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses">,
 		apiKey: string,
-		headers: Record<string, string> | undefined,
+		headers: ProviderHeaders | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
@@ -1151,7 +1154,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses">,
 		apiKey: string,
-		headers: Record<string, string> | undefined,
+		headers: ProviderHeaders | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
