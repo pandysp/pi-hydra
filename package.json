@@ -1,44 +1,44 @@
 {
-  "name": "pi-hydra",
-  "version": "0.1.0",
-  "description": "Extra heads for your pi coding agent: live oversight through prompt-cache replay",
-  "keywords": [
-    "pi-package",
-    "pi",
-    "extension",
-    "code-review",
-    "prompt-caching"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pandysp/pi-hydra.git"
-  },
-  "license": "MIT",
-  "type": "module",
-  "private": true,
-  "pi": {
-    "image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
-    "extensions": [
-      "./index.ts"
-    ]
-  },
-  "scripts": {
-    "check": "tsc && node module-state.check.mjs",
-    "test": "vitest run",
-    "gates": "node --test experiments/*.check.mjs",
-    "manifest:refresh": "node -e 'import(\"./experiments/capstone-input-manifest.mjs\").then(m => require(\"node:fs\").writeFileSync(\"experiments/CAPSTONE-FROZEN-INPUTS.json\", m.renderCapstoneInputManifest()))'",
-    "manifest:expanded-2q": "node experiments/expanded-2q-input-manifest.mjs --output experiments/EXPANDED-2Q-FROZEN-INPUTS.json"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.82.0",
-    "@types/node": "^22",
-    "typescript": "^5.7",
-    "vitest": "^3"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
-  }
+ "name": "pi-hydra",
+ "version": "0.1.0",
+ "description": "Extra heads for your pi coding agent: live oversight through prompt-cache replay",
+ "keywords": [
+  "pi-package",
+  "pi",
+  "extension",
+  "code-review",
+  "prompt-caching"
+ ],
+ "repository": {
+  "type": "git",
+  "url": "git+https://github.com/pandysp/pi-hydra.git"
+ },
+ "license": "MIT",
+ "type": "module",
+ "private": true,
+ "pi": {
+  "image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
+  "extensions": [
+   "./index.ts"
+  ]
+ },
+ "scripts": {
+  "check": "tsc && node module-state.check.mjs",
+  "test": "vitest run",
+  "gates": "node --test experiments/*.check.mjs",
+  "manifest:refresh": "node -e 'import(\"./experiments/capstone-input-manifest.mjs\").then(m => require(\"node:fs\").writeFileSync(\"experiments/CAPSTONE-FROZEN-INPUTS.json\", m.renderCapstoneInputManifest()))'",
+  "manifest:expanded-2q": "node experiments/expanded-2q-input-manifest.mjs --output experiments/EXPANDED-2Q-FROZEN-INPUTS.json"
+ },
+ "devDependencies": {
+  "@earendil-works/pi-agent-core": "^0.82.0",
+  "@types/node": "^22",
+  "typescript": "^5.7",
+  "vitest": "^3"
+ },
+ "peerDependencies": {
+  "@earendil-works/pi-agent-core": "*",
+  "@earendil-works/pi-ai": "*",
+  "@earendil-works/pi-coding-agent": "*",
+  "@earendil-works/pi-tui": "*"
+ }
 }
