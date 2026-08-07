@@ -1,0 +1,89 @@
+{
+  "datasetVersion": "provisional 2b0a85843c9be981",
+  "rows": [
+    {
+      "task": "dispatcher",
+      "config": "sol-high",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.019965,
+      "observerDriverPercent": 61.7
+    },
+    {
+      "task": "dispatcher",
+      "config": "sol-high",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.027325,
+      "observerDriverPercent": 84.4
+    },
+    {
+      "task": "dispatcher",
+      "config": "sol-xhigh",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.029835,
+      "observerDriverPercent": 41.7
+    },
+    {
+      "task": "dispatcher",
+      "config": "sol-xhigh",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.042492,
+      "observerDriverPercent": 65.7
+    },
+    {
+      "task": "exporter",
+      "config": "sol-high",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.027602,
+      "observerDriverPercent": 48.3
+    },
+    {
+      "task": "exporter",
+      "config": "sol-high",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.038079,
+      "observerDriverPercent": 66.7
+    },
+    {
+      "task": "exporter",
+      "config": "sol-xhigh",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.020996,
+      "observerDriverPercent": 54.8
+    },
+    {
+      "task": "exporter",
+      "config": "sol-xhigh",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.030249,
+      "observerDriverPercent": 73.3
+    },
+    {
+      "task": "scheduler",
+      "config": "sol-high",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.025275,
+      "observerDriverPercent": 54.5
+    },
+    {
+      "task": "scheduler",
+      "config": "sol-high",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.029821,
+      "observerDriverPercent": 76.3
+    },
+    {
+      "task": "scheduler",
+      "config": "sol-xhigh",
+      "arm": "MAIN-SO2",
+      "costPerObservation": 0.028366,
+      "observerDriverPercent": 58.1
+    },
+    {
+      "task": "scheduler",
+      "config": "sol-xhigh",
+      "arm": "ENUM-SO2",
+      "costPerObservation": 0.043916,
+      "observerDriverPercent": 94
+    }
+  ]
+}

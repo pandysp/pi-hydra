@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "kind": "golden-dataset-v3-fold-freeze",
+  "codeCommit": "d8708d2ad86159f1c96b474e505c338106466908",
+  "note": "Lean freeze: the hash-addressed build inputs live inside inputs.tar.gz instead of v2-style loose staged copies; per-file hashes below bind the bundle contents. The fold itself is golden-dataset-v3-fold.mjs at codeCommit; settled-outcomes.json inside the bundle is the primary machine record.",
+  "dataset": {
+    "version": "d176183abab2d211",
+    "previousVersion": "0aadc215658a775b",
+    "active": 75,
+    "blocking": 26,
+    "rejected": 61,
+    "sha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5"
+  },
+  "bundle": {
+    "file": "inputs.tar.gz",
+    "sha256": "0d2e6976df66dc1be0471bab400ea544a73ac43463807d3b027cfcc1cdc40c20",
+    "files": [
+      {
+        "source": "scratch/2026-08-04-iter2-reconciliation/generate-settled-outcomes.py",
+        "bytes": 20149,
+        "sha256": "a708eac5ce873e02aa83ba825e4e5151ea5ed1153292844d82967cead83b0082"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-reconciliation/RECONCILIATION.md",
+        "bytes": 15981,
+        "sha256": "23a3a153c94732587539c43c6936af6813a81102ddf4e10368ee10232550a904"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-reconciliation/settled-outcomes.json",
+        "bytes": 59625,
+        "sha256": "1c64dd22b46f263efd2109c261540ab7b008acf5f692e862a0ae69f3205c3d0c"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/backfill-draft.json",
+        "bytes": 24987,
+        "sha256": "ed1e8529eb41a6cccde2f3eb642799f6fa894cc304baa3911c2f282f72b1f978"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/backfill-proposals.json",
+        "bytes": 9881,
+        "sha256": "763e5eca16aaf9acbf5df45669e71163796089c7b8a175d4c3fc95f9db625db3"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill-v2/analyst-round1.json",
+        "bytes": 1785,
+        "sha256": "9da35aa01ca59b6dfdf825dc3d54243d4c98695ca1bcb1436b184e81c99c6df1"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill-v2/consensus.json",
+        "bytes": 8033,
+        "sha256": "4e10f380658a033940fa70f8346b8a10f3e82443f92432dc862e982909c07e34"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill-v2/issues.json",
+        "bytes": 5061,
+        "sha256": "4297ae790bf21afd495bf8af7163b415783b3f624e2d17622e4f1076cd8cc3ef"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill-v2/judge-round1-opus.json",
+        "bytes": 14595,
+        "sha256": "cf8c18ca97ba5b5c43da65a8e5f843183184a2e244d0fd7c0eb3c8f69912b02e"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill-v2/judge-round1-sol.json",
+        "bytes": 3971,
+        "sha256": "fbaec93f94eb2717be900796b014134e03d1131f34c472e031c1b1ce38452e36"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/analyst-round1.json",
+        "bytes": 8055,
+        "sha256": "aa6d8a7af310287373d058d8be8abadb4bec7f042cb8efc3e1c75191c8077d86"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/analyst-round2.json",
+        "bytes": 7899,
+        "sha256": "5b81ba0a6d18798726f7de2a2c7dfd5283e67679041b69d5c91f98f8f7f92e06"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/consensus.json",
+        "bytes": 71764,
+        "sha256": "187d5f2f2a6f403ba4a2c91f74e23dccc605b89ff164161103a7ebdd886ea404"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/issues.json",
+        "bytes": 19574,
+        "sha256": "e7b0a3833336f0c0f16174fafc8627f49619034de7af05e271e5862837e1952d"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/judge-round1-opus.json",
+        "bytes": 57549,
+        "sha256": "61800f165f108ff2c1731eca8ef389fba874d31aaaf49f727cfd86b33b2d3e43"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/judge-round1-sol.json",
+        "bytes": 22141,
+        "sha256": "230356eecd94c9c47edce0d83dffc0daf7dff1c695590e1f57c88c342618463a"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/judge-round2-opus.json",
+        "bytes": 28861,
+        "sha256": "c7571cbd44adb6bb06f43f5b2cf4bad6044ed20fa774aa3c304a2e6eecbc75f7"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-backfill/judge-round2-sol.json",
+        "bytes": 10354,
+        "sha256": "61088d900031dd3babd86ffed0d3578750d3033711fcf1fb0e1f8a5348ad8cfd"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ratify/analyst-round1.json",
+        "bytes": 954,
+        "sha256": "e163c1095730647dcc1d01ad34a33239791880cc5ca7ce2cdae9d195385baff7"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ratify/consensus.json",
+        "bytes": 5758,
+        "sha256": "ae892ca4b5a203248e235e0c23f256e7a4c6aaff72455b029a6a5b61635f48ef"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ratify/issues.json",
+        "bytes": 4665,
+        "sha256": "e5e00fdc0e4ce77b132d0d33dddbd6a738ae34dd658c9769b9d294f5a851cbb2"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ratify/judge-round1-opus.json",
+        "bytes": 11032,
+        "sha256": "423cc4d03cb80593532db180229fa2d5ccf72035937d032fdb365a7cefad3a0e"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ratify/judge-round1-sol.json",
+        "bytes": 3355,
+        "sha256": "04ca3c9db8f51ffafe747c87a626c408d844ebd64a64940cedbd6b936eec1385"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/analyst-round1.json",
+        "bytes": 1276,
+        "sha256": "8854cfaeb48f9a27bf42245dc0c72393feccb810ac8bf154a2e66a1b9ea3646e"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/analyst-round2.json",
+        "bytes": 1370,
+        "sha256": "0d6031ab7c8d16ea37bae9ebe73c9875a79229d9982a174e500db5f0358da367"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/analyst-round3.json",
+        "bytes": 1198,
+        "sha256": "a2b89b76a5629788448fed8037821f0c2dcad04c6d00b835dc9e6fd33ac37f26"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/consensus.json",
+        "bytes": 10394,
+        "sha256": "9c7d241dba6647dd7faec7df776db348b13ab9301afaba90d7a2a00554b1a97f"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/issues.json",
+        "bytes": 1328,
+        "sha256": "260030ff4a11a76a1ae3da819ccfd24e8ba595b156c294dfbf116fb8226de78d"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round1-opus.json",
+        "bytes": 3715,
+        "sha256": "05b5bdababca364b23c4f4ba87641caa5065bdec21e1e6659bc05b1ed5169c6a"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round1-sol.json",
+        "bytes": 2240,
+        "sha256": "6e6dc97fd4a3ee3d102f0fd8725e4e44652e92e1ce93f521dc633bdb67104bf3"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round2-opus.json",
+        "bytes": 3202,
+        "sha256": "b3561dad69662d1c8c9c46a38b0cda4f7b98bc84a86cb296485f97051bc5fc76"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round2-sol.json",
+        "bytes": 1884,
+        "sha256": "1f6258c01c4cc9cb45c17f820db822f4d0225493029f30cab101a1ee32b671da"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round3-opus.json",
+        "bytes": 3221,
+        "sha256": "e73df59aef1eb6ce3300db5acffbcfe02e106ebb5186681bd40c352551e8ad60"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/judge-round3-sol.json",
+        "bytes": 2040,
+        "sha256": "7b66a914335f70420796e109fc46b87647b7e673fadc4a78ce91306c466ef8a0"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/open-round1.json",
+        "bytes": 2410,
+        "sha256": "a8d406d3952e7291116aa6c7460401809855616357cac086d0d91841ec7c54b3"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/open-round2.json",
+        "bytes": 3085,
+        "sha256": "8a141972496edd352abd3426904b2647d3182188a25b878495aadf6b4132d0e1"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-repairs/open-round3.json",
+        "bytes": 1582,
+        "sha256": "63bdce899bdfc8d654a0705605aeff8fdba7780b04fd5cc45c0a8a5df7dd3ee1"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/analyst-round1.json",
+        "bytes": 451,
+        "sha256": "e95add7a3b82826fb4d0ae95a12222a5aa9c667be2bd60a853806d1cf1ba5722"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/consensus.json",
+        "bytes": 3222,
+        "sha256": "3f072fdd40b4b7f787dc59e1c775a0bfad3e39a2590b0a47c16af5abde1da34f"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/issues.json",
+        "bytes": 2495,
+        "sha256": "1c2ea46e755eaba303c1ecb636fd317e5a0110cbdd8de2bdbc6618ba968727a0"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/judge-round1-opus.json",
+        "bytes": 7156,
+        "sha256": "4560a7221c90c4a3924d3199d6148564a9701a5c253d545c988895cefbe2ee70"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/consensus-ruling-anchor-v2/judge-round1-sol.json",
+        "bytes": 1423,
+        "sha256": "736579b7b6dcc8390d21d1cc71741b9e227c9759325e76993e44d627e2de11fd"
+      },
+      {
+        "source": "scratch/2026-08-04-iter2-wave/ratify-runner.mjs",
+        "bytes": 3379,
+        "sha256": "572029181fe967fdbde2b069d46b4d7a7788f0658dd3c4a5faa6f7de01844bae"
+      }
+    ]
+  },
+  "validation": {
+    "file": "validation.txt",
+    "sha256": "cee1e4b27ba577dedfbe1a2c18e75a33f73bb4ee3071329c44e694368adbdd35"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "what": "The verified runner-up findings of the 2026-08-01 /code-review max run, cut by the 15-cap, transcribed VERBATIM from the reviewing agent's final report. The top-15 with full failure scenarios are in findings.json.",
+  "provenance": {
+    "producedBy": "the /code-review max agent (10 finder angles + sweep), agent-a90080fc35bc47b46",
+    "transcript": "~/.claude/projects/-Users-spannagel/4881d0b2-8867-4f90-ada7-a3fef3e5eaab/subagents/agent-a90080fc35bc47b46.jsonl",
+    "reportTimestamp": "2026-08-01T20:54:34+02:00",
+    "recoveredAndFrozen": "2026-08-02, GOLDEN-DATASET-V2-SPEC.md wave 1 Q3",
+    "sectionHeading": "## Runners-up, measured ones first (all verified, all cut by the 15-cap)",
+    "scopeNote": "Scope note:reviewed the working tree at `driver-run-scheduler` (post-driver scheduler + pristine exporter and dispatcher). Excluded `reference/` — those files are md5-identical across all three task dirs and are copies of unrelated pi-hydra project docs, not code under review.",
+    "countNote": "13 verbatim bullets; the artifact README's '~14' was an approximation. Several bullets bundle 2-3 distinct defects and will split under RULING 2 individuation when pooled."
+  },
+  "runnersUp": [
+    {
+      "index": 1,
+      "verbatim": "`exporter.js:15` N+1: 20,000 orders for one customer = **20,005 queries, 26.2s**; correct is 6. 500 orders / 5 customers = 506."
+    },
+    {
+      "index": 2,
+      "verbatim": "`db.js:13` with `since`: per-page cost is O(total rows), not O(page size) — a 100k-row export at page size 10k **examines 1,100,000 rows** across 11 full table scans. Quadratic in table size."
+    },
+    {
+      "index": 3,
+      "verbatim": "`format.js:12`: **2050 of the first 300,000 ms values** render nonsense — `119999` → `\"1m60s\"`, `59950` → `\"60.0s\"`, `3599999` → `\"59m60s\"`. No hour carry (`86400000` → `\"1440m00s\"`); `NaN`/`undefined` → `\"NaNmNaNs\"`."
+    },
+    {
+      "index": 4,
+      "verbatim": "`dispatchAll` serializes retry backoff across independent charges: 10 failing charges = 14,111ms; concurrent is bounded by 1400ms."
+    },
+    {
+      "index": 5,
+      "verbatim": "`exporter.js:16` `row.amount.toFixed(2)` aborts the entire export on a null or string amount (string DECIMAL is the pg/mysql2 default)."
+    },
+    {
+      "index": 6,
+      "verbatim": "`exporter.js:23` `exportFilename` path traversal (`orders-../../etc/passwd-....csv`) and CRLF header injection; UTC date stamps the wrong day near midnight."
+    },
+    {
+      "index": 7,
+      "verbatim": "`scheduler.js:61` `complete(store,id,null)` retires a never-claimed job (`null !== null` is false); a stale owner can also complete a job a sweep already returned to pending."
+    },
+    {
+      "index": 8,
+      "verbatim": "`db.js:20` `getCustomer` fabricates `{name:\"unknown\",tier:\"none\"}`, so a broken foreign key ships as plausible data."
+    },
+    {
+      "index": 9,
+      "verbatim": "`http.js:6` `createClient` holds the caller's array by reference and `shift()` destroys it; once drained, `post` returns a synthetic `200 OK`, so an under-scripted test passes. `client.sent` stores bodies by reference, so the audit record can be rewritten after the fact."
+    },
+    {
+      "index": 10,
+      "verbatim": "`redact.test.js:10` passes for an identity function, and it is the only test on `redactLine` — the function the dispatcher actually calls."
+    },
+    {
+      "index": 11,
+      "verbatim": "`exporter.js:19`: LF not CRLF, no trailing newline, no BOM (a customer named `Müller` mojibakes in Excel); a `Date` in `createdAt` stringifies with the machine's locale and timezone."
+    },
+    {
+      "index": 12,
+      "verbatim": "`renewLease`/`sweepExpired`/`putJob`/`countOrders`/`exportFilename` have zero call sites — the lease is never renewed by any shipped path, so any handler running past 30s becomes sweepable mid-run."
+    },
+    {
+      "index": 13,
+      "verbatim": "`claimNext` sorts the whole backlog per call (50k jobs = 7.48ms and 714k comparisons per tick; a min-scan is 0.29ms); `logSummary` adds 3 full map scans per tick including idle ones, and logs one line per idle poll (36k lines/hour at 100ms)."
+    }
+  ]
+}

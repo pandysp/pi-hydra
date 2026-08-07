@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
 import type { DeliveryGateway } from "./delivery";
-import type { PersistedDelivery } from "./delivery-types";
+import type { PersistedDelivery } from "./utils";
 import { parseEnumeratedDecision } from "./utils";
 
 function harness(idle = false) {

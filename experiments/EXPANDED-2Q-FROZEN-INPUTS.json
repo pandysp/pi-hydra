@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "protocol": "expanded-2q-findings-v1",
+  "status": "frozen inputs; full judgment ledger pending",
+  "sample": {
+    "path": "experiments/JUDGE-TRANSPORT-AB-SAMPLE.json",
+    "manifestSha256": "253ea8b8fcef9f7e01460d37f82885ad0daab0d9fa69dd8b34413580bf7e4936",
+    "points": 20,
+    "findings": 45,
+    "strata": 6
+  },
+  "carrierShapes": [
+    {
+      "judge": "opus",
+      "archive": "experiments/artifacts/2026-08-01-trajectory-pilot/payloads.tar.gz",
+      "member": "payloads/scheduler-opus-high-a1-r1-q5.json",
+      "bytes": 18522,
+      "sha256": "d24aada34685947062b27faaec8d291066becb377fed1d188b667c1dd225df5e"
+    },
+    {
+      "judge": "sol",
+      "archive": "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+      "member": "payloads/dispatcher-sol-high-a1-r0-q4.json",
+      "bytes": 19861,
+      "sha256": "46bca499051e2725e23ef578313cc92f2097c954054f6e46ac6c415736562d1a"
+    }
+  ],
+  "files": [
+    {
+      "path": "experiments/JUDGE-TRANSPORT-AB-SAMPLE.json",
+      "bytes": 2615,
+      "sha256": "a8c0fd3910024ba9ed8f1be5c173e3615d609bc37cb70a78ab516af1788893b4"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-01-trajectory-pilot/payloads.tar.gz",
+      "bytes": 543048,
+      "sha256": "585bfec64d6f35eefd6fdffb0cb8037b80ae9ca437621241fa27a09a610d1f2f"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+      "bytes": 7243143,
+      "sha256": "401c38dfdfd6845ceef5e28a4f1519246c65ee3845fcc07818e9ca1406be4ae7"
+    },
+    {
+      "path": "experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",
+      "bytes": 174512,
+      "sha256": "7224f4e031be4719abc7b6f7570c3972b64c5d5df7e66407b42fba26ffad9e03"
+    },
+    {
+      "path": "experiments/capstone-trajectory-judge-protocol.mjs",
+      "bytes": 10492,
+      "sha256": "d871f1e9e31bf62b648c0ec637268ab9ad5e4b48c04a297bdf33b9cbb9960c56"
+    },
+    {
+      "path": "experiments/delivery-context-judge-protocol.mjs",
+      "bytes": 6798,
+      "sha256": "b152a9b9bb1076af99b5511bf02402f30b1aace96a4e0b8526de75d787b0e00c"
+    },
+    {
+      "path": "experiments/dual-catalog-audit.mjs",
+      "bytes": 17774,
+      "sha256": "7fffa61958dcf66bac06132fba94cc5908b2e73e7c47aa99deb165a3b62c1c00"
+    },
+    {
+      "path": "experiments/dual-catalog-growth.mjs",
+      "bytes": 12374,
+      "sha256": "d1276eb950e3a3e765fa1b5aced00d033018e09242f81f54718da53539c84330"
+    },
+    {
+      "path": "experiments/dual-catalog-judge-protocol.mjs",
+      "bytes": 11615,
+      "sha256": "d06c480bbe5235c65e02706e0d8d88e5187c0757ee4e8fbc376f696b6acf8b6c"
+    },
+    {
+      "path": "experiments/dual-catalog-judge.mjs",
+      "bytes": 19082,
+      "sha256": "27b58fd91deeb8f0be68e0c500be5923dc2760a180f3a523bd5d2f7d6173259a"
+    },
+    {
+      "path": "experiments/dual-catalog-reconcile.mjs",
+      "bytes": 21280,
+      "sha256": "1edd119da176f86df482123313c0fb41976125fbd9e88b6ead8f04067834da95"
+    },
+    {
+      "path": "experiments/dual-catalog-score.mjs",
+      "bytes": 11943,
+      "sha256": "72acd1f300536b5cf40ebe3d0d932ac8c39f1f7f9f498adf23879e30ec83fb14"
+    },
+    {
+      "path": "experiments/dual-catalog.check.mjs",
+      "bytes": 954,
+      "sha256": "8c439c93735f312007699ac58d668651ff53343b85cd5d06f2ead47b8031c322"
+    },
+    {
+      "path": "experiments/dual-catalog.mjs",
+      "bytes": 10492,
+      "sha256": "ba48b0531ab8c065d63c1a052d7d87837e94ba275038ca04cb754f72b9c6832f"
+    },
+    {
+      "path": "experiments/expanded-2q-input-manifest.mjs",
+      "bytes": 3524,
+      "sha256": "7cbf170ea4c2bb3705b18710e2b65d540768b92628d49ab8b675548f43c2b382"
+    },
+    {
+      "path": "experiments/false-positive-catalog.json",
+      "bytes": 3181,
+      "sha256": "ff2eb152b47353fa4d9c6cb6b86b7b63c8b032b11a8eb0f1136e8943b9c1ede2"
+    },
+    {
+      "path": "experiments/fingerprints.mjs",
+      "bytes": 16049,
+      "sha256": "0e15b03542408fc0c0b4a481f91d0ece10ca02d88183de7e0192232a9edf35f0"
+    },
+    {
+      "path": "experiments/golden-dataset.json",
+      "bytes": 201043,
+      "sha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5"
+    },
+    {
+      "path": "experiments/judge-transport-ab-sample.mjs",
+      "bytes": 4319,
+      "sha256": "8e98d053432cb1d3bd3bb2997acb77f72c330e2e324bbeff54775f249c02ba25"
+    },
+    {
+      "path": "experiments/lib.mjs",
+      "bytes": 5416,
+      "sha256": "38595a2604774e09145920daa2280430aaffbf2c2d6383b9d035c03c27bda3cc"
+    },
+    {
+      "path": "experiments/model-catalog-snapshot.json",
+      "bytes": 744,
+      "sha256": "b67e4f24d78fdc0032777e8507af8432783865a30b0ac1caa62f8036c253fdc9"
+    },
+    {
+      "path": "experiments/model-catalog.mjs",
+      "bytes": 1364,
+      "sha256": "d27fa5443cfd2162d80614a4556b0ba84d2d08854ff0a2a2154c0cd1a83656e9"
+    },
+    {
+      "path": "experiments/pi-replay-judge-transport.mjs",
+      "bytes": 11937,
+      "sha256": "144191bee884d2d47b9a345914f85f4240b4d7e0fd32eff9b747fcc5ad8a3108"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 161726,
+      "sha256": "9fc8440602df8fb61d1938af1338e4df1c5c799a2b6976e694df67f2daf8d8e2"
+    }
+  ]
+}

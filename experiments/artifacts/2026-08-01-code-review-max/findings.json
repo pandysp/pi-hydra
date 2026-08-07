@@ -1,0 +1,92 @@
+[
+  {
+    "file": "dispatcher/src/retry.js",
+    "line": 28,
+    "summary": "withRetries returns ok:true after every attempt has failed, so dispatchCharge reports a charge the upstream never accepted as delivered.",
+    "failure_scenario": "Measured: createClient([{status:500} x4]) then dispatchCharge(...) returns {\"id\":\"ch-1\",\"delivered\":true,\"attempts\":4}. The exhaustion path returns the same ok:true as the success path at line 18, so no caller can tell them apart; identical result when all four attempts throw ECONNRESET and when the upstream returns a hard 402/422 decline. dispatch.js's own JSDoc says callers \"treat a resolved dispatch as delivered and move the order on\" - the order ships, the money is never captured. response:null also crashes any caller reading outcome.response.body. The failure survives only in an unread `note` field."
+  },
+  {
+    "file": "dispatcher/src/dispatch.js",
+    "line": 12,
+    "summary": "The retried POST /v1/charges carries no idempotency key, so a retry after a timeout or transient error charges the customer twice.",
+    "failure_scenario": "Measured: createClient([new Error(\"ECONNRESET\"), {status:200}]) produces two byte-identical POSTs to /v1/charges with headers {} (client.sent.length === 2) and returns delivered:true. When the first request reached the upstream and was captured before the connection dropped - the exact case retries exist for - the customer is charged twice. post() accepts a headers argument dispatchCharge never passes. Compounded by retry.js:17, which retries every non-2xx: a permanent 422 decline is re-presented 4 times over 1.4s (measured), tripping issuer velocity rules."
+  },
+  {
+    "file": "dispatcher/src/redact.js",
+    "line": 4,
+    "summary": "maskCard misses several real PAN formats entirely and over-discloses on grouped PANs, so full card numbers reach the log that exists to prevent exactly that.",
+    "failure_scenario": "Measured, output identical to input (full PAN logged): 17-, 18- and 19-digit PANs (valid UnionPay/Maestro) - the pattern caps at 16 digits and \\b cannot anchor inside a longer digit run, so backtracking to a 13-16 digit sub-run also fails; dot-separated \"4111.1111.1111.1111\" - the separator class is only [ -]; Arabic-indic and full-width digits. Over-disclosure: \"6221 2600 0000 0000 000\" masks to \"****0000 000\", leaving seven digits visible, because slice(-4) takes the last four CHARACTERS of the raw match including separators (PCI DSS 3.4 permits four). dispatch.js:11 pushes `card ${charge.card}` through this on every attempt, so each leak lands 1-4 times per charge."
+  },
+  {
+    "file": "exporter/src/exporter.js",
+    "line": 11,
+    "summary": "exportOrders is documented and filenamed per-tenant but applies no tenant filter anywhere in the data path, so every tenant's export contains every other tenant's orders.",
+    "failure_scenario": "Measured: a table holding one 'acme' row and one 'globex' row, exported for acme, returns both - \"A-1,Acme Buyer,gold,1.00,1\\nB-1,Globex Buyer,plat,2.00,2\" - in a file named orders-acme-2026-08-01.csv. There is no tenant parameter on exportOrders, no tenant option on pages(), and no tenant condition in queryOrders (db.js:13 filters only on `since`), so the scoping is absent at every layer. exportFilename(tenant) at line 22 is the only place tenancy appears, so the filename asserts an isolation the body does not have and the leak is invisible to whoever downloads it."
+  },
+  {
+    "file": "exporter/src/pager.js",
+    "line": 18,
+    "summary": "Paging is offset-based over a live table with no snapshot or cursor, so any insert or delete landing between two page queries silently skips or duplicates rows.",
+    "failure_scenario": "Measured on a 6-row table at limit=3. One row deleted after page 1 is fetched: pages yield [o0|o1|o2] then [o4|o5] - o3 is absent from the export entirely, no error, well-formed CSV. One row inserted before the offset after page 1: pages yield [o0|o1|o2], [o2|o3|o4], [o5] - o2 is exported twice, so any downstream sum over the amount column double-counts it. `offset += pageSize` assumes a frozen result set, but queryOrders re-evaluates db.rows on every call and the exporter holds no transaction, snapshot or keyset cursor. A real export spans many pages and many seconds - exactly the window in which an order table is being written."
+  },
+  {
+    "file": "scheduler/src/store.js",
+    "line": 26,
+    "summary": "saveJob is both the insert and the update path with no id-collision check, so an ordinary enqueue of an existing id silently resets a running job to pending and discards the in-flight work.",
+    "failure_scenario": "Measured: saveJob(newJob('job-42','first')) then claimNext('w-1') gives {state:'running', claimedBy:'w-1', payload:'first'}. An ordinary enqueue of saveJob(newJob('job-42','second')) - same id, e.g. a retried API submission or an id derived from a business key - overwrites the record in place: {state:'pending', claimedBy:null, attempts:0, payload:'second'}, map size still 1. Worker w-1 is still executing 'first' and the store holds no trace of it; its complete(store,'job-42','w-1') is then REFUSED (returns null, measured, because claimedBy is now null), so the worker cannot even record the outcome. The first submission's execution is silently lost and its attempt counter reset. newJob does not check for existence and neither does saveJob - there is no create-vs-update distinction anywhere in the module."
+  },
+  {
+    "file": "scheduler/src/worker.js",
+    "line": 52,
+    "summary": "requeue writes back the pre-handler job snapshot with no re-read, so it resurrects a job another worker completed, double-pushes one job onto the dead list, and undercounts the attempt budget.",
+    "failure_scenario": "Measured three ways under the double-claim below. (a) attempts:4 job, both workers fail: both compute attempts=5, both call deadLetter, store.dead.length === 2 for one job and stats().dead reports 2. (b) attempts:3 job, two real failures: the stored job ends at attempts=4, not 5 - one failure is lost and the job outlives its budget. (c) w-1 succeeds and complete() writes state:'done', then w-2's requeue writes its stale snapshot back as pending - the completed job re-enters the queue and the payload runs a third time. complete's write does not survive requeue's, because nothing re-reads the record between claim and write-back."
+  },
+  {
+    "file": "scheduler/src/worker.js",
+    "line": 48,
+    "summary": "requeue reads error.message unguarded, so a handler that rejects with a non-Error throws out of runOnce's own catch block and strands the job as running and claimed forever.",
+    "failure_scenario": "Measured: runOnce(store,'w1', async () => { throw null }) does not return - TypeError: Cannot read properties of null (reading 'message') escapes runOnce, because the throw originates inside the catch handler. The job is left {state:'running', claimedBy:'w1', attempts:0}: never requeued, never dead-lettered, budget never charged. Combined with the sweepExpired defect below it can never be reclaimed, so it leaks permanently and the unhandled rejection kills the worker loop. Reached by throw null, a bare Promise.reject(), an aborted fetch, or any library that throws a string; `throw \"boom\"` silently records lastError: undefined. The one place designed to make failure survivable is itself unguarded."
+  },
+  {
+    "file": "scheduler/src/scheduler.js",
+    "line": 36,
+    "summary": "sweepExpired writes state:'pending' but keeps claimedBy, and claimNext only takes pending jobs whose claimedBy is null, so every swept job becomes permanently unclaimable.",
+    "failure_scenario": "Measured: claim j-1 as w-1, sweepExpired(store, now+1e9) returns 1 and leaves {state:'pending', claimedBy:'w1', leaseExpiresAt:<stale>}; the next claimNext(store,'w2') returns null forever. The record is out of reach of every entry point - claimNext needs claimedBy null, renewLease needs state 'running', a second sweep only scans 'running' - so it sits in the store permanently while stats().pending still counts it as queued work. The worker then prints \"w-2 idle - 1 job pending\" every tick: a backlog that never drains with every worker idle, and no counter separates stranded work from real work. Lease recovery is the one thing a lease exists for, and it is the path that does not recover."
+  },
+  {
+    "file": "scheduler/src/scheduler.js",
+    "line": 13,
+    "summary": "claimNext tests claimedBy === null synchronously but the write acting on it crosses an await, so two overlapping workers both claim one job and both run its payload.",
+    "failure_scenario": "Measured: Promise.all([claimNext(store,'wA'), claimNext(store,'wB')]) on a single pending job returns two records, one naming wA and one naming wB; the map keeps whichever write landed last (wB). Both callers then run the handler on the same payload - duplicate charges, duplicate emails, whatever the job does. The invariant is not merely violated here, it is inexpressible at this layer: store.js offers only an unconditional jobs.set, with no compare-and-set, no version field and no post-write re-read, so no claim path can be written correctly without a new store primitive and any future claimer (priority, batch) reproduces it. This is also what makes finding 7 reachable."
+  },
+  {
+    "file": "exporter/src/pager.js",
+    "line": 10,
+    "summary": "Number(options.limit ?? DEFAULT_PAGE_SIZE) is unvalidated, so a bad limit from the query string yields a header-only CSV reported as success, and a negative one silently drops rows.",
+    "failure_scenario": "Measured against a 250-row table: limit=\"abc\" (Number -> NaN, and ?? does not catch NaN because NaN is not nullish), limit=0 and limit=\"\" each export 0 of 250 rows after a single query - slice(0,NaN)/slice(0,0) returns [], and pages() reads the empty page as end-of-table. limit=-1 exports 249 of 250: slice(0,-1) drops the last row and `rows.length < pageSize` (249 < -1) is false, so the short page is never detected. In every case the caller gets a well-formed CSV and HTTP success, which downstream consumers read as \"this tenant had no orders\" rather than as a rejected request. exporter.js:8 states the HTTP layer hands the parsed query string straight through, so any client typo reaches this line."
+  },
+  {
+    "file": "exporter/src/csv.js",
+    "line": 5,
+    "summary": "The quote-trigger class /[\",\\n]/ omits carriage return and nothing neutralises formula-leading characters, so a field can split a record and a cell can execute on open.",
+    "failure_scenario": "Measured end to end. (1) A customer named \"Acme\\rCorp\" emits the unquoted row o-1,Acme\\rCorp,gold,10.00,2026-01-01. RFC 4180 requires quoting when a field contains CR, and Excel and every CR/CRLF-terminating parser read this as two records, shifting every column after it - silent corruption, not a parse error. \\r\\n survives only incidentally via the \\n. (2) A customer named \"=cmd|' /C calc'!A0\" is emitted verbatim, as are values leading with +, - and @; Excel and LibreOffice evaluate them on open. The module's own test never reaches the quoting branch: every asserted value ('plain', 12, null, 'a', 'b', 3) fails the predicate, so a refactor that dropped quoting entirely would still pass."
+  },
+  {
+    "file": "scheduler/src/scheduler.js",
+    "line": 51,
+    "summary": "DRIVER-INTRODUCED: stats() partitions running jobs by >= now and < now, both false for a NaN lease, so a stuck job is counted in no bucket and the summary reads all zeros.",
+    "failure_scenario": "Measured: after claimNext plus the documented three-argument renewLease, store.jobs.size is 1 and listJobs(store,'running').length is 1, but stats() returns {pending:0,running:0,expired:0,done:0,dead:0} - every bucket zero. sweepExpired reports 0 reclaimed for the same reason. worker.js:6 prints this after every tick, so the console actively reassures the operator the queue is empty while a job is held indefinitely. The JSDoc promises the buckets \"stay disjoint\", which holds and is beside the point: they are silently non-exhaustive, and nothing reconciles their total against store.jobs.size. The NaN comes from scheduler.js:23, where renewLease alone declares `now` with no default while sweepExpired and stats both default it to Date.now() - so renewLease(store,id,worker) writes undefined + 30_000 and reads as idiomatic; that missing default needs fixing too, or stats is repaired while the corruption continues. New code on this branch, built on lease state the same commit left broken."
+  },
+  {
+    "file": "scheduler/test/format.test.js",
+    "line": 12,
+    "summary": "DRIVER-INTRODUCED: the driver shipped ~70 lines of new queue-lifecycle behavior with one new test covering pluralize, a function its diff does not touch - so reverting its central fix leaves the suite green.",
+    "failure_scenario": "Proven by experiment: with requeue restored to its pre-driver body ({...job, state:'pending', claimedBy:null, attempts:0, lastError}) - reintroducing the exact bug the 19-turn run existed to fix - the suite still reports 3 pass / 0 fail. The diff changed scheduler.js (+17, new stats), store.js (+13, new deadLetter path) and worker.js (+40, new dead-lettering branch and console summary), and added one test for format.js. No test anywhere constructs a store, so nothing in the repo detects that stats loses NaN-lease jobs or that requeue double-pushes to store.dead. The hole predates the driver and was inherited rather than closed: all nine modules holding state, money or I/O (scheduler, store, worker, db, exporter, pager, dispatch, http, retry) have zero tests, while all three test files cover only the pure-string helper - and all 7 tests pass while every defect in this report ships."
+  },
+  {
+    "file": "scheduler/docs/scheduling.md",
+    "line": 113,
+    "summary": "DRIVER-INTRODUCED: the \"Known gaps, collected\" table asserts the opposite of the code shipped in the same commit, and the section it summarises is truncated mid-sentence.",
+    "failure_scenario": "The table row reads \"| `requeue` resets `attempts` to `0` | `MAX_ATTEMPTS`, `isExhausted`, and `store.dead` are dead code |\", but the same commit writes attempts: job.attempts + 1 (worker.js:48), gates on isExhausted (worker.js:49), pushes to store.dead (store.js:41) and reads store.dead.length (scheduler.js:54). A maintainer trusting the only collected summary in the document re-fixes an already-fixed bug, or skips dead-letter monitoring because the table says the path is unreachable - then finds getJob returning null for a job deadLetter deleted. Separately line 103 stops mid-clause at \"- **Budget left.** It writes `state: \" with an unterminated code span and no budget-spent counterpart, so the dead-letter semantics the section is named for are never stated, while line 32 routes readers to that anchor and the preamble commits to describing the code \"as it currently behaves\"."
+  }
+]

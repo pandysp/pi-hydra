@@ -1,0 +1,31 @@
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { describe, expect, it } from "vitest";
+import { buildCapstoneInputManifest, CAPSTONE_INPUTS, renderCapstoneInputManifest } from "./capstone-input-manifest.mjs";
+
+describe("capstone frozen-input manifest", () => {
+	it("covers every registered frozen trajectory family and matches the committed manifest", () => {
+		const manifest = buildCapstoneInputManifest();
+		expect(manifest.status).toBe("frozen provisional judge basis; the live catalog versions independently");
+		expect(manifest.files).toHaveLength(CAPSTONE_INPUTS.length);
+		expect(new Set(manifest.files.map((file) => file.path)).size).toBe(CAPSTONE_INPUTS.length);
+		expect(manifest.files.every((file) => file.bytes > 0 && /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("enum-trajectory"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("cross-task-trajectory"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-trajectory"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-capstone-producer/rows"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-capstone-judge-basis/golden-dataset"))).toBe(true);
+		expect(manifest.files.some((file) => file.path.includes("openai-capstone-sol/judge-sol"))).toBe(true);
+		expect(readFileSync("experiments/CAPSTONE-FROZEN-INPUTS.json", "utf8")).toBe(renderCapstoneInputManifest());
+	});
+
+	it("drops the provisional wording when the pinned basis is not provisional", () => {
+		const dir = mkdtempSync(join(tmpdir(), "capstone-final-dataset-"));
+		const dataset = JSON.parse(readFileSync("experiments/golden-dataset.json", "utf8"));
+		delete dataset.provisional;
+		const path = join(dir, "golden-dataset.json");
+		writeFileSync(path, `${JSON.stringify(dataset)}\n`);
+		expect(buildCapstoneInputManifest(path).status).toBe("frozen judge basis; the live catalog versions independently");
+	});
+});

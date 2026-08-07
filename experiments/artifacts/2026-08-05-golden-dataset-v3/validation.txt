@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: every record carries the full schema
+ok 1 - every record carries the full schema
+  ---
+  duration_ms: 0.680125
+  type: 'test'
+  ...
+# Subtest: rejected records carry their schema and their reasons
+ok 2 - rejected records carry their schema and their reasons
+  ---
+  duration_ms: 0.236625
+  type: 'test'
+  ...
+# Subtest: ids are unique and stable-looking
+ok 3 - ids are unique and stable-looking
+  ---
+  duration_ms: 0.107208
+  type: 'test'
+  ...
+# Subtest: the set version is the content hash of its active records
+ok 4 - the set version is the content hash of its active records
+  ---
+  duration_ms: 0.321042
+  type: 'test'
+  ...
+# Subtest: no planted defect was silently dropped by clustering
+ok 5 - no planted defect was silently dropped by clustering
+  ---
+  duration_ms: 0.24525
+  type: 'test'
+  ...
+# Subtest: the dedup mapping is total: every source report lands in exactly one record, active or rejected
+ok 6 - the dedup mapping is total: every source report lands in exactly one record, active or rejected
+  ---
+  duration_ms: 0.133334
+  type: 'test'
+  ...
+# Subtest: anchors resolve against their exact file and judged frame
+ok 7 - anchors resolve against their exact file and judged frame
+  ---
+  duration_ms: 0.666042
+  type: 'test'
+  ...
+# Subtest: dissent is recorded rather than averaged
+ok 8 - dissent is recorded rather than averaged
+  ---
+  duration_ms: 0.074834
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 44.998042

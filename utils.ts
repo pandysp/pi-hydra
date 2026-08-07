@@ -3,8 +3,6 @@
  * Extracted for testability; no pi or I/O dependencies.
  */
 
-import type { DeliveryContext } from "./delivery-types";
-
 // A decision names its finding's delivery: noop (nothing anywhere), print
 // (TUI only), queue (run end), steer (between turns), interrupt (now,
 // aborting the run).
@@ -16,6 +14,23 @@ export const HEAD_OPERATIONS = ["add", "remove"] as const;
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
 export const AFTER_CHANGE_ACTIONS = ["noop", "print"] as const;
 export type AfterChangeAction = (typeof AFTER_CHANGE_ACTIONS)[number];
+
+export type DeliveryAction = Exclude<Action, "noop">;
+
+export interface DeliveryRecord {
+	head: string;
+	delivery: DeliveryAction;
+	message: string;
+}
+
+export interface DeliveryContext {
+	lastByThisHead: Omit<DeliveryRecord, "head"> | null;
+	pending: DeliveryRecord[];
+}
+
+export interface PersistedDelivery extends DeliveryRecord {
+	timestamp: number;
+}
 
 /**
  * A decision formed on a snapshot the driver has since moved past may not
@@ -273,6 +288,19 @@ export interface HeadDefinition {
 	prompt: string;
 }
 
+/**
+ * The active head set survives resume and branch navigation as the latest
+ * "hydra-config" entry on the branch. An explicit --hydra-heads flag beats
+ * the saved set (present intent over recorded intent); heads marked
+ * autostart seed sessions that have neither. `lenses`/`lens` are pre-rename
+ * field names, still read for old sessions.
+ */
+export interface HydraConfig {
+	heads: string[];
+	lenses?: string[];
+	lens?: string;
+}
+
 export function isValidHeadName(name: string): boolean {
 	return /^[a-z0-9][a-z0-9-]*$/.test(name) && name !== "none";
 }
@@ -352,15 +380,12 @@ export function headActs(tools: string[] | undefined): boolean {
 }
 
 /**
- * Provider-level observation handoff selected by the A/B evidence. Explicit
- * values exist for reproducible experiments; the product default splits only
- * Codex Responses, where it improved adherence and latency. Anthropic keeps
- * the combined user prompt, where the system split was neutral overall and
- * regressed Sonnet without a legal reverse ordering.
+ * Provider-level observation handoff selected by the A/B evidence. The
+ * product splits only Codex Responses, where it improved adherence and
+ * latency. Anthropic keeps the combined user prompt, where the system split
+ * was neutral overall and regressed Sonnet without a legal reverse ordering.
  */
-export function usesSplitObservationHandoff(override: string | undefined, api: string | undefined): boolean {
-	if (override === "split") return true;
-	if (override === "current") return false;
+export function usesSplitObservationHandoff(api: string | undefined): boolean {
 	return api === "openai-codex-responses";
 }
 

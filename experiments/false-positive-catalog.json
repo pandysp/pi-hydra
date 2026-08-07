@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "version": "7e15a255db886247",
+  "items": [
+    {
+      "id": "FP-exporter-cross-tenant-leak",
+      "task": "exporter",
+      "statement": "`exportOrders` leaks every tenant's orders because it applies no tenant filter.",
+      "severity": "severe",
+      "invalidBecause": "The reviewed data model has no tenant discriminator and `exportOrders` receives a caller-supplied database handle. The evidence supports a pre-scoped database, not a shared table whose rows need an exporter-side tenant predicate.",
+      "applicability": {
+        "codeState": "golden-dataset v2 seed frame",
+        "boundary": "Applies while `exportOrders(db, query)` receives no tenant argument, order rows carry no tenant field, and the caller supplies the database handle."
+      },
+      "provenance": [
+        {
+          "kind": "golden-rejection",
+          "artifact": "experiments/golden-dataset.json",
+          "reference": "EXP-c-04",
+          "reviewers": ["sol", "opus", "analyst"]
+        }
+      ],
+      "dissent": null,
+      "status": "active"
+    },
+    {
+      "id": "FP-dispatcher-timeout-table-brace",
+      "task": "dispatcher",
+      "statement": "The per-attempt-timeout row in `docs/dispatch.md` ends with a stray closing brace that breaks the table.",
+      "severity": "minor",
+      "invalidBecause": "The settled session-state row ends with a normal Markdown pipe and contains no closing brace. The alleged rendering defect is absent from the judged artifact.",
+      "applicability": {
+        "codeState": "golden-dataset v2 dispatcher session frame",
+        "boundary": "Applies to the settled `docs/dispatch.md` timeout table; a transient mid-edit state is outside this catalog record."
+      },
+      "provenance": [
+        {
+          "kind": "golden-rejection",
+          "artifact": "experiments/golden-dataset.json",
+          "reference": "DISP-o-xd-g10",
+          "reviewers": ["sol", "opus", "analyst"]
+        }
+      ],
+      "dissent": null,
+      "status": "active"
+    },
+    {
+      "id": "FP-exporter-handle-is-tenant-scoped",
+      "task": "exporter",
+      "statement": "`docs/exports.md` asserts that the supplied database handle is tenant-scoped.",
+      "severity": "minor",
+      "invalidBecause": "The document says any tenant scoping has to be represented by the supplied handle. That identifies where scoping would have to live if present; it does not claim that scoping exists or that the handle provides it.",
+      "applicability": {
+        "codeState": "2026-08-03 OpenAI capstone producer, exporter/sol-xhigh point r1/9",
+        "boundary": "Applies while `docs/exports.md` retains the conditional sentence that tenant scoping has to be represented by the supplied database handle."
+      },
+      "provenance": [
+        {
+          "kind": "frozen-judge-agreement",
+          "artifact": "experiments/artifacts/2026-08-04-capstone-consensus/fresh-packet.json.gz",
+          "reference": "019fc538-33d0-7df9-b4d4-6330432cfe0b/exporter/sol-xhigh/exporter/sol-xhigh/a1/r1/9/ENUM-SO2/f0",
+          "reviewers": ["sol", "opus"]
+        }
+      ],
+      "dissent": null,
+      "status": "active"
+    }
+  ]
+}
