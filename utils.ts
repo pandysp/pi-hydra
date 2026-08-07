@@ -736,7 +736,7 @@ export function selectFinalAssistant<T extends FinalAssistantCandidate>(
  * there is nothing an observation can knock out from under it.
  *
  * Written to accept only known values, because this comes out of a settings
- * file the user can edit. Anything unrecognised has to count as unsafe.
+ * file the user can edit. Anything unrecognized has to count as unsafe.
  */
 export function isFullInputTransport(transport: string): boolean {
 	return transport === "websocket" || transport === "sse";
@@ -782,7 +782,7 @@ export function parseShutdownGrace(raw: string | undefined, fallback: number): n
 
 // Only the parts of an Anthropic request hydra actually looks at. Described by
 // shape rather than by importing pi's own type, because the request arrives as
-// an unknown blob and every field hydra does not recognise has to survive
+// an unknown blob and every field hydra does not recognize has to survive
 // untouched.
 
 export interface CacheControl {

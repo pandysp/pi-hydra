@@ -1623,7 +1623,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		// The first reply after a capture is that request's own answer.
 		// Remembering when it arrived is how the end-of-run trigger later
-		// recognises it. Recorded even when no heads are active, since a head
+		// recognizes it. Recorded even when no heads are active, since a head
 		// can be switched on part-way through.
 		if (capturedPayload && responseTimestamp === null) {
 			responseTimestamp = (event.message as AssistantMessage).timestamp ?? null;
@@ -1838,7 +1838,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// A checkbox list of every head found. Hand-built because pi's own picker
 	// only allows one choice. Enter applies whatever is ticked, which is the
-	// same "this is the new set" behaviour as typing the names out, and escape
+	// same "this is the new set" behavior as typing the names out, and escape
 	// cancels.
 	async function openHeadPicker(ctx: ExtensionContext): Promise<void> {
 		const items = [...heads.values()].sort((a, b) => a.name.localeCompare(b.name));
