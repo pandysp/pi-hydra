@@ -72,8 +72,9 @@ export class DeliveryLedger {
 			const [{ record }] = this.pending.splice(index, 1);
 			return this.succeed(record);
 		}
-		// An idle send is not represented in Pi's queues. If another user
-		// message starts instead, the send failed before reaching the driver.
+		// Feedback sent while the agent was idle leaves no trace in pi's queues,
+		// so there is nothing to match against. Seeing a different user message
+		// arrive instead is how we learn it never reached the driver.
 		if (message.role === "user") {
 			this.discardIdleUserDeliveries();
 		}
@@ -187,8 +188,8 @@ export function routeFeedback(
 				},
 				{ deliverAs: "followUp", triggerTurn: false },
 			);
-			// Idle custom messages join session state immediately but do not emit
-			// an extension-visible message_start event.
+			// Sent while idle, these land in the session straight away but never
+			// announce themselves, so an extension cannot wait to be told.
 			persistSuccess(ledger, gateway, record);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);

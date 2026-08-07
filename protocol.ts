@@ -1,13 +1,14 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 
 /**
- * One schema is advertised to the driver and every observer for cache parity.
+ * The driver and every head are shown the same tool description. They have to
+ * be, or the replayed request stops matching and the cache saving is lost.
  *
- * Branch invariants are enforced by validateHydraToolParams rather than JSON
- * Schema anyOf. Anthropic models were measured emitting an empty argument
- * object on the first call against the equivalent anyOf schema, then fixing it
- * after a validation turn. The flat representation keeps the same public API
- * and enforcement while avoiding that provider failure mode.
+ * The rules about which fields go together are checked in code rather than
+ * expressed in the schema. Written the schema way, Anthropic models were
+ * measured calling the tool with no arguments at all on the first try, then
+ * correcting themselves after being told off. Flattening it keeps the same
+ * rules and the same public shape without provoking that.
  */
 export const hydraToolParameters = Type.Object(
 	{
@@ -40,7 +41,7 @@ export interface ManageHeadsParams {
 
 export interface CompleteObservationParams {
 	action: "complete_observation";
-	/** Queue remains accepted internally for compatibility but is not advertised. */
+	/** Queueing still works, for old sessions, but heads are no longer offered it. */
 	delivery: "none" | "print" | "queue" | "steer" | "interrupt";
 	message: string;
 }
@@ -48,9 +49,9 @@ export interface CompleteObservationParams {
 export type HydraToolParams = ManageHeadsParams | CompleteObservationParams;
 
 /**
- * Recover a typed completion emitted through the cached public hydra schema.
- * No tool is executed: the call is accepted only when it is the sole tool
- * call and already satisfies the normal validated API contract.
+ * Reads a head's decision back out of a tool call without running anything.
+ * The call is only accepted if it was the only one in the turn and already
+ * passes the same checks a real call would.
  */
 export function completionFromHydraToolCalls(content: readonly unknown[]): CompleteObservationParams | null {
 	const calls = content.filter(
@@ -66,7 +67,7 @@ export function completionFromHydraToolCalls(content: readonly unknown[]): Compl
 	}
 }
 
-/** The unvalidated shape a hydra tool call arrives with, before branch validation. */
+/** What a hydra tool call looks like before anything has been checked. */
 export interface RawHydraToolParams {
 	action: "manage_heads" | "complete_observation";
 	operation?: "add" | "remove";
