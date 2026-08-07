@@ -937,9 +937,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// and the transports read `model.baseUrl`. `ctx.model` is the unsubstituted
 		// session model, so without this an observation would bypass a gateway the
 		// driver's own requests go through. Read defensively: `baseUrl` is absent
-		// from this result before pi 0.84.
-		const authBaseUrl = (auth as { baseUrl?: string }).baseUrl;
-		const observationModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
+		// from this result before pi 0.84, and the cast below is only a compile-time
+		// assertion, so check the value rather than trusting its declared type.
+		const authBaseUrl = (auth as { baseUrl?: unknown }).baseUrl;
+		const observationModel =
+			typeof authBaseUrl === "string" && authBaseUrl.length > 0
+				? { ...model, baseUrl: authBaseUrl }
+				: model;
 
 		const t0 = Date.now();
 		const outcome =
