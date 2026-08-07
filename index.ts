@@ -51,7 +51,7 @@ import { join } from "node:path";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { cleanupSessionResources } from "@earendil-works/pi-ai";
-import type { AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, ProviderHeaders, ToolCall } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	createBashTool,
@@ -115,6 +115,67 @@ import {
 	summarizeLoopUsage,
 	usesSplitObservationHandoff,
 } from "./utils";
+
+/**
+ * Resolve a model's transport from pi's registered provider overrides, falling
+ * back to pi-ai's compat helper.
+ *
+ * `compat.streamSimple` always reaches the builtin provider: pi 0.82 keeps
+ * extension provider overrides in its own model runtime and never calls
+ * pi-ai's `registerApiProvider`, so pi-ai's api registry only ever holds
+ * builtins. A provider-wrapping extension therefore shapes the driver's
+ * requests -- which resolve through pi's runtime -- while remaining invisible
+ * to a direct `streamSimple` call here. Observations then reach the provider
+ * unshaped and are billed and classified differently from the very turns they
+ * are observing.
+ *
+ * `getRegisteredProviderConfig` is the reachable seam: it returns the
+ * `ProviderConfigInput` an extension registered, whose optional `streamSimple`
+ * is the wrapper. Resolving per call keeps this correct when an extension
+ * registers late or re-registers, and the fallback keeps hydra working when
+ * nothing has registered an override at all.
+ */
+function resolveStreamSimple(ctx: ExtensionContext, model: Model<Api>): typeof streamSimple {
+	// `getRegisteredProviderConfig` is not a documented extension surface, so
+	// treat every part of it as optional: a pi version without it, or with a
+	// different shape, must fall back rather than throw inside every
+	// observation.
+	const registry = ctx.modelRegistry as {
+		getRegisteredProviderConfig?: (provider: string) => { api?: string; streamSimple?: unknown } | undefined;
+	};
+	if (typeof registry.getRegisteredProviderConfig !== "function") return streamSimple;
+	const config = registry.getRegisteredProviderConfig(model.provider);
+	// Mirror pi's own composition guard (composeModelProvider): an extension's
+	// transport applies only to the api it registered for. Using it for another
+	// api would send a request through a transport that never expected it.
+	if (typeof config?.streamSimple !== "function" || config.api !== model.api) return streamSimple;
+	return config.streamSimple as typeof streamSimple;
+}
+
+/**
+ * Explain an observation failure that a missing transport override can cause.
+ *
+ * Having no override is the normal case -- most setups load no
+ * provider-wrapping extension -- so its absence is not warnable on its own. It
+ * only becomes a diagnosis when an observation is actually rejected: then the
+ * likely cause is that an extension shapes the driver's requests while hydra's
+ * observations bypass it, so only the observations reach the provider
+ * unshaped.
+ *
+ * Takes the transport actually used rather than re-deriving it, so the hint
+ * cannot disagree with the call it is describing, and concurrent observations
+ * cannot report each other's transport.
+ */
+function observationFailureHint(transport: typeof streamSimple, message: string): string {
+	if (transport !== streamSimple) return "";
+	// Only diagnose rejections that look like the provider refusing the request
+	// itself. Transient failures (overload, network, abort) say nothing about
+	// transport resolution, and most setups legitimately have no override.
+	const looksLikeRejection = /\b400\b|invalid_request_error|extra usage|unauthorized|authentication/i.test(message);
+	return looksLikeRejection
+		? " (no provider transport override was resolved; if an extension shapes this provider's requests, hydra's observations are bypassing it)"
+		: "";
+}
 
 // How long session_shutdown waits for an in-flight observation before
 // aborting it. Headless runs (`pi -p`) exit right after agent_end, so slow
@@ -543,11 +604,24 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return merged;
 		};
 
+		// pi's runtime substitutes an auth-supplied baseUrl into the model before
+		// streaming (model-runtime: `{ ...model, baseUrl: resolution.auth.baseUrl }`),
+		// and the transports read `model.baseUrl`. `ctx.model` is the unsubstituted
+		// session model, so without this an observation would bypass a gateway the
+		// driver's own requests go through. Read defensively: `baseUrl` is absent
+		// from this result before pi 0.84, and the cast below is only a compile-time
+		// assertion, so check the value rather than trusting its declared type.
+		const authBaseUrl = (auth as { baseUrl?: unknown }).baseUrl;
+		const observationModel =
+			typeof authBaseUrl === "string" && authBaseUrl.length > 0
+				? { ...model, baseUrl: authBaseUrl }
+				: model;
+
 		const t0 = Date.now();
 		const outcome =
 			job.completionMode === "enum"
-				? await runJudgeObservation(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
-				: await runObservationLoop(job, model, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
+				? await runJudgeObservation(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
+				: await runObservationLoop(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
 		if (!outcome || signal.aborted || job.branchGeneration !== branchGeneration) {
 			return;
 		}
@@ -661,15 +735,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Judge-only heads make one provider call with no executable tools. ENUM's
 	// measured fail-open contract records malformed output as noop; it never
 	// spends a recovery turn or silently infers a partial list.
+	// `headers` is ProviderHeaders: since pi 0.84 a null value is a header-deletion
+	// marker, not an absent header. Forward them unchanged, as pi documents --
+	// filtering or coercing here would resurrect a header pi intends to delete.
 	async function runJudgeObservation(
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses">,
 		apiKey: string,
-		headers: Record<string, string> | undefined,
+		headers: ProviderHeaders | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
 	): Promise<ObserveOutcome | null> {
+		const transport = resolveStreamSimple(job.ctx, model);
 		const prompt: Message = {
 			role: "user",
 			content: [{ type: "text", text: job.prompt }],
@@ -699,7 +777,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				onPayload,
 				signal,
 			};
-			const response = await streamSimple(model, { systemPrompt: "", messages, tools: [] }, options).result();
+			const response = await transport(model, { systemPrompt: "", messages, tools: [] }, options).result();
 			usages.push(flattenUsage(response.usage));
 			return response;
 		};
@@ -709,7 +787,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			response = await call([...baseMessages, prompt]);
 			if (signal.aborted || response.stopReason === "error" || response.stopReason === "aborted") {
 				if (!signal.aborted) {
-					notifyUser(job.ctx, `hydra: observation failed: ${response.errorMessage ?? response.stopReason}`, "error");
+					notifyUser(
+						job.ctx,
+						`hydra: observation failed: ${response.errorMessage ?? response.stopReason}${observationFailureHint(transport, response.errorMessage ?? "")}`,
+						"error",
+					);
 				}
 				return null;
 			}
@@ -728,7 +810,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		} catch (error) {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observation failed: ${errorText(error)}`, "error");
+				notifyUser(job.ctx, `hydra: observation failed: ${errorText(error)}${observationFailureHint(transport, errorText(error))}`, "error");
 			}
 			return null;
 		}
@@ -747,11 +829,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses">,
 		apiKey: string,
-		headers: Record<string, string> | undefined,
+		headers: ProviderHeaders | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
 	): Promise<ObserveOutcome | null> {
+		const transport = resolveStreamSimple(job.ctx, model);
 		const prompt: Message = {
 			role: "user",
 			content: [{ type: "text", text: job.prompt }],
@@ -891,11 +974,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					}
 					},
 					signal,
-					streamSimple,
+					transport,
 				);
 		} catch (error) {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observation loop failed: ${errorText(error)}`, "error");
+				notifyUser(
+					job.ctx,
+					`hydra: observation loop failed: ${errorText(error)}${observationFailureHint(transport, errorText(error))}`,
+					"error",
+				);
 			}
 			return null;
 		}
@@ -907,7 +994,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		if (response.stopReason === "error" || response.stopReason === "aborted") {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observation loop failed: ${response.errorMessage ?? "aborted"}`, "error");
+				notifyUser(
+					job.ctx,
+					`hydra: observation loop failed: ${response.errorMessage ?? "aborted"}${observationFailureHint(transport, response.errorMessage ?? "")}`,
+					"error",
+				);
 			}
 			return null;
 		}
