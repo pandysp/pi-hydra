@@ -96,11 +96,33 @@ Nothing recorded is sensitive to the end-vs-either choice in rule 1 today;
 if Andreas prefers "either", the change is one line in each path with no
 recorded number moving.
 
-## What this changes downstream
+## V3 sample rescore completed — 2026-08-09
 
 Any catalog change creates a fresh judge checkpoint identity: the 45-finding
-expanded-2Q mechanics sample (run against v2) cannot pool with v3 output. The
-Opus half of the v3 rescore has run (42/45 judged, one point terminally
-invalid on a new `toolUse` stop class); the Sol half and reconciliation wait
-on provider quota, and the ledger row for that pair lands when both exist.
+expanded-2Q mechanics sample run against v2 cannot pool with this v3 output.
+The checkpoint bases match exactly across judges: protocol, builder, replay
+transform, prompt system hash, catalogs, source rows, payload archive, and the
+20 frozen sample points.
+
+- Sol completed 45/45 findings in 20 initial batches: zero corrections, invalid
+  outputs, or unjudgeable findings.
+- Opus completed 42/45 findings. One three-finding point returned a `toolUse`
+  provider stop once. Registered policy makes a non-terminal provider stop
+  terminal-invalid and ineligible for format correction, so it was not retried
+  into a favorable answer. Its 25 attempts comprise 22 initial attempts
+  (including two timeout failures at a different point) and three successful
+  format-correction attempts.
+- Reconciliation found 34 exact agreements, eight disagreements, 23 agreed
+  catalog-growth candidates, zero agreed-unclear cases, and three terminal
+  invalids. The deterministic public audit sampled 5/11 matched agreements and
+  5/23 catalog misses across all three tasks and reproduced byte-identically.
+
+Among the 42 findings with two valid v3 answers, exact agreement is 34/42
+(81.0%); the same subset had 32/42 under v2. This is not a prompt result: the
+prompt was unchanged and the catalog changed. All eight current disagreements
+still require a semantic ruling, dominated by requested-test/process-advice
+wording and documentation reachability. No catalog growth or arm score has
+been applied. Frozen evidence and the ledger row are
+`2026-08-09-expanded-2q-v3-rescore`.
+
 Every previously recorded score in `DECISION-TABLE.md` remains v2/v1 history.

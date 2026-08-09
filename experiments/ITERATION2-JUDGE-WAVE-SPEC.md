@@ -1,10 +1,11 @@
 # Iteration-2 judge wave — dataset v3 + re-judging (SPEC, registered 2026-08-04)
 
-Status: **recovery executed 2026-08-05 — Andreas decided both gates, the
-residue completed, and the fold produced golden v3 `d176183abab2d211`
-(results: `GOLDEN-DATASET-V3-RESULTS.md`). The expanded 2Q design supersedes
-the unstarted evaluator steps 3–5; the v3 rescore is split by provider quota
-(Opus half done, Sol half pending).**
+Status: **recovery executed — Andreas decided both fold gates on 2026-08-05,
+the residue completed, and the fold produced golden v3 `d176183abab2d211`.
+The OpenAI limit cleared on 2026-08-09; the exact Sol sample half completed and
+reconciled with the frozen Opus half. The expanded 2Q design supersedes the
+unstarted evaluator steps 3–5. Semantic and dataset rulings still gate a full
+pass and any score.**
 
 Registered before any judge call, per the standing spend discipline. This wave
 executes every judge-spend item the iteration-1 data pass produced
@@ -142,3 +143,19 @@ byte-verification refutations, the eleven-item blinded queue, and the
 downstream rescore split — lives in `GOLDEN-DATASET-V3-RESULTS.md` (ledger
 row `2026-08-05-golden-dataset-v3-fold`, freeze artifact
 `experiments/artifacts/2026-08-05-golden-dataset-v3/`).
+
+## Provider-limit recovery executed — 2026-08-09
+
+OpenAI auth and a two-finding production-shape probe passed. Keeping the
+research lane on Pi 0.82 preserved the frozen package-lock identity; cache
+retention was pinned to the original short setting. Sol then completed all 45
+sample findings in 20 initial batches with zero corrections, invalid outputs,
+or evidence holes. Its checkpoint basis matches the frozen Opus checkpoint
+exactly.
+
+The pair reconciles to 34 agreements, eight disagreements, 23 catalog-growth
+candidates, and three Opus terminal invalids from one point. The deterministic
+audit sampled five matched agreements and five catalog misses across all three
+tasks and repeated byte-identically. This closes the availability blocker only:
+no catalog growth, human ruling, prompt tuning, full pass, or score occurred.
+Evidence and ledger row: `2026-08-09-expanded-2q-v3-rescore`.

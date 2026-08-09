@@ -275,6 +275,23 @@ agreed catalog misses phrase the same gap as “add email tests” and become
 false/minor. That grammar sensitivity is not an acceptable hidden scoring rule.
 Do not tune these rules from the sample after the fact.
 
+### V3 rescore follow-up — 2026-08-09
+
+The provider block is closed. On the exact frozen v3 sample, Sol returned 45
+valid judgments and Opus returned 42 valid judgments plus three terminal
+invalids from one `toolUse`-stop point. The jointly valid outcomes agree 34/42;
+reconciliation also records eight disagreements and 23 agreed catalog-growth
+candidates. No candidate was promoted and no score was computed.
+
+The prompt did not change but the catalog did, so v2-to-v3 agreement movement
+is not causal prompt evidence. Manual review shows the remaining disagreements
+still turn on the semantic contract above. A prose-prompt A/B therefore remains
+blocked on Andreas's rule, and the already-inspected 45 findings cannot become
+its evaluation set. A separate mechanical carrier test may compare the exact
+replay carrier with an identical carrier whose tools are removed; its registered
+outcomes must be validity and correction behavior, with semantic movement
+reported only as a drift diagnostic.
+
 ## Definition of done
 
 1. **DONE:** Catalog validation proves schema, stable ids, task ownership, severity,

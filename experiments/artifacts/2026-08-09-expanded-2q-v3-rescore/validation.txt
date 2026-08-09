@@ -1,0 +1,32 @@
+Validation date: 2026-08-09
+
+Live route and checkpoint
+
+- `pi auth check --provider openai-codex --json`: ready via OAuth.
+- A two-finding production-shape Sol probe completed with 2 judgments, 0 invalid outputs, and 0 unjudgeable findings.
+- `jq` over the private-mirror `sample-sol-v3.json`: status complete; 20 attempts / 20 batches / 45 judgments / 0 corrections / 0 invalid outputs / 0 unjudgeable.
+- `jq` over the private-mirror `sample-opus-v3.json`: status complete-with-exceptions; 25 attempts (22 initial, including 2 timeout failures at a different point, plus 3 successful format corrections) / 20 batches / 42 judgments / 3 invalid outputs from one `toolUse` stop / 0 unjudgeable.
+
+Identity and reconciliation
+
+- The protocol, eligibility policy, builder hash, system hash, replay-transform hash, expected finding count, catalog identities, catalog hashes, and input identity compare equal across the two raw checkpoints.
+- `jq` over the private-mirror `sample-reconciliation-private-v3.json`: 45 eligible / 45 judgeable / 34 agreements / 8 disagreements / 23 catalog-growth candidates / 0 unresolved / 3 invalid outputs / 0 unjudgeable.
+- `cmp -s sample-audit-public-v3.json sample-audit-public-v3-repeat.json`: pass. Both files hash to `76c0e9d6b1f52038573f67ae9f392d7e795d40f308cb4ceed84a884b2d9cd759`.
+- Private and public reconciliation packets share `packet-4efad4e0d1505fa3`.
+
+Privacy boundary
+
+- The public artifact contains only the public reconciliation and two public audit packets plus provenance and validation. Raw judge checkpoints, the private source mapping, and the point-key list live only in the mode-0700 private mirror.
+- A decompressed scan of every public JSON packet found zero raw identity fields (`sourceKey`, `arm`, `config`, `model`, `provider`, `privateMapping`, `judgeLabels`, `blindingKey`), user paths, model/config identities, API/session token shapes, or auth-header fields.
+- The durable 32-byte external key has id `sha256:bae105f29057b3d3be1f13c6ea8df0c09b63ce91f4db63b186f3473708ed43bf`; its parent directory is mode 0700 and the file is mode 0600. The raw key is absent from both Git and the mirror.
+
+Repository checks before sealing
+
+- `npm run check`: pass; TypeScript clean and module-state gate reports 7 root modules clean.
+- `npm test`: 44 files passed, 398 tests passed.
+- `node experiments/dual-catalog.check.mjs`: status valid; real catalog `d176183abab2d211`, false catalog `7e15a255db886247`.
+
+Interpretation boundary
+
+This is raw mechanics evidence. No semantic disagreement was ruled, no catalog candidate was promoted, no full pass ran, and no arm score was computed.
+The raw judge checkpoints and private source mapping are deliberately absent from public Git so the blinded review remains blinded; their exact hashes are bound in `provenance.json` and the files live in the ledgered private mirror.

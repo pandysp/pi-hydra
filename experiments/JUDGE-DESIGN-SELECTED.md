@@ -252,9 +252,33 @@ The sample is mechanics evidence against catalog v2 only. Its prompts remain
 byte-identical after implementation hardening, but any catalog fold creates a
 new identity and cannot pool these outputs.
 
+### V3 follow-up — 2026-08-09
+
+The exact frozen sample was rerun after the v3 fold. Sol completed 45/45;
+Opus completed 42/45. One three-finding point returned `toolUse` once; the
+registered policy makes non-terminal provider stops terminal-invalid and
+ineligible for format correction. Across the checkpoint there were 22 initial
+attempts (including two timeout failures at a different point) and three
+successful format-correction attempts. Reconciliation found 34/42 exact
+agreements among jointly valid findings, eight disagreements, and 23 agreed
+catalog-growth candidates. Both checkpoint files are frozen with the
+reconciliation in `2026-08-09-expanded-2q-v3-rescore`.
+
+This closes the provider-availability blocker, not the semantic gate. The
+catalog changed while the prompt stayed fixed, so the result is not a prompt
+A/B. The eight disagreements reproduce the requested-test/process-advice,
+alias, and documentation-reachability ambiguities below. A prose-prompt A/B
+before those rules are chosen would optimize agreement against an undefined
+correctness target. If mechanical reliability is tested separately, the
+smallest causal comparison is the frozen replay carrier as-is versus the same
+carrier with tools removed; validity, correction, and terminal-invalid rates
+are the outcomes, not semantic agreement.
+
 ## Final semantic approval gate
 
-Eight of the 12 disagreements concern a requested test that was not delivered.
+In the v2 mechanics sample, eight of the 12 disagreements concern a requested
+test that was not delivered. The v3 pair has eight total disagreements and
+reproduces the same boundary rather than resolving it.
 The prompt currently says process advice without a shown behavior defect is
 false/minor; parts of the real catalog treat missing explicitly requested
 coverage as a real/minor delivery defect. Andreas must choose one rule before a

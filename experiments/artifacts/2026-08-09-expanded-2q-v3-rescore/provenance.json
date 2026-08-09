@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "kind": "expanded-2q-v3-sample-rescore-freeze",
+  "runId": "2026-08-09-expanded-2q-v3-rescore",
+  "status": "raw-mechanics-evidence-only",
+  "note": "This packet closes the OpenAI availability blocker. Public Git freezes the blinded reconciliation and deterministic audit; the ledgered private mirror freezes both raw judge checkpoints and the source-to-opaque-id map. It is not catalog-ready or scoring evidence: no catalog candidate was promoted, no semantic disagreement was ruled, and no arm score was computed.",
+  "protocol": {
+    "name": "expanded-2q-findings-v1",
+    "eligibilityPolicy": "semantic-v2",
+    "judgeBuilderHash": "6a7974ba49e62c1f",
+    "judgeSystemHash": "0f03d8862e30d306",
+    "judgeReplayTransformSha256": "144191bee884d2d47b9a345914f85f4240b4d7e0fd32eff9b747fcc5ad8a3108",
+    "expectedFindings": 264
+  },
+  "inputIdentity": {
+    "realCatalogVersion": "d176183abab2d211",
+    "realCatalogSha256": "5cbe93d99e468794be8f625514fe3a8f1a747e24d2f1f65447ff2ef10f2d83e5",
+    "falseCatalogVersion": "7e15a255db886247",
+    "falseCatalogSha256": "ff2eb152b47353fa4d9c6cb6b86b7b63c8b032b11a8eb0f1136e8943b9c1ede2",
+    "rowsSha256": "7224f4e031be4719abc7b6f7570c3972b64c5d5df7e66407b42fba26ffad9e03",
+    "payloadsSha256": "401c38dfdfd6845ceef5e28a4f1519246c65ee3845fcc07818e9ca1406be4ae7",
+    "pointsSha256": "ffb285c22f3ec60b88ffc20c1214475af981b7d3d03c271e83a9b38cbe0ada1a",
+    "packageLockSha256": "9fc8440602df8fb61d1938af1338e4df1c5c799a2b6976e694df67f2daf8d8e2"
+  },
+  "judgeCheckpoints": [
+    {
+      "judge": "opus",
+      "provider": "anthropic",
+      "model": "claude-opus-5",
+      "reasoning": "high",
+      "transport": "pi-replay",
+      "codeCommit": "c54120c2ac6affb2fb085434cea5d53570561b7c",
+      "completedAt": "2026-08-05T11:59:14.954Z",
+      "status": "complete-with-exceptions",
+      "attempts": 25,
+      "initialAttempts": 22,
+      "formatCorrectionAttempts": 3,
+      "successfulFormatCorrections": 3,
+      "timeoutFailures": 2,
+      "batches": 20,
+      "judgments": 42,
+      "invalidOutputs": 3,
+      "terminalFailure": "One three-finding point returned toolUse once. Registered policy makes non-terminal provider stops terminal-invalid and ineligible for format correction."
+    },
+    {
+      "judge": "sol",
+      "provider": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "reasoning": "high",
+      "transport": "pi-replay",
+      "codeCommit": "4979e577162eee735767c21454a7afe466945905",
+      "completedAt": "2026-08-09T11:10:04.859Z",
+      "status": "complete",
+      "cacheRetention": "short",
+      "attempts": 20,
+      "batches": 20,
+      "judgments": 45,
+      "invalidOutputs": 0,
+      "corrections": 0
+    }
+  ],
+  "basisMatch": {
+    "identical": true,
+    "fields": [
+      "protocol",
+      "eligibilityPolicy",
+      "judgeBuilderHash",
+      "judgeSystemHash",
+      "judgeReplayTransformHash",
+      "expectedFindings",
+      "realCatalogVersion",
+      "falseCatalogVersion",
+      "catalogHashes",
+      "inputIdentity"
+    ]
+  },
+  "recipe": {
+    "workingDirectory": "repository root at the recorded code commit with the frozen Pi 0.82 package-lock identity",
+    "pathPlaceholders": {
+      "<payload-extract-dir>": "temporary directory containing the extraction of the recorded payloads archive",
+      "<private-mirror-dir>": "ledger mirrorPath for this run",
+      "<sample-points-file>": "<private-mirror-dir>/sample-points.json; SHA-256 ffb285c22f3ec60b88ffc20c1214475af981b7d3d03c271e83a9b38cbe0ada1a",
+      "<blinding-key>": "durable external key identified by the blindingKey.id field"
+    },
+    "steps": [
+      {
+        "name": "extract-payloads",
+        "script": "tar",
+        "argv": [
+          "-xzf",
+          "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+          "-C",
+          "<payload-extract-dir>"
+        ]
+      },
+      {
+        "name": "judge-sol",
+        "environment": {
+          "PI_CACHE_RETENTION": "short"
+        },
+        "script": "node experiments/dual-catalog-judge.mjs",
+        "argv": [
+          "--rows-gz",
+          "experiments/artifacts/2026-08-03-openai-capstone-producer/rows.jsonl.gz",
+          "--payload-dir",
+          "<payload-extract-dir>/payloads",
+          "--payloads-tar",
+          "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+          "--real-catalog",
+          "experiments/golden-dataset.json",
+          "--false-catalog",
+          "experiments/false-positive-catalog.json",
+          "--points-file",
+          "<sample-points-file>",
+          "--shape-payload",
+          "<payload-extract-dir>/payloads/dispatcher-sol-high-a1-r0-q4.json",
+          "--shape-archive",
+          "experiments/artifacts/2026-08-03-openai-capstone-producer/payloads.tar.gz",
+          "--shape-member",
+          "payloads/dispatcher-sol-high-a1-r0-q4.json",
+          "--judge",
+          "sol",
+          "--eligibility-policy",
+          "semantic-v2",
+          "--expected-findings",
+          "264",
+          "--output",
+          "<private-mirror-dir>/sample-sol-v3.json"
+        ]
+      },
+      {
+        "name": "reconcile",
+        "script": "node experiments/dual-catalog-reconcile.mjs",
+        "argv": [
+          "--sol",
+          "<private-mirror-dir>/sample-sol-v3.json",
+          "--opus",
+          "<private-mirror-dir>/sample-opus-v3.json",
+          "--output",
+          "<private-mirror-dir>/sample-reconciliation-private-v3.json",
+          "--public-output",
+          "<private-mirror-dir>/sample-reconciliation-public-v3.json",
+          "--blinding-key-file",
+          "<blinding-key>",
+          "--real-catalog",
+          "experiments/golden-dataset.json",
+          "--false-catalog",
+          "experiments/false-positive-catalog.json"
+        ]
+      },
+      {
+        "name": "audit",
+        "script": "node experiments/dual-catalog-audit.mjs",
+        "argv": [
+          "--reconciliation",
+          "<private-mirror-dir>/sample-reconciliation-private-v3.json",
+          "--output",
+          "<private-mirror-dir>/sample-audit-public-v3.json",
+          "--matched-cap",
+          "5",
+          "--catalog-miss-cap",
+          "5"
+        ]
+      },
+      {
+        "name": "audit-repeat",
+        "script": "node experiments/dual-catalog-audit.mjs",
+        "argv": [
+          "--reconciliation",
+          "<private-mirror-dir>/sample-reconciliation-private-v3.json",
+          "--output",
+          "<private-mirror-dir>/sample-audit-public-v3-repeat.json",
+          "--matched-cap",
+          "5",
+          "--catalog-miss-cap",
+          "5"
+        ],
+        "postcondition": "The two audit files are byte-identical."
+      }
+    ]
+  },
+  "reconciliation": {
+    "packetId": "packet-4efad4e0d1505fa3",
+    "eligible": 45,
+    "judgeable": 45,
+    "agreements": 34,
+    "disagreements": 8,
+    "catalogGrowth": 23,
+    "unresolved": 0,
+    "invalidOutput": 3,
+    "unjudgeable": 0
+  },
+  "audit": {
+    "agreementCases": 34,
+    "matchedAgreements": 11,
+    "matchedSampled": 5,
+    "catalogMissCandidates": 23,
+    "catalogMissSampled": 5,
+    "taskCoverage": 3,
+    "repeatByteIdentical": true
+  },
+  "blindingKey": {
+    "id": "sha256:bae105f29057b3d3be1f13c6ea8df0c09b63ce91f4db63b186f3473708ed43bf",
+    "included": false,
+    "storage": "durable local private store under ~/dev/personal; directory mode 0700 and file mode 0600",
+    "bytes": 32,
+    "note": "The key is deliberately excluded from the repository artifact and frozen-artifact mirror."
+  },
+  "privateMirrorFiles": [
+    {
+      "file": "sample-opus-v3.json",
+      "bytes": 1650072,
+      "sha256": "685ef211940c2eb927d1b9840c87baa6e5f662edbfca12eaae04274370718a51",
+      "includedInPublicArtifact": false
+    },
+    {
+      "file": "sample-sol-v3.json",
+      "bytes": 1628128,
+      "sha256": "1e0331fdca02db6b43fbdf10766a4b06dcc5dc16e5c1552d3e01b5ef169b67e5",
+      "includedInPublicArtifact": false
+    },
+    {
+      "file": "sample-reconciliation-private-v3.json",
+      "bytes": 5922453,
+      "sha256": "0f5f8a9114c4b8791db5128b67c1111bd871d06561396cba3762bad1c717ce22",
+      "includedInPublicArtifact": false
+    },
+    {
+      "file": "sample-points.json",
+      "bytes": 1777,
+      "sha256": "ffb285c22f3ec60b88ffc20c1214475af981b7d3d03c271e83a9b38cbe0ada1a",
+      "includedInPublicArtifact": false
+    }
+  ],
+  "publicFiles": [
+    {
+      "file": "sample-reconciliation-public-v3.json",
+      "bytes": 2389622,
+      "sha256": "5af58e556143a3055c54859f63c4bc8a971ea0c18e3590fc33062f24f28832f7"
+    },
+    {
+      "file": "sample-audit-public-v3.json",
+      "bytes": 728543,
+      "sha256": "76c0e9d6b1f52038573f67ae9f392d7e795d40f308cb4ceed84a884b2d9cd759"
+    },
+    {
+      "file": "sample-audit-public-v3-repeat.json",
+      "bytes": 728543,
+      "sha256": "76c0e9d6b1f52038573f67ae9f392d7e795d40f308cb4ceed84a884b2d9cd759"
+    }
+  ]
+}

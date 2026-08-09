@@ -1,4 +1,4 @@
-# pi-hydra — decision table (updated 2026-08-05, live evidence inventory)
+# pi-hydra — decision table (updated 2026-08-09, live evidence inventory)
 
 Every measured arm, its cost and its quality, in one place. Cells are only
 compared within a named measurement basis. Completed measurements trace to
@@ -9,7 +9,7 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > (75 active, 26 blocking, checker 8/8; ledger row
 > `2026-08-05-golden-dataset-v3-fold`). Every number in this table was
 > computed against v2 (`0aadc215658a775b`) or v1 and stays valid as recorded
-> history; nothing here has been rescored against v3 yet. Golden v2 was built
+> history; no arm score here uses v3. Golden v2 was built
 > under the prospectively adopted protocol decision
 > (`GOLDEN-V2-PROTOCOL-DECISION.md`, Option A — Andreas, before any arm was
 > scored against v2; raw convergence 63/67 stays recorded, four dissents
@@ -21,10 +21,12 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 > precision-unit, eligibility, and one-sided-judge-silence problems.
 > Andreas selected the expanded 2Q / dual-catalog judge architecture
 > (`JUDGE-DESIGN-SELECTED.md`); it is implemented and mechanically verified
-> (45-finding sample terminally valid), and the iteration-2 recovery is
+> (the v2 45-finding sample was terminally valid), and the iteration-2 recovery is
 > executed: golden v3 folded (`GOLDEN-DATASET-V3-RESULTS.md`), the blinded
-> human queue holds 11 items, and the v3 rescore is split by provider quota
-> (Opus half done, Sol half pending). On 2026-08-02 Andreas made the product
+> dataset-repair queue holds 11 items, and the frozen v3 sample pair completed
+> on 2026-08-09. The pair has 34 agreements, eight disagreements, 23 catalog
+> candidates, and three Opus terminal invalids. No candidate was promoted and
+> no v3 arm score was computed. On 2026-08-02 Andreas made the product
 > choice:
 > ENUM-SO2 for both providers, with queue removed from model-facing prompts and
 > schemas but retained internally. This is a deliberate choice under OpenAI
@@ -33,9 +35,9 @@ RUN-LEDGER.md; the failed-threshold golden-v2 candidate is not frozen evidence.
 >
 > **CURRENT STOP LINE.** Preserve iteration 1 exactly. Before any iteration-2
 > score is read: Andreas rules the blinded queue (11 dataset-repair items +
-> 12 sample disagreements, including the requested-test vs process-advice
-> rule), the Sol half of the v3 sample completes, and both catalogs are
-> frozen. Known-case tuning remains forbidden; repeated calls never become
+> eight sample disagreements, including the requested-test vs process-advice
+> and documentation-reachability rules), and both catalogs are frozen. Known-
+> case tuning remains forbidden; repeated calls never become
 > extra consensus votes.
 
 ## READ FIRST — quality bases differ
