@@ -368,10 +368,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const scheduler = new HeadScheduler<ObservationSeed>({
 		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration,
 		observe: async (seed, signal) => {
-			// Delivery facts are resolved here rather than at scheduling time. A
-			// waiting slot can sit behind an earlier observation that routes
-			// feedback, so facts frozen at scheduling would already be out of
-			// date by the time this runs. The head's instruction stays frozen.
+			// What has already been delivered is looked up here, not when the
+			// observation was queued. A waiting observation can sit behind one
+			// that delivers feedback, and it should see that rather than a
+			// stale picture. The head's instruction is still fixed at queueing
+			// time.
 			const job: Observation = {
 				...seed,
 				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.afterChange),

@@ -2,8 +2,8 @@
  * Each head runs one observation at a time and keeps one waiting slot. A
  * newer snapshot overwrites whatever is waiting, so a head that falls behind
  * jumps straight to the latest state instead of working through a backlog.
- * Observations are never cut short, and session_shutdown waits for the ones
- * already running.
+ * Observations run to completion; only shutdown cuts one short, and only
+ * after a grace period.
  *
  * Per head rather than one shared queue, so a head grinding through a long
  * tool loop cannot hold up the heads that only need one quick call.
@@ -50,11 +50,10 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
-	// Runs one head's observations newest first, skipping whatever piled up
-	// while it was busy. Heads run alongside each other rather than one after
-	// another. Mid-run that is nearly free, because every head is only reading
-	// the cache. At the end of a run each head pays to add the final message
-	// once. The numbers are in docs/architecture.md.
+	// Heads run alongside each other rather than one after another. Mid-run
+	// that is nearly free, because every head is only reading the cache. At
+	// the end of a run each head pays to add the final message once. The
+	// numbers are in docs/architecture.md.
 	private async runHead(runner: HeadRunner<Seed>): Promise<void> {
 		// Yield once so schedule() stores the running promise before the loop
 		// can drain synchronously: a seed skipped at its first pop would
@@ -90,8 +89,8 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
-	// Let the in-flight observations finish (bounded by the grace), then
-	// cancel; this is the sole lifecycle abort.
+	// The only place the whole extension is canceled. Observations already
+	// running get a bounded chance to finish first.
 	async shutdown(graceMs: number): Promise<void> {
 		const running = [...this.runners.values()].flatMap((runner) => runner.running ?? []);
 		if (running.length > 0) {

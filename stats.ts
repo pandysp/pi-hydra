@@ -18,7 +18,8 @@ export interface HydraCall {
 	// A healthy cache hit rate is a different number on each provider, so the
 	// two must never be averaged together. Older entries predate this field
 	// and are counted as Anthropic, which mislabels a handful of early codex
-	// sessions. That only affects how old numbers are displayed.
+	// sessions (the 2026-07-15 demo among them). That only affects how old
+	// numbers are displayed.
 	api?: string;
 	// A single observation can now produce two deliveries at once, one shown
 	// only to the user and one sent to the agent. Both are kept here. `action`
@@ -88,11 +89,11 @@ export class StatsLog {
 			write += call.cacheWrite;
 			input += call.input;
 			// Cost and token totals cover the whole session, but the average
-			// hit rate counts only calls made on the current provider. A rate
-			// that was healthy on one provider would otherwise be graded
-			// against the other's target after a mid-session switch. Entries
-			// with no provider recorded predate codex support and were all
-			// Anthropic.
+			// hit rate counts only calls made on the current provider, when
+			// there is one to compare against. A rate that was healthy on one
+			// provider would otherwise be graded against the other's target
+			// after a mid-session switch. Entries with no provider recorded
+			// predate codex support and were all Anthropic.
 			if (currentApi === undefined || (call.api ?? "anthropic-messages") === currentApi) {
 				hitRead += call.cacheRead;
 				hitReadable += call.cacheRead + call.cacheWrite + call.input;
