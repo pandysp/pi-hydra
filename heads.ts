@@ -217,8 +217,11 @@ export class HeadRegistry {
 		return this.heads.get(name)?.tools;
 	}
 
-	// The one invariant of set changes: productHeads tracks the last set
-	// without a diagnostic, so a diagnostic's one-shot revert has a home.
+	// Records the last set that had no diagnostic head in it, which is what a
+	// diagnostic reverts to after firing once. Deliberate set changes come
+	// through here. Two paths do not: discovery, which prunes both lists
+	// itself when a head file disappears, and the diagnostic revert, which
+	// reads productHeads back into the active set.
 	private adoptHeadSet(headsList: string[]) {
 		this.activeHeads = headsList;
 		if (!headsList.some((name) => name in DIAGNOSTIC_PROMPTS)) {
@@ -226,8 +229,10 @@ export class HeadRegistry {
 		}
 	}
 
-	// Apply a head set from any surface (command, picker, flag, tool).
-	// Returns false when nothing valid was requested; the current set stays.
+	// Every user-facing surface routes through here: the flag, the picker, the
+	// command and the hydra tool. Returns false when nothing usable was asked
+	// for, and leaves the current set alone, so a typo cannot silently turn
+	// hydra off.
 	setHeadSet(gateway: HeadRegistryGateway, requested: string[]): boolean {
 		const next = sanitizeHeadSet(requested, this.catalog);
 		if (next.unknown.length > 0) {

@@ -78,8 +78,8 @@ describe("hydra tool protocol", () => {
 				message: "",
 			}),
 		).toEqual({ action: "complete_observation", delivery: "none", message: "" });
-		// Queue is intentionally dormant rather than deleted: old or internal
-		// callers still validate even though the model-facing schema omits it.
+		// Queueing is kept working but no longer offered, so old sessions and
+		// internal callers still pass validation.
 		expect(
 			validateHydraToolParams({
 				action: "complete_observation",

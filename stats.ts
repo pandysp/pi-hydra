@@ -15,15 +15,15 @@ export interface HydraCall {
 	turnIndex: number;
 	head: string;
 	kind?: ObserveKind;
-	// The provider API the call ran under; healthy hit ratios differ per
-	// provider, so display must not blend them. Absent on entries recorded
-	// before this field existed; the stats default those to Anthropic,
-	// which mislabels the few pre-field codex sessions (e.g. the 2026-07-15
-	// demo) — a display heuristic, acceptable for historical entries only.
+	// A healthy cache hit rate is a different number on each provider, so the
+	// two must never be averaged together. Older entries predate this field
+	// and are counted as Anthropic, which mislabels a handful of early codex
+	// sessions (the 2026-07-15 demo among them). That only affects how old
+	// numbers are displayed.
 	api?: string;
-	// Historical readers use `action`; new enumerated observations may produce
-	// one user-only group plus one agent group, recorded here without hiding
-	// either delivery. `action` remains the most urgent group for compatibility.
+	// A single observation can now produce two deliveries at once, one shown
+	// only to the user and one sent to the agent. Both are kept here. `action`
+	// still holds the more urgent of the two, because older code reads it.
 	action: Action;
 	actions?: Action[];
 	input: number;
@@ -32,9 +32,10 @@ export interface HydraCall {
 	cacheWrite: number;
 	cost: number;
 	durationMs: number;
-	// Replay-parity signal, always from the observation's first model call:
-	// an acting head's later loop iterations legitimately pay the growing
-	// tail as fresh input and must not read as a cache regression.
+	// Always from the first model call of an observation. Later calls in an
+	// acting head's loop are supposed to pay full price for the work added
+	// since, so counting them would look like a cache problem that is not
+	// there.
 	hitRatio: number;
 	rawResponse?: string;
 	// Acting heads only: model turns in the tool loop and the tools executed.
@@ -42,11 +43,11 @@ export interface HydraCall {
 	toolsUsed?: string[];
 }
 
-// Healthy differs per provider: ~97%+ on Anthropic, ~84–87% measured on
-// codex, where the newest turn always rides inside the backend's commit
-// window and is paid as fresh input. The codex "good" bar sits below
-// the measured band to absorb backend volatility. One table for the
-// footer color and the /hydra-stats target, so the two cannot drift.
+// What counts as healthy depends on the provider: around 97% on Anthropic,
+// 84 to 87% measured on codex, where the newest turn is always charged as
+// new input. The codex "good" line sits below what was measured, to leave
+// room for the backend being uneven. One table feeds both the footer color
+// and the /hydra-stats target, so the two cannot drift apart.
 export const HIT_BANDS = {
 	codex: { good: 80, fair: 60, target: "84%+ (codex)" },
 	default: { good: 97, fair: 90, target: "97%+" },
@@ -87,11 +88,12 @@ export class StatsLog {
 			read += call.cacheRead;
 			write += call.cacheWrite;
 			input += call.input;
-			// Money and token totals are session-wide; the mean hit ratio
-			// only aggregates calls comparable to the current model, so a
-			// mid-session provider switch cannot recolor healthy history
-			// against the wrong band. Entries without api predate codex
-			// support and were all Anthropic.
+			// Cost and token totals cover the whole session, but the average
+			// hit rate counts only calls made on the current provider, when
+			// there is one to compare against. A rate that was healthy on one
+			// provider would otherwise be graded against the other's target
+			// after a mid-session switch. Entries with no provider recorded
+			// predate codex support and were all Anthropic.
 			if (currentApi === undefined || (call.api ?? "anthropic-messages") === currentApi) {
 				hitRead += call.cacheRead;
 				hitReadable += call.cacheRead + call.cacheWrite + call.input;

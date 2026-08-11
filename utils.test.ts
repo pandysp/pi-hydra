@@ -508,10 +508,10 @@ describe("mergeObservationPayload", () => {
 
 		expect(blocks(merged.messages[2])[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 
-		// The driver's message-level marker moved (not duplicated)...
+		// The driver's cache mark moved rather than being copied...
 		const capturedBlocks = merged.messages.slice(0, 2).flatMap((m) => blocks(m));
 		expect(capturedBlocks.every((block) => block.cache_control === undefined)).toBe(true);
-		// ...the prompt stays unmarked, and the four-breakpoint budget holds.
+		// ...the instruction stays unmarked, and the limit of four is respected.
 		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
 	});
 
@@ -576,9 +576,9 @@ describe("mergeObservationPayload", () => {
 			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
 		];
 		const merged = mergeObservationPayload(capturedFixture(), tail);
-		// Loop entries only need to survive until the next iteration: plain
-		// ephemeral, not the driver's 1h TTL. The prefix+M entry from the
-		// first call keeps serving the driver bet.
+		// Loop entries only need to last until the next iteration, so they get
+		// the short-lived mark rather than the driver's hour-long one. What the
+		// first call stored is what keeps serving the driver.
 		expect(blocks(merged.messages[5])[0].cache_control).toEqual({ type: "ephemeral" });
 		expect(blocks(merged.messages[2])[0].cache_control).toBeUndefined();
 		const capturedBlocks = merged.messages.slice(0, 2).flatMap((m) => blocks(m));
@@ -644,8 +644,9 @@ describe("mergeObservationPayload", () => {
 		const merged = mergeObservationPayload(capturedFixture(), tail, "protocol");
 		expect(merged.messages.slice(2).map((message) => message.role)).toEqual(["assistant", "user", "system"]);
 		expect(blocks(merged.messages[4])[0]).toEqual({ type: "text", text: "protocol" });
-		// The envelope is not mistaken for a tool-loop turn: M still receives
-		// the driver's TTL marker and the envelope stays uncached.
+		// A separately sent set of rules must not be mistaken for a loop turn.
+		// The agent's final message still gets the driver's long-lived mark and
+		// the rules themselves stay uncached.
 		expect(blocks(merged.messages[2])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
 	});
@@ -790,8 +791,9 @@ describe("mergeOpenAIObservationPayload", () => {
 		const first = captured.input[0] as { content: Array<Record<string, unknown>> };
 		first.content[0].prompt_cache_breakpoint = { mode: "explicit" };
 		const merged = mergeOpenAIObservationPayload(captured, [promptTail()]);
-		// Assert the marker's VALUE survives, not object equality: the merge
-		// may alias prefix items, and an aliased comparison cannot fail.
+		// Compare what the mark says, not whether it is the same object. The
+		// merge is allowed to share objects, and a shared one would pass this
+		// check no matter what the code did.
 		const mergedFirst = merged.input[0] as { content: Array<Record<string, unknown>> };
 		expect(mergedFirst.content[0].prompt_cache_breakpoint).toEqual({ mode: "explicit" });
 		expect(mergedFirst.content[0].text).toBe("hi");
@@ -810,8 +812,8 @@ describe("mergeOpenAIObservationPayload", () => {
 
 	it("mutates neither the captured payload nor the tail", () => {
 		const captured = capturedFixture();
-		// Seed a marker into the prefix so a regression that strips markers
-		// from captured items (not just the tail) is actually detectable.
+		// Put a mark in the captured part on purpose, so that code stripping
+		// marks too broadly is caught here rather than in production.
 		(captured.input[0] as { content: Array<Record<string, unknown>> }).content[0].prompt_cache_breakpoint = { mode: "explicit" };
 		const tail = [
 			{
@@ -999,7 +1001,7 @@ describe("summarizeLoopUsage", () => {
 		expect(summary.cacheRead).toBe(19800);
 		expect(summary.output).toBe(20);
 		expect(summary.cost).toBeCloseTo(0.02);
-		// First iteration: 9900 / (100 + 9900 + 0), the replay-parity signal.
+		// From the first call only: 9900 / (100 + 9900 + 0).
 		expect(summary.hitRatio).toBeCloseTo(99);
 	});
 
@@ -1082,8 +1084,9 @@ describe("selectFinalAssistant", () => {
 	});
 
 	it("matches by identity, not clock order: pi stamps M ~1ms before the capture hook fires", () => {
-		// Regression: a >= capturedAtMs comparison silently dropped M whenever
-		// the message construction landed in the millisecond before the hook.
+		// This once dropped the agent's final message whenever it happened to be
+		// built in the millisecond before the request went out. Comparing clock
+		// times instead of matching the reply is what caused it.
 		const m = asst(RESPONSE_TS);
 		expect(selectFinalAssistant([m], RESPONSE_TS)).toBe(m);
 		expect(selectFinalAssistant([m], RESPONSE_TS + 1)).toBeNull();

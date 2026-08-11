@@ -1,17 +1,17 @@
 /**
- * Conflating single-slot scheduler, per head: every head has at most one
- * observation in flight and one waiting slot that a newer snapshot
- * overwrites. Observations always run to completion; staleness is bounded
- * to one cycle because the slot always holds the newest snapshot. The
- * granularity is per head (not one global batch) so an acting head's
- * minutes-long tool loop cannot starve the judging heads, and a head busy
- * through a commit point still reviews the newest snapshot when it frees
- * up. session_shutdown awaits the in-flight runs.
+ * Each head runs one observation at a time and keeps one waiting slot. A
+ * newer snapshot overwrites whatever is waiting, so a head that falls behind
+ * jumps straight to the latest state instead of working through a backlog.
+ * Observations run to completion; only shutdown cuts one short, and only
+ * after a grace period.
  *
- * The scheduler owns conflation and lifecycle only; what an observation IS
- * stays in index.ts, injected through the hooks. It is generic over the
- * seed type so it never depends on engine types (and never imports the
- * entry file).
+ * Per head rather than one shared queue, so a head grinding through a long
+ * tool loop cannot hold up the heads that only need one quick call.
+ *
+ * This file owns when observations run, not what they are. What an
+ * observation does stays in index.ts and arrives through the hooks. It is
+ * generic over the seed type so it never depends on engine types, and never
+ * imports the entry file.
  */
 
 export interface SchedulerHooks<Seed> {
@@ -50,10 +50,10 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
-	// Run one head's observations to completion, newest snapshot first
-	// (conflating whatever piled up while busy). Heads run in parallel with
-	// each other: mid-run they are all pure cache reads; at run-end each fork
-	// pays M's write (the measured economics are in docs/architecture.md).
+	// Heads run alongside each other rather than one after another. Mid-run
+	// that is nearly free, because every head is only reading the cache. At
+	// the end of a run each head pays to add the final message once. The
+	// numbers are in docs/architecture.md.
 	private async runHead(runner: HeadRunner<Seed>): Promise<void> {
 		// Yield once so schedule() stores the running promise before the loop
 		// can drain synchronously: a seed skipped at its first pop would
@@ -89,8 +89,8 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
-	// Let the in-flight observations finish (bounded by the grace), then
-	// cancel; this is the sole lifecycle abort.
+	// The only place the whole extension is canceled. Observations already
+	// running get a bounded chance to finish first.
 	async shutdown(graceMs: number): Promise<void> {
 		const running = [...this.runners.values()].flatMap((runner) => runner.running ?? []);
 		if (running.length > 0) {
