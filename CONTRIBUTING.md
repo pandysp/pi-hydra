@@ -17,9 +17,8 @@ If you installed hydra via the README quickstart, run `pi remove git:github.com/
 Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra stops existing (no commands, no flags, no observations). Before sending a PR:
 
 ```bash
-npm run check    # tsc --strict
-npm test         # vitest: root modules plus the experiments suite
-npm run gates    # experiments invariant gates (CI runs these too)
+npm run check    # tsc --strict, plus the module-state gate
+npm test         # vitest on the root modules
 ```
 
 Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
@@ -29,7 +28,7 @@ Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
 - Steps toward mid-generation interrupts (see "Where this is going" in the README)
 - Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
-- Replications or extensions of the [`experiments/`](experiments/INDEX.md)
+- Replications or extensions of the [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md)
 
 ## The bar
 
