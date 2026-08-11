@@ -23,7 +23,7 @@
 		]
 	},
 	"scripts": {
-		"check": "tsc",
+		"check": "tsc && node module-state.check.mjs",
 		"test": "vitest run"
 	},
 	"devDependencies": {
