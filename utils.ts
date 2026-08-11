@@ -3,11 +3,9 @@
  * Extracted for testability; no pi or I/O dependencies.
  */
 
-import type { DeliveryContext } from "./delivery-types";
-
 // Where a head's finding ends up. noop: nowhere. print: shown to the user
 // only. queue: waits for the run to end. steer: reaches the agent between
-// turns. interrupt: reaches it now, cancelling whatever it was doing.
+// turns. interrupt: reaches it now, canceling whatever it was doing.
 export const ACTIONS = ["noop", "print", "queue", "steer", "interrupt"] as const;
 export type Action = (typeof ACTIONS)[number];
 export const OBSERVATION_DELIVERIES = ["none", "print", "queue", "steer", "interrupt"] as const;
@@ -16,6 +14,23 @@ export const HEAD_OPERATIONS = ["add", "remove"] as const;
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
 export const AFTER_CHANGE_ACTIONS = ["noop", "print"] as const;
 export type AfterChangeAction = (typeof AFTER_CHANGE_ACTIONS)[number];
+
+export type DeliveryAction = Exclude<Action, "noop">;
+
+export interface DeliveryRecord {
+	head: string;
+	delivery: DeliveryAction;
+	message: string;
+}
+
+export interface DeliveryContext {
+	lastByThisHead: Omit<DeliveryRecord, "head"> | null;
+	pending: DeliveryRecord[];
+}
+
+export interface PersistedDelivery extends DeliveryRecord {
+	timestamp: number;
+}
 
 /**
  * A head that decided to interrupt, based on a picture the agent has already
@@ -280,6 +295,19 @@ export interface HeadDefinition {
 	prompt: string;
 }
 
+/**
+ * Written into the session so the active heads come back after a resume or a
+ * branch switch. A --hydra-heads flag wins over what was saved, because what
+ * the user just typed beats what they wanted last time. Heads marked
+ * autostart seed a session that has neither. `lenses` and `lens` are the old
+ * names for the same thing, still read so old sessions load.
+ */
+export interface HydraConfig {
+	heads: string[];
+	lenses?: string[];
+	lens?: string;
+}
+
 export function isValidHeadName(name: string): boolean {
 	return /^[a-z0-9][a-z0-9-]*$/.test(name) && name !== "none";
 }
@@ -368,9 +396,7 @@ export function headActs(tools: string[] | undefined): boolean {
  * made Sonnet worse, and the ordering that might have fixed that is not
  * allowed there, so Anthropic keeps them together.
  */
-export function usesSplitObservationHandoff(override: string | undefined, api: string | undefined): boolean {
-	if (override === "split") return true;
-	if (override === "current") return false;
+export function usesSplitObservationHandoff(api: string | undefined): boolean {
 	return api === "openai-codex-responses";
 }
 

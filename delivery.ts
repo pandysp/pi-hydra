@@ -1,6 +1,5 @@
-import type { Decision } from "./utils";
+import type { Decision, DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./utils";
 import { demoteStaleInterrupt } from "./utils";
-import type { DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./delivery-types";
 
 type PendingRole = "user" | "custom";
 type PendingOrigin = "queued" | "idle-user";
