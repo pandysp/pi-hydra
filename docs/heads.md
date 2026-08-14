@@ -1,6 +1,6 @@
 # Heads
 
-A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and reports findings through print, steer, or interrupt (or stays quiet). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
+A product head watches with its own perspective: it reviews complete captured requests from the agent's provider trajectory and reports findings through print, steer, or interrupt (or stays quiet). A busy head keeps only the newest waiting snapshot, so superseded intermediate snapshots may be skipped. One Markdown file carries the head's identity, capabilities, and instruction; activation is separate session state.
 
 ## Head files
 
@@ -22,13 +22,13 @@ Frontmatter keys:
 |---|---|---|
 | `name` | yes | the head's identity; what `/hydra-heads` and the `hydra` tool refer to. Files without a name are skipped with a warning. |
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
-| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means all of the agent's tools; `tools: []` means none (the head judges, never acts). |
+| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means every standard tool hydra can execute; `tools: []` means none (the head judges, never acts). |
 | `autostart` | no | `true` joins the active set at session start. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
 | `after-change` | no | `noop` or `print`, for heads with `write` or `edit` (or omitted `tools`). After a successful write/edit, hydra requires the matching completion delivery. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
-There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model. That is the constraint that makes the replay a cache read rather than a context rebuild, and it is why a head cannot be given a stronger model than the driver's.
+There is no supported `model` key: a head replays the agent's provider context, and prompt caches are model-specific. Every head runs on the agent's model. Matching the model is required for cache reuse—though provider timing and session routing still determine the actual hit—and is why a head cannot be assigned a stronger model than the driver's.
 
 ## Where heads live
 
@@ -37,9 +37,9 @@ There is no `model` key and there cannot be one: a head replays the agent's prom
 
 A project head with the same name as a user head wins, like project agents and presets elsewhere in pi, so a repo can replace your generic `quality` with one that knows the codebase conventions. Project files are repo-controlled prompts and run under the same consent as everything else in `.pi/`: pi's folder trust. When hydra loads project heads it says so in the TUI, and once more when a project head shadows one of yours.
 
-Head files are re-read at the start of every agent run and on every `hydra` tool call, so edits apply to the next observation without a reload: when a head flags too much or too little, tune the file and the very next run uses the tuned head. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
+Head files are re-read at the start of every agent run and on every `hydra` tool call. Changes apply to observations scheduled after that discovery point without reloading Pi: tune a noisy head before the next run, or follow a write with a `hydra` call when it must take effect during the current run. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
 
-There are no built-in heads. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
+There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
 
 ```bash
 mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
@@ -58,7 +58,7 @@ The active set is session state: which heads observe right now.
 - `--hydra-heads quality,security` seeds headless runs (`pi -p`).
 - The agent uses `hydra` with `action: "manage_heads"` to add or remove one head at a time.
 
-Several heads observe at once: each active head gets its own observation in parallel, and each reads the agent's context from the prompt cache, so each additional head costs a cache read instead of a context rebuild.
+Several heads observe at once: each active head gets its own observation in parallel and reuses the agent's cached context instead of rebuilding it. Multiple heads still add material, provider-dependent session cost; see [Economics and measurements](providers.md#economics-and-measurements).
 
 Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Saved state never leaks across sessions; autostart is only the cold-start default.
 
@@ -66,38 +66,32 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head, which enumerates its findings in one JSON object on both providers (see below). For acting heads, the `hydra` action `complete_observation` remains available on OpenAI because it is the return channel, not a work capability, and Anthropic returns the corresponding decision as compact JSON. On both providers, `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload always advertises the agent's exact tool schemas regardless (byte parity is what keeps observations on the cache), so narrowing changes what a head can execute, never what the request looks like.
+`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head, which enumerates its findings in one JSON object (see below). `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload still advertises the driver's exact tool schemas for cache parity, so narrowing changes what a head can execute, never the captured prefix. Hydra chooses the provider's acting-completion channel; [Completion channels](providers.md#completion-channels) is the canonical reference.
 
 Authoring guidance for heads that act:
 
 1. **Write a positive contract.** State the head's purpose, the observable condition that warrants work, the work itself, what done means, and delivery. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful shape, not special syntax. Positive conditions generalize better than accumulating benchmark-shaped exception lists.
-2. **Declare post-mutation delivery where it matters.** After a successful `write` or `edit`, `after-change: noop` requires `delivery: "none"` because the file is the work product; `after-change: print` requires a non-empty printed note. OpenAI enforces a wrong completion as a tool error; Anthropic normalizes the returned decision to the declared delivery. It does not make the head act. Without it, the head chooses delivery.
+2. **Declare post-mutation delivery where it matters.** After a successful `write` or `edit`, `after-change: noop` makes the file the work product; `after-change: print` requires a note. Hydra enforces the declared outcome. It does not make the head act. Without it, the head chooses delivery.
 3. **Avoid state-mutating bash mid-run.** The head works while the agent works. File writes through write/edit serialize against the agent's own writes and are announced in the session; bash output does neither, so keep bash to reads (builds, greps, lookups) unless you accept the race.
 4. **Turns are bounded; spend is not.** A head that has not completed after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
 
-Tracked mutations for `after-change` are successful `write` and `edit` calls. Head-set changes have a separate, stronger contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately; other OpenAI head-set changes are followed by `complete_observation`, while Anthropic returns the equivalent completion object. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
+Tracked mutations for `after-change` are successful `write` and `edit` calls. Head-set changes have a separate, stronger contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
 
 ## Decisions: when findings land
 
-An acting OpenAI head ends with one `hydra` call:
+An acting head is instructed to finish fallible work before choosing no feedback, print, steer, or interrupt. For typed completion, Hydra enforces the narrower guarantee that the terminal action is the only tool call in its turn; it cannot prove that every intended check is finished. Hydra selects and validates the provider-specific completion channel, as described in [Completion channels](providers.md#completion-channels).
 
-```json
-{"action":"complete_observation","delivery":"none","message":""}
-```
-
-The call must be alone in its tool-call turn, after fallible work has completed. This makes completion causally last: a parallel write failure cannot be hidden by an already accepted decision. `message` is exactly empty for `none` and non-empty for the other deliveries; invalid combinations are tool errors, not text that hydra guesses how to repair. An acting Anthropic head instead returns `{"action":"noop|print|steer|interrupt","reason":"…","message":"…"}` after its work. Hydra validates that object, but cannot enforce its production with a tool; malformed output becomes `noop`.
-
-A judge-only head uses one enumerated findings contract on both providers (the measured ENUM-SO2 arm in the decision table):
+A judge-only head uses one enumerated findings contract:
 
 ```json
 {"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}
 ```
 
-It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own action (here `action` is the finding's delivery; in the acting call above, `action` names the `hydra` tool operation). Hydra preserves every message exactly once: all `print` findings become one user-only note, while all `steer` and `interrupt` findings become one agent message. That agent message interrupts only if one of its findings chose `interrupt`; otherwise it steers. A response therefore creates at most two deliveries and never leaks a user-only finding into the agent's context. OpenAI carries this contract in a developer envelope beside the raw lens; Anthropic carries both in one prompt.
+It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own delivery. Hydra preserves every message exactly once: all `print` findings become one user-only note, while all `steer` and `interrupt` findings become one agent message. That agent message interrupts only if one finding chose `interrupt`; otherwise it steers. A response therefore creates at most two deliveries and never leaks a user-only finding into the agent's context.
 
-- `print`: a note to you. The message renders in the TUI and never enters the agent's context. A watch-only head simply always prints.
+- `print`: a note to you. In interactive mode the message renders in the TUI and never enters the agent's context. A head can choose this route when only the user needs the finding.
 - `steer`: the normal and only agent-directed route. The finding folds into the agent's context as a real user message at its next checkpoint, whether it can wait or not.
-- `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
+- `interrupt`: the cord. An active run is aborted and the finding opens the next one; if the snapshot is already stale, Hydra demotes it to steer rather than abort newer work.
 - `none` (acting completions only): nothing to report; nothing is delivered anywhere. In the judge contract silence is the empty findings array: `none` is not a valid finding action, and one invalid action makes hydra discard every finding in that response. `/hydra-stats` labels silent outcomes `noop`.
 
 Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
@@ -106,7 +100,7 @@ Delivered to an idle session, steer and interrupt simply open the next run. `aft
 
 A head's job can be the other heads. Two ship as examples in [`heads/`](../heads):
 
-The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Mark it `autostart: true` and it staffs every fresh session.
+The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Marking it `autostart: true` makes it part of the cold-start set when no explicit flag or saved session set takes precedence.
 
 ```markdown
 ---
@@ -143,7 +137,7 @@ DELIVER: Print the edit you made; complete with none when the act condition is
 not met.
 ```
 
-Foreman changes are visible by construction: `manage_heads` accepts a required explanation and auto-prints it only when the set actually changes. Self-removal prints and terminates in that same call. Tuner edits are visible through its `after-change: print` contract: OpenAI rejects a conflicting completion for correction; Anthropic normalizes its returned decision to `print`. A print renders in the TUI and never enters the agent's context. The tuner's file edits also get the standard write notice the agent sees; the notice records the change and carries no finding. The two combine well: a foreman can activate the tuner when a session warrants it.
+Foreman changes are visible by construction: `manage_heads` accepts a required explanation and auto-prints it only when the set actually changes. Self-removal prints and terminates in that same call. Tuner edits are visible through its `after-change: print` contract. A print renders in the TUI and never enters the agent's context. The tuner's file edits also get the standard write notice the agent sees; the notice records the change and carries no finding. The two combine well: a foreman can activate the tuner when a session warrants it.
 
 ## Example heads (minimal overlap)
 
@@ -156,7 +150,7 @@ The four review examples are designed to catch different things rather than repe
 
 ### Security
 **Lens:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
-**Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are invisible to every other lens. The agent is thinking about functionality rather than attack surface.
+**Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are easy for general-purpose lenses to miss while the agent is focused on functionality rather than attack surface.
 **Boundary:** Do not comment on style or product scope.
 
 ### Simplifier
@@ -216,6 +210,6 @@ Heads whose subject is the other heads (the foreman and tuner) are covered in [H
 2. **Against the grain:** The best heads watch what the agent naturally ignores.
 3. **Actionable:** Feedback must be specific enough to act on (not "consider security").
 4. **Bounded:** Clear "do NOT comment on..." prevents overlap.
-5. **Short:** The instruction is the only uncached part of a mid-run observation (run-end observations additionally pay the final message's cache write); keep it tight.
+5. **Short:** The head instruction is fresh input, so keep it tight. Provider-specific run-end accounting lives in [Provider lifecycle](providers.md#provider-lifecycle).
 
 Overlap notes: Simplifier and Performance both catch redundant operations, so run one or the other; Devil's Advocate and Observability do not overlap with the four review examples.

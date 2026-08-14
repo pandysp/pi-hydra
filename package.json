@@ -23,7 +23,10 @@
 		]
 	},
 	"scripts": {
-		"check": "tsc && node module-state.check.mjs",
+		"check": "tsc && node module-state.check.mjs && npm run check:links && npm run check:docs",
+		"check:links": "node scripts/check-links.mjs",
+		"check:docs": "node scripts/check-doc-claims.mjs",
+		"update:doc-claims": "node scripts/check-doc-claims.mjs --update",
 		"test": "vitest run"
 	},
 	"devDependencies": {

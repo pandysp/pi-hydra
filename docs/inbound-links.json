@@ -1,0 +1,108 @@
+{
+  "description": "Pre-refactor inbound links to outward pi-hydra documentation. Targets are checkout-relative; provenance records every source occurrence found by the reproducible scan.",
+  "generatedFrom": {
+    "requestedRef": "4b140d77023446406bd6e41cb5559866bedf595f",
+    "repoCommit": "4b140d77023446406bd6e41cb5559866bedf595f",
+    "workspaceScanned": true
+  },
+  "targets": [
+    {
+      "path": "CONTRIBUTING.md",
+      "fragment": "",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:52",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:132",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:175"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:CONTRIBUTING.md:30",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:CONTRIBUTING.md:36",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:118"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "cache-hit-ratio",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:21"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "commit-point-observation",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:133"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "observation-timing",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:experiments/README.md:307"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "openai-codex-support",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:44",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:122",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:11",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:161"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "fragment": "verifying-the-tripwire",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:101"
+      ]
+    },
+    {
+      "path": "docs/heads.md",
+      "fragment": "",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:CONTRIBUTING.md:28",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:85",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:39",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:155"
+      ]
+    },
+    {
+      "path": "docs/heads.md",
+      "fragment": "heads-that-manage-heads",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/heads.md:211"
+      ]
+    },
+    {
+      "path": "README.md",
+      "fragment": "",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:archive/README.md:3",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:archive/README.md:11",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:docs/architecture.md:3"
+      ]
+    },
+    {
+      "path": "README.md",
+      "fragment": "what-it-costs",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:9",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:15",
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:126"
+      ]
+    },
+    {
+      "path": "README.md",
+      "fragment": "where-this-is-going",
+      "provenance": [
+        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:125"
+      ]
+    }
+  ]
+}
