@@ -986,12 +986,12 @@ function stripPromptCacheBreakpoints(items: unknown[]): void {
  * Whether an observation can also read what the driver stored depends on
  * routing hydra does not control. Running under the driver's own session id
  * makes it dependable, which is the decision made in index.ts. Measurements
- * are in the OpenAI section of docs/architecture.md.
+ * are in the OpenAI section of docs/providers.md.
  *
- * There is no way to warm up the driver's next turn here the way the Anthropic
- * merge does, because a cache mark is only allowed on input, never on what the
- * model wrote. The observation still reads the final message cheaply either
- * way.
+ * There is no explicit Anthropic-style pre-warm here: a cache mark is legal
+ * only on input, never on what the model wrote. Current Codex accounting still
+ * charges a run-end observation for the newest turn plus its own tail; implicit
+ * caching and shared-session routing determine what later requests can reuse.
  *
  * Any marks pi-ai might add are removed, since on this provider the right
  * number of them is none.

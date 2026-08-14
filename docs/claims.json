@@ -1,0 +1,169 @@
+{
+  "description": "Joint baselines bind each public behavior claim to narrow code authorities and one canonical documentation section. Update only after reviewing both sides together.",
+  "claims": [
+    {
+      "id": "supported-providers",
+      "code": [
+        {
+          "path": "index.ts",
+          "start": "const anthropic = model.provider === \"anthropic\"",
+          "end": "// At the end of a run"
+        }
+      ],
+      "doc": {
+        "path": "docs/providers.md",
+        "fragment": "supported-provider-boundary"
+      },
+      "baseline": {
+        "codeHash": "279dcda52336786f9cc6c2897dac232cd4f11d0f261b5a021be928e02aa323ef",
+        "docHash": "f024609af30849f8c5b9267bc015d89e89be1ff3810eff41419d7234f8df4927"
+      }
+    },
+    {
+      "id": "observation-triggers",
+      "code": [
+        {
+          "path": "index.ts",
+          "start": "pi.on(\"before_provider_request\"",
+          "end": "pi.on(\"session_shutdown\""
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "commit-point-observation"
+      },
+      "baseline": {
+        "codeHash": "2806ed5c4fe07fccf02cd67b7aa5f9f69940197e98551255eb617ebdae729d48",
+        "docHash": "3bd92e1cdf97a7983c6e7466375084686036863b45e2b3503ec03c85c5e8b05c"
+      }
+    },
+    {
+      "id": "tool-defaults",
+      "code": [
+        {
+          "path": "heads.ts",
+          "start": "headTools(name: string)",
+          "end": "// Records the last set"
+        },
+        {
+          "path": "utils.ts",
+          "start": "export function headActs",
+          "end": "/**\n * Whether the head's instruction"
+        }
+      ],
+      "doc": {
+        "path": "docs/heads.md",
+        "fragment": "tools-acting-heads"
+      },
+      "baseline": {
+        "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
+        "docHash": "b5e9ccc80f59c55f60268f19f7f6ccfebe27fb23e5c66eec26dbdae33276c97c"
+      }
+    },
+    {
+      "id": "prompt-variants",
+      "code": [
+        {
+          "path": "index.ts",
+          "start": "function observationHandoffFor(",
+          "end": "// The exact request the driver last sent"
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "prompt-construction"
+      },
+      "baseline": {
+        "codeHash": "96a250926e5df05369f3849c2dcd528310c4b430c4c2a458c43844af7ccfe4fb",
+        "docHash": "10bcf5cd7330fd912b53edc81649948f07d3793ccf9cefae76870a06fa7bf420"
+      }
+    },
+    {
+      "id": "scheduler-semantics",
+      "code": [
+        {
+          "path": "scheduler.ts",
+          "start": "export class HeadScheduler",
+          "end": null
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "per-head-scheduling"
+      },
+      "baseline": {
+        "codeHash": "78cef2181dfc55aeecb1db477b08d9914cb65b4775ae97439dc34f423c80104d",
+        "docHash": "8712112c8b791826a75b919260b15455813062044dc0021fd9e6ae197e5f08e6"
+      }
+    },
+    {
+      "id": "delivery-actions",
+      "code": [
+        {
+          "path": "protocol.ts",
+          "start": "export const hydraToolParameters",
+          "end": "export interface ManageHeadsParams"
+        },
+        {
+          "path": "delivery.ts",
+          "start": "export function routeFeedback(",
+          "end": null
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "delivery"
+      },
+      "baseline": {
+        "codeHash": "0e225e707839559ae322aa0354f8c20a6abf61e9ec8849cb4f327d132738c1e9",
+        "docHash": "6a961d1f59eacb6fa8a03fff13646ddfe84c1f27009c30560040723458f79ac4"
+      }
+    },
+    {
+      "id": "head-precedence",
+      "code": [
+        {
+          "path": "heads.ts",
+          "start": "discover(gateway: HeadRegistryGateway",
+          "end": "exists(name: string)"
+        },
+        {
+          "path": "index.ts",
+          "start": "pi.on(\"session_start\"",
+          "end": "pi.on(\"session_tree\""
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "heads-are-files"
+      },
+      "baseline": {
+        "codeHash": "3d243de90942b5e964ecf7fed6457235eb4e257bcb30094903486dbc507f3f70",
+        "docHash": "885716e10ec77195d00f8fc20d4e861aed535fa137138560b6c7bb1faf2c1ccd"
+      }
+    },
+    {
+      "id": "persisted-state",
+      "code": [
+        {
+          "path": "stats.ts",
+          "start": "export function parseBranchEntries(",
+          "end": null
+        },
+        {
+          "path": "index.ts",
+          "start": "function restoreFromBranch(",
+          "end": "// One observation's outcome"
+        }
+      ],
+      "doc": {
+        "path": "docs/architecture.md",
+        "fragment": "state-and-observability"
+      },
+      "baseline": {
+        "codeHash": "78e191888369414aefdec5dccde366853a0425a944bda571cd3536e603598b35",
+        "docHash": "98d9aacd194070bc28904ae93255e62c3fc3d084c89c2053a710828677431ffb"
+      }
+    }
+  ]
+}

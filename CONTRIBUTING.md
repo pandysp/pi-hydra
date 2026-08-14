@@ -17,7 +17,7 @@ If you installed hydra via the README quickstart, run `pi remove git:github.com/
 Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra stops existing (no commands, no flags, no observations). Before sending a PR:
 
 ```bash
-npm run check    # tsc --strict, plus the module-state gate
+npm run check    # tsc, module-state, links, and code-to-doc claims
 npm test         # vitest on the root modules
 ```
 
@@ -27,13 +27,15 @@ Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces
 
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
 - Steps toward mid-generation interrupts (see "Where this is going" in the README)
-- Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/architecture.md`](docs/architecture.md) first)
+- Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/providers.md`](docs/providers.md) first)
 - Replications or extensions of the [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md)
 
 ## The bar
 
-- Every claim about cache behavior must be backed by a measurement. The cache probes re-verify the mechanism against the live APIs, and a full cache-probe run costs under a dollar.
-- If your change touches the replay or marker logic, run the verification procedures in [`docs/architecture.md`](docs/architecture.md) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
+- Every claim about cache behavior must be backed by a measurement. [`docs/providers.md`](docs/providers.md) is the canonical owner of provider behavior, economics, dates, and evidence; other outward docs summarize and link to it.
+- If your change touches replay or marker logic, run the procedures in [`docs/providers.md`](docs/providers.md#verification-procedures) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
+- `npm run check:links` validates local Markdown files and GitHub-compatible heading fragments, including the committed inventory of inbound links discovered outside this repository.
+- `npm run check:docs` binds public claims to both narrow code authority regions and canonical documentation sections. If either changes intentionally, review both sides and update only the affected claim explicitly: `npm run update:doc-claims -- --reviewed --claim=<id>`.
 - Pure logic goes in the matching root module with tests (`protocol.ts`, `delivery.ts`, `heads.ts`, `scheduler.ts`, `stats.ts`, `utils.ts`).
 - Match the style of the file you are editing.
 
