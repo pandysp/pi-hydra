@@ -4,7 +4,8 @@ import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ref = process.argv.find((arg) => arg.startsWith("--ref="))?.slice(6) ?? "main";
+const PRE_REFACTOR_COMMIT = "4b140d77023446406bd6e41cb5559866bedf595f";
+const ref = process.argv.find((arg) => arg.startsWith("--ref="))?.slice(6) ?? PRE_REFACTOR_COMMIT;
 const resolvedRef = execFileSync("git", ["rev-parse", `${ref}^{commit}`], { cwd: root, encoding: "utf8" }).trim();
 const workspace = process.argv.find((arg) => arg.startsWith("--workspace="))?.slice(12) ?? "/Users/spannagel/main-workspace";
 const outward = new Set(["README.md", "CONTRIBUTING.md", "docs/architecture.md", "docs/heads.md"]);

@@ -1,7 +1,7 @@
 {
   "description": "Pre-refactor inbound links to outward pi-hydra documentation. Targets are checkout-relative; provenance records every source occurrence found by the reproducible scan.",
   "generatedFrom": {
-    "requestedRef": "main",
+    "requestedRef": "4b140d77023446406bd6e41cb5559866bedf595f",
     "repoCommit": "4b140d77023446406bd6e41cb5559866bedf595f",
     "workspaceScanned": true
   },
