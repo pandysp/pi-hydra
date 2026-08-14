@@ -1,6 +1,6 @@
 # Heads
 
-A head watches with its own perspective: it sees exactly what the agent sees, judges every step, and reports findings through print, steer, or interrupt (or stays quiet). A head is fully defined by one markdown file. The file carries the head's identity, its capabilities, and its instruction; there is nothing else to configure.
+A product head watches with its own perspective: it reviews complete captured requests from the agent's provider trajectory and reports findings through print, steer, or interrupt (or stays quiet). A busy head keeps only the newest waiting snapshot, so superseded intermediate snapshots may be skipped. One Markdown file carries the head's identity, capabilities, and instruction; activation is separate session state.
 
 ## Head files
 
@@ -28,7 +28,7 @@ Frontmatter keys:
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
-There is no `model` key and there cannot be one: a head replays the agent's prompt cache, and the cache is model-specific. Every head runs on the agent's model. That is the constraint that makes the replay a cache read rather than a context rebuild, and it is why a head cannot be given a stronger model than the driver's.
+There is no supported `model` key: a head replays the agent's provider context, and prompt caches are model-specific. Every head runs on the agent's model. Matching the model is required for cache reuse—though provider timing and session routing still determine the actual hit—and is why a head cannot be assigned a stronger model than the driver's.
 
 ## Where heads live
 
@@ -37,9 +37,9 @@ There is no `model` key and there cannot be one: a head replays the agent's prom
 
 A project head with the same name as a user head wins, like project agents and presets elsewhere in pi, so a repo can replace your generic `quality` with one that knows the codebase conventions. Project files are repo-controlled prompts and run under the same consent as everything else in `.pi/`: pi's folder trust. When hydra loads project heads it says so in the TUI, and once more when a project head shadows one of yours.
 
-Head files are re-read at the start of every agent run and on every `hydra` tool call, so edits apply to the next observation without a reload: when a head flags too much or too little, tune the file and the very next run uses the tuned head. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
+Head files are re-read at the start of every agent run and on every `hydra` tool call. Changes apply to observations scheduled after that discovery point without reloading Pi: tune a noisy head before the next run, or follow a write with a `hydra` call when it must take effect during the current run. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
 
-There are no built-in heads. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
+There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
 
 ```bash
 mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
@@ -79,7 +79,7 @@ Tracked mutations for `after-change` are successful `write` and `edit` calls. He
 
 ## Decisions: when findings land
 
-An acting head completes only after fallible work has finished, then chooses no feedback, print, steer, or interrupt. Hydra selects and validates the provider-specific completion channel; malformed completion becomes a tool error or noop as described in [Completion channels](providers.md#completion-channels).
+An acting head is instructed to finish fallible work before choosing no feedback, print, steer, or interrupt. For typed completion, Hydra enforces the narrower guarantee that the terminal action is the only tool call in its turn; it cannot prove that every intended check is finished. Hydra selects and validates the provider-specific completion channel, as described in [Completion channels](providers.md#completion-channels).
 
 A judge-only head uses one enumerated findings contract:
 
@@ -89,9 +89,9 @@ A judge-only head uses one enumerated findings contract:
 
 It lists every finding rather than choosing one; an empty array is the quiet result. Each finding chooses its own delivery. Hydra preserves every message exactly once: all `print` findings become one user-only note, while all `steer` and `interrupt` findings become one agent message. That agent message interrupts only if one finding chose `interrupt`; otherwise it steers. A response therefore creates at most two deliveries and never leaks a user-only finding into the agent's context.
 
-- `print`: a note to you. The message renders in the TUI and never enters the agent's context. A watch-only head simply always prints.
+- `print`: a note to you. In interactive mode the message renders in the TUI and never enters the agent's context. A head can choose this route when only the user needs the finding.
 - `steer`: the normal and only agent-directed route. The finding folds into the agent's context as a real user message at its next checkpoint, whether it can wait or not.
-- `interrupt`: the cord. The in-flight run is aborted and the finding opens the next one.
+- `interrupt`: the cord. An active run is aborted and the finding opens the next one; if the snapshot is already stale, Hydra demotes it to steer rather than abort newer work.
 - `none` (acting completions only): nothing to report; nothing is delivered anywhere. In the judge contract silence is the empty findings array: `none` is not a valid finding action, and one invalid action makes hydra discard every finding in that response. `/hydra-stats` labels silent outcomes `noop`.
 
 Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
@@ -100,7 +100,7 @@ Delivered to an idle session, steer and interrupt simply open the next run. `aft
 
 A head's job can be the other heads. Two ship as examples in [`heads/`](../heads):
 
-The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Mark it `autostart: true` and it staffs every fresh session.
+The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Marking it `autostart: true` makes it part of the cold-start set when no explicit flag or saved session set takes precedence.
 
 ```markdown
 ---
@@ -150,7 +150,7 @@ The four review examples are designed to catch different things rather than repe
 
 ### Security
 **Lens:** auth, authorization, secret handling, injection risk, unsafe shelling-out, data exposure, trust boundaries.
-**Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are invisible to every other lens. The agent is thinking about functionality rather than attack surface.
+**Why:** Auth logic flaws, leaked secrets, and unsafe shell calls are easy for general-purpose lenses to miss while the agent is focused on functionality rather than attack surface.
 **Boundary:** Do not comment on style or product scope.
 
 ### Simplifier

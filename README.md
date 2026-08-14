@@ -6,7 +6,7 @@
 
 ![A Pi session where the head picker adds a security head; while Pi builds a Flask app, that head catches debug mode and an open-redirect risk and steers the fixes into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension for live oversight. Pi remains the one coding agent doing the work; specialist **heads** watch the same trajectory through different lenses and can stay quiet, show you a note, steer Pi at its next checkpoint, interrupt an unsafe run, or use permitted tools before deciding.
+hydra is a [pi](https://pi.dev/) extension for live oversight. Pi remains the primary driver you talk to; specialist **heads** watch its trajectory through different lenses and can stay quiet, show you a note, steer Pi at its next checkpoint, interrupt an unsafe run, or use permitted tools before deciding.
 
 ```text
                          security head
@@ -15,7 +15,7 @@ user ─────► Pi driver ────────┼──────�
               │               │
               │          quality head
               │
-              └──── shared cached context
+              └──── captured provider context
 ```
 
 One body, many heads.
@@ -30,22 +30,22 @@ hydra attaches another perspective to context that already exists:
 capture Pi's request → append a specialist handoff → review → deliver
 ```
 
-The head receives Pi's real provider trajectory, not a summary. Most of that trajectory can be read from the prompt cache, so the fresh input is mainly the head's instruction and recent tail. A consequential mistake can therefore be caught while correction is still one message rather than a refactor.
+The head receives Pi's real provider trajectory, not a summary. On healthy measured cache paths, most of that trajectory is a cache read, so fresh input is concentrated in the head's instruction and recent tail. A consequential mistake can therefore be caught while correction is still one message rather than a refactor.
 
 ## How it works
 
 1. Pi prepares a model request containing its conversation, tools, and results.
 2. hydra captures that provider payload rather than rebuilding the context.
 3. At a review point, hydra appends a short handoff for each active head.
-4. Every head reviews independently through its own Markdown instruction.
-5. hydra validates the result and routes it to you or Pi.
-6. The footer and `/hydra-stats` record observations, cache use, and cost.
+4. Every head runs independently through its own Markdown instruction; a busy head may skip superseded intermediate snapshots.
+5. hydra validates the decision and either shows you a note, feeds it to the driver, or delivers nothing.
+6. Accepted observation calls, cache use, and cost are recorded in Pi's session and shown in the footer and `/hydra-stats`.
 
 Anthropic and OpenAI Codex need different handoffs and have different cache behavior. The system flow is in [Architecture](docs/architecture.md); provider mechanics, measurements, and economics have one canonical home in [Providers and measurements](docs/providers.md).
 
 ## Quick start
 
-You need [pi](https://pi.dev/) with an Anthropic model or an OpenAI Codex model supported by the measured provider gate.
+You need [pi](https://pi.dev/) with an Anthropic or OpenAI Codex model. The runtime gate is provider/API based; validated model coverage and economics are listed in [Supported provider boundary](docs/providers.md#supported-provider-boundary).
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
@@ -54,7 +54,7 @@ cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
 pi
 ```
 
-The example `quality` head is marked `autostart`, so observations begin in a fresh session. For team-wide installation, `pi install -l` records the package in the repository's `.pi/settings.json`. Development setup is in [CONTRIBUTING.md](CONTRIBUTING.md).
+The example `quality` head is marked `autostart`, so it is active at the first eligible observation point of a fresh session. For team-wide installation, `pi install -l` records the package in the repository's `.pi/settings.json`. Development setup is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Choose heads at any time:
 
@@ -100,12 +100,12 @@ A judge-only head can return several independent findings in one review. hydra g
 
 | decision | effect |
 |---|---|
-| `print` | Show a note in the TUI; Pi never sees it. |
+| `print` | Show a note in the interactive TUI; it never enters the driver's context. |
 | `steer` | Deliver a real user message at Pi's next checkpoint. This is the normal agent-directed route. |
-| `interrupt` | Abort the current run and deliver the finding. This is the emergency cord. |
+| `interrupt` | Abort an active run and deliver the finding; when idle, start the next run with it. This is the emergency cord. |
 | no finding | Deliver nothing; `/hydra-stats` records a noop. |
 
-Acting heads can inspect or change the workspace through their allowed tools before making that decision. The old queue route remains internal for compatibility but is not offered to current heads.
+An interrupt from a snapshot the driver has already moved past is demoted to steer rather than aborting newer work. Acting heads can inspect or change the workspace through their allowed tools before deciding. The old queue route remains internal for compatibility but is not offered to current heads.
 
 ## Heads and subagents solve different problems
 
@@ -147,7 +147,7 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 
 ## Where this is going
 
-The main open direction is mid-generation observation. Today hydra judges committed request snapshots, so it can steer between turns but cannot evaluate an unfinished response while it streams. Doing that would require reasoning over partial output without prompt-cache parity.
+The main open direction is mid-generation observation. Today hydra judges complete captured requests, so it can steer between turns but cannot evaluate an unfinished response while it streams. Doing that would require reasoning over partial output without prompt-cache parity.
 
 ## History
 

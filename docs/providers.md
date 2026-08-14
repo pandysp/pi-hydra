@@ -25,13 +25,13 @@ On Anthropic, probes verified that the cache entry becomes readable at response 
 
 Codex uses the same lifecycle trigger, but commit/read timing is looser. An observation reads whatever has committed and may pay the uncached remainder. Backend observations in July 2026 ranged from near-instant in full-stack traffic to a controlled read becoming available within 65 seconds; timing changes economics, not delivery safety.
 
-The first response of each run is skipped because the previous run-end observation reviewed the preceding state.
+The first response of each run is skipped unconditionally. On later runs, the previous run-end observation covered the preceding state; in a fresh session, the first review arrives at an eligible later snapshot or at run end.
 
 ### Run end
 
-A request never caches the assistant response it produces. At `agent_end`, hydra therefore carries the final assistant message M into the observation through Pi's own provider serialization.
+The assistant response a request produces is not part of that request's prompt-cache input. At `agent_end`, hydra therefore carries the final assistant message M into the observation through Pi's own provider serialization.
 
-On Anthropic, hydra moves the driver's deepest message-level cache marker, including its TTL, onto M's last markable block. M changes from fresh input at 1.0× to a cache write at 1.25×, a 0.25× premium; the driver's next turn then reads it at 0.1× instead of writing it at 1.25×, a 1.15× saving. This is the roughly 5:1 pre-warm bet. Human latency is normally longer than observation TTFT, so M is warm before the next prompt.
+On Anthropic, hydra moves the driver's deepest message-level cache marker, including its TTL, onto M's last markable block. With the five-minute marker used in the retained measurements, M changes from fresh input at 1.0× to a cache write at 1.25×, a 0.25× premium; the driver's next turn then reads it at 0.1× instead of writing it at 1.25×, a 1.15× saving—the roughly 5:1 pre-warm bet. A one-hour marker has a different write premium, so current economics depend on the driver's retention setting. Human latency is normally longer than observation TTFT, so M is usually warm before the next prompt.
 
 On Codex, the merge is marker-free and implicit caching controls the frontier. The run-end observation currently pays the newest turn plus its observer tail; do not apply Anthropic's explicit pre-warm accounting to it.
 
@@ -59,7 +59,7 @@ The first developer-envelope treatment cut extra observer turns from 67 to 3 whi
 
 Judge-only heads use one enumerated findings object on both providers. Malformed output fails open to noop without a repair call. Hydra preserves all valid messages in at most two batches: prints to the user, and steers/interrupts to the agent.
 
-Acting OpenAI heads call the typed `hydra` completion action exactly once, alone in its assistant turn. Acting Anthropic heads return compact JSON after their work; native typed completion measured materially slower and more expensive there. Work and head management remain real tools on both providers.
+A non-self-removing acting OpenAI head is expected to call the typed `hydra` completion action once; Hydra enforces that a terminal action is alone in its tool-call turn. Successful self-removal is terminal without a separate completion call. Acting Anthropic heads are instructed to return compact JSON after their work; native typed completion measured materially slower and more expensive there. Work and head management remain real tools on both providers.
 
 Across 78 randomized OpenAI acting pairs on Luna, Terra, and Sol, the final generic design scored 77/78 (98.7%) versus 63/78 (80.8%), used 201 versus 227 calls, cost $0.7499 versus $0.8330, and reduced mean latency from 7.99 s to 7.10 s. By family: docs 29/30 versus 21/30, tuner 18/18 versus 12/18, foreman 30/30 versus 30/30. A separate frozen foreman screen makes the combined result 45/45 versus 44/45.
 
@@ -71,7 +71,7 @@ A final OpenAI completion-transport A/B covered 144 review pairs and 96 acting p
 
 ### Session sharing
 
-Controlled probes found Codex cache routing strongly session-sensitive. Sharing the driver's provider session lets observations reliably read entries the driver wrote and lets later calls find observation writes. It is structurally safe only when the driver sends full input each turn: Pi transport `websocket` or `sse`.
+Controlled probes found Codex cache routing strongly session-sensitive. Sharing the driver's provider session reliably co-locates observations with entries the driver wrote; what later calls reuse still depends on the backend's implicit cache behavior. Sharing is structurally safe only when the driver sends full input each turn: Pi transport `websocket` or `sse`.
 
 Under continuation transport such as `auto`, the driver relies on `previous_response_id` bookkeeping in a different Pi AI module instance. An observation sharing that session can evict the referenced response and break the driver's next request (`Previous response … not found`). This reproduced 2/2 under `auto` and 0 times under `websocket`.
 
@@ -79,7 +79,7 @@ hydra pins the initial sharing decision at the first `agent_start`, re-reads tra
 
 ### Tripwire
 
-If a driver request ends with the known continuation-error signature, hydra permanently retreats to its own session and reports why. In-flight acting heads wind down at their next turn boundary. A live-fire July 2026 verification forced unsafe sharing, reproduced one driver failure, observed the permanent retreat, and saw Pi recover on retry. One race remains: a settings flip while a shared observation is in flight may cause one failure before the tripwire acts.
+If a driver request ends with the known continuation-error signature, hydra permanently retreats to its own session and, when heads are active, reports why. In-flight acting heads wind down at their next turn boundary. A live-fire July 2026 verification forced unsafe sharing, reproduced one driver failure, observed the permanent retreat, and saw Pi recover on retry. One race remains: a settings flip while a shared observation is in flight may cause one failure before the tripwire acts.
 
 ### Backend volatility
 
@@ -97,18 +97,11 @@ hydra's safety does not depend on those values. UUIDv7, websocket observation tr
 
 ### Anthropic cache hit
 
-The handoff is the main fresh input, so hit ratio rises with driver context:
+The handoff is the main fresh input, so hit ratio generally rises with driver context. The former 220-token table was only an illustration for a fixed handoff size; current handoff size varies with mode and delivery context, so measured sessions are the useful reference.
 
-| Driver context | Observation handoff | Theoretical hit |
-|---:|---:|---:|
-| 4K | 220 | 94.8% |
-| 10K | 220 | 97.8% |
-| 30K | 220 | 99.3% |
-| 100K | 220 | 99.8% |
+An earlier three-prompt session with four observations measured 97.92% aggregate and $0.0202 total observation cost: 87.79% at a 3.5K cold start, then 98.11%, 99.07%, and 99.12% as context grew. A retained commit-point live E2E on Fable/xhigh measured 7/7 piggyback observations as pure reads with write=0, while each run-end fork wrote exactly M.
 
-An earlier real three-prompt session with four observations measured 97.92% aggregate and $0.0202 total observation cost: 87.79% at a 3.5K cold start, then 98.11%, 99.07%, and 99.12% as context grew. Current commit-point live E2E on Fable/xhigh measured 7/7 piggyback observations as pure reads with write=0, while each run-end fork wrote exactly M.
-
-Across live Anthropic sessions, one always-on head cost 32.5%–61.4% of driver cost. This is a measured range, not a fixed surcharge.
+Across retained live Anthropic sessions using five-minute cache retention, one always-on head cost 32.5%–61.4% of driver cost. This is a measured historical range, not a fixed surcharge; retention changes the write economics.
 
 ### Codex cache hit and cost
 
@@ -130,7 +123,7 @@ An observation can be cheap while an always-on session is materially more expens
 - **Headless shutdown:** Pi may exit before a slow run-end observation finishes. `HYDRA_SHUTDOWN_GRACE_MS` defaults to 5 seconds; raise it for headless verification (`0` means do not wait).
 - **Multi-head run end:** heads run in parallel for low latency. On Anthropic each run-end fork may pay M's write rather than coordinating a follower free-ride; measured contention remained a single-digit share of observation spend.
 - **Long tools:** acting heads wind down at turn boundaries, but a long bash execution may outlive shutdown grace.
-- **Partial output:** heads judge committed snapshots, never an unfinished generation.
+- **Partial output:** heads judge complete captured requests, never an unfinished generation.
 - **Unverified paths:** OpenAI API-key transport, older Codex model economics, and provider behavior outside the measured pairs remain out of scope.
 
 ## Verification procedures
