@@ -39,7 +39,7 @@ A project head with the same name as a user head wins, like project agents and p
 
 Head files are re-read at the start of every agent run and on every `hydra` tool call. Changes apply to observations scheduled after that discovery point without reloading Pi: tune a noisy head before the next run, or follow a write with a `hydra` call when it must take effect during the current run. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
 
-There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, and api-design reviewers, plus the foreman and tuner below); copy what you want:
+There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, api-design, and navigator reviewers, plus the foreman and tuner below); copy what you want:
 
 ```bash
 mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
@@ -141,7 +141,7 @@ Foreman changes are visible by construction: `manage_heads` accepts a required e
 
 ## Example heads (minimal overlap)
 
-The four review examples are designed to catch different things rather than repeat each other:
+The five review examples are designed to catch different things rather than repeat each other:
 
 ### Quality
 **Lens:** correctness risks, missing verification, dangerous assumptions, obvious regressions, code that looks likely to break.
@@ -163,6 +163,11 @@ The four review examples are designed to catch different things rather than repe
 **Why:** Consumer-facing issues are invisible from inside the code. Inconsistent response shapes, breaking changes, awkward names: the agent is thinking about the implementation rather than the contract.
 **Boundary:** Do not comment on internal code structure.
 
+### Navigator
+**Lens:** done declared without proof, moved goalposts, quietly dropped requirements, guesses where a question was owed, unchecked assumptions, building before understanding, symptom fixes where the user wants the cause.
+**Why:** The other reviewers judge the code; this one judges the trajectory against the ask, like the non-typing partner in pair programming. In human-AI sessions the human plans and the agent executes, and the common failure is the plan quietly coming apart: requirements dropped, wrong problem solved, victory declared on green tests alone.
+**Boundary:** Do not comment on the code itself. Steer at the level of the goal; interrupt only when the whole direction is wrong.
+
 ## More head ideas
 
 Ideas for heads to write yourself, grouped by the shape a head takes. The grouping is loose. Many good heads fit none of these shapes.
@@ -176,7 +181,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Domain Expert**: business rule accuracy, edge cases in domain logic, terminology. When correctness matters more than code quality.
 - **Architecture**: structural design, coupling, layer separation. For large codebases and early design phases; overlaps with Simplifier on DRY.
 
-**Navigator heads** judge against the task. Their yardstick lives in the session: the spec, the ask, the agreed scope.
+**Navigator heads** judge against the task. Their yardstick lives in the session: the spec, the ask, the agreed scope. A general-purpose navigator ships in [`heads/`](../heads); these are narrower variants:
 
 - **Scope-keeper**: flags work nobody asked for (gold-plating, drive-by refactors, rabbit holes) and steers the run back to the ask.
 - **Spec-alignment**: compares the work against the requirements as stated in the conversation. Catches quiet reinterpretation of the task.
@@ -212,4 +217,4 @@ Heads whose subject is the other heads (the foreman and tuner) are covered in [H
 4. **Bounded:** Clear "do NOT comment on..." prevents overlap.
 5. **Short:** The head instruction is fresh input, so keep it tight. Provider-specific run-end accounting lives in [Provider lifecycle](providers.md#provider-lifecycle).
 
-Overlap notes: Simplifier and Performance both catch redundant operations, so run one or the other; Devil's Advocate and Observability do not overlap with the four review examples.
+Overlap notes: Simplifier and Performance both catch redundant operations, so run one or the other; Devil's Advocate and Observability do not overlap with the five review examples.
