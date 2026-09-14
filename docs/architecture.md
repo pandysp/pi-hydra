@@ -108,7 +108,7 @@ A delivery ledger tracks pending and successful messages so heads receive factua
 hydra has no external database. It stores three custom entry types in Pi's session log:
 
 - `hydra-config` — explicitly saved active-head changes (autostart alone is not persisted);
-- `hydra-call` — observation usage, action, timing, and tools;
+- `hydra-call` — observation usage, action, timing, tools, and what the head answered (text, thinking, stop reason, parse error);
 - `hydra-delivery` — successful delivery receipts.
 
 Branch navigation rebuilds this state from the selected session branch. `/hydra-stats` and the footer use the same persisted calls. `/hydra-debug` dumps captured and merged payload pairs for manual parity verification.

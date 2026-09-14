@@ -467,12 +467,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		selfRemoved: boolean;
 		fileStateChanged: boolean;
 		loopStopReason: ObservationLoopStopReason;
+		// Judging heads only: why the findings list did not parse, verbatim from
+		// the parser. Kept for the record so a noop can be told apart from a
+		// broken answer after the fact.
+		parseError: string | null;
 	}
 
 	interface ObservationToolState {
 		completion: Decision | null;
 		selfRemoved: boolean;
 		fileStateChanged: boolean;
+	}
+
+	function clip(text: string, max: number): string {
+		return text.length > max ? `${text.slice(0, max)}…` : text;
 	}
 
 	function flattenUsage(usage: AssistantMessage["usage"]): ObservationUsage {
@@ -632,6 +640,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			selfRemoved,
 			fileStateChanged,
 			loopStopReason,
+			parseError,
 		} = outcome;
 		const summary = summarizeLoopUsage(usages);
 
@@ -643,6 +652,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+		const thinking = response.content.flatMap((block) => (block.type === "thinking" ? [block.thinking] : [])).join("\n");
 		// A head that removes itself is finished by definition. The removal has
 		// already been reported to the user, and asking a head that no longer
 		// exists for a decision would only be slower and open a race.
@@ -671,7 +681,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			warnOnce(
 				job.ctx,
 				job.completionMode === "enum"
-					? `hydra: ${job.head} answered with an unparseable findings list; recorded as noop`
+					? `hydra: ${job.head} answered with an unparseable findings list (${parseError ?? "no parser error"}); recorded as noop`
 					: job.completionMode === "json"
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
 					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
@@ -700,18 +710,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			hitRatio: summary.hitRatio,
 			rawResponse:
 				job.completionMode === "enum"
-					? text.length > 200
-						? `${text.slice(0, 200)}…`
-						: text
+					? clip(text, 2000)
 					: outcomeDecisions !== null
 					? JSON.stringify({
 							action: "complete_observation",
 							delivery: outcomeDecisions[0].action === "noop" ? "none" : outcomeDecisions[0].action,
 							message: outcomeDecisions[0].message,
 						})
-					: text.length > 200
-						? `${text.slice(0, 200)}…`
-						: text,
+					: clip(text, 200),
+			stopReason: response.stopReason,
+			reasoningTokens: response.usage.reasoning,
+			thinking: thinking.length > 0 ? clip(thinking, 2000) : undefined,
+			parseError: parseError ?? undefined,
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
@@ -804,6 +814,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				selfRemoved: false,
 				fileStateChanged: false,
 				loopStopReason: null,
+				parseError: parsed.error,
 			};
 		} catch (error) {
 			if (!signal.aborted) {
@@ -1016,6 +1027,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			iterations: loopGuard.iterations,
 			toolsUsed,
 			decisions: toolState.completion ? [toolState.completion] : null,
+			parseError: null,
 			selfRemoved: toolState.selfRemoved,
 			fileStateChanged: toolState.fileStateChanged,
 			loopStopReason,
