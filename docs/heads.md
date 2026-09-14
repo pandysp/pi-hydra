@@ -75,7 +75,7 @@ Authoring guidance for heads that act:
 1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
 2. **Choose what happens after a file change.** After a successful `write` or `edit`, `after-change: noop` sends no finding; `after-change: print` requires a user-only note. Hydra enforces this choice, but it does not make the head act. Without the setting, the head chooses how to report.
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection and Hydra's file notices. Use bash only to read files unless you accept those risks. See [automatic notices](architecture.md#runtime-notices) for what Hydra can report.
-4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
+4. **No turn or cost limit.** Hydra does not stop a head just because it has made a set number of model or tool calls. Model-call counts and cost are shown in `/hydra-stats`. Finishing the check, turning the head off, closing the session, or unsafe cache sharing still stops it. Provider and tool limits still apply.
 
 Do not repeat Hydra's automatic file notice in the head's final message. See [notice rules](architecture.md#runtime-notices) for when and how it is sent.
 
