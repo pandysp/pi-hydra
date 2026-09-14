@@ -172,11 +172,6 @@ function observationFailureHint(transport: typeof streamSimple, message: string)
 // an observation still waiting on a slow model. 0 means quit without waiting.
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
 
-// Not a cost limit. A head that still has not reached a decision after this
-// many model turns is not going to, so the loop is wound down with a warning
-// rather than left running.
-const MAX_TOOL_ITERATIONS = 25;
-
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 function plainMessageText(content: unknown): string | null {
@@ -928,12 +923,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						}
 						return undefined;
 					},
-					// Not a cost limit. Stops a loop that is never going to
-					// reach a decision, and stops early if the head is turned
-					// off part-way through. A loop running inside the driver's
-					// own session also stops the moment sharing is given up,
-					// so a transport change mid-loop cannot leave a head
-					// writing into the driver's session for another 25 turns.
+					// Stop when the head finishes or is turned off. A loop
+					// sharing the driver's session also stops at this turn
+					// boundary if sharing is given up, before it can send
+					// another request into that session.
 					shouldStopAfterTurn: () => {
 						let shareLost = false;
 						if (sharedSession) {
@@ -946,7 +939,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 							shareLost,
 							completed: toolState.completion !== null || toolState.selfRemoved,
 							headActive: registry.isActive(job.head),
-							maxIterations: MAX_TOOL_ITERATIONS,
 						});
 						loopGuard = advanced.state;
 						loopStopReason = advanced.stopReason;
@@ -1013,13 +1005,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				`hydra: ${job.head} wound down after ${loopGuard.iterations} turn${loopGuard.iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`,
 				"warning",
 			);
-		} else if (
-			response.stopReason === "toolUse" &&
-			toolState.completion === null &&
-			!toolState.selfRemoved &&
-			registry.isActive(job.head)
-		) {
-			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
 		return {
 			response,

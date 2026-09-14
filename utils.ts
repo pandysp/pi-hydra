@@ -119,7 +119,7 @@ export interface ObservationLoopGuard {
 	iterations: number;
 }
 
-export type ObservationLoopStopReason = "share-loss" | "completed" | "iteration-limit" | "deactivated" | null;
+export type ObservationLoopStopReason = "share-loss" | "completed" | "deactivated" | null;
 
 export function decisionFromLoopStopReason(stopReason: ObservationLoopStopReason): Decision | null {
 	if (stopReason === null || stopReason === "completed") {
@@ -130,9 +130,7 @@ export function decisionFromLoopStopReason(stopReason: ObservationLoopStopReason
 		reason:
 			stopReason === "share-loss"
 				? "codex cache sharing lost mid-observation"
-				: stopReason === "deactivated"
-					? "head deactivated mid-observation"
-					: "observation iteration limit reached",
+				: "head deactivated mid-observation",
 		message: "",
 	};
 }
@@ -140,15 +138,13 @@ export function decisionFromLoopStopReason(stopReason: ObservationLoopStopReason
 /**
  * Decides whether an acting head's loop keeps going after one model turn.
  *
- * A head now finishes by calling a tool, so the loop can stop on the same turn
- * rather than spending another one asking it to write out a final answer.
- * Losing cache sharing beats everything else, because that is a safety stop
- * rather than a tidiness one. The turn limit only matters while the head still
- * has not decided anything.
+ * Tool completion ends the loop on the same turn, without another model call.
+ * Losing cache sharing beats everything else, because that is a safety stop.
+ * Turns are counted for reporting, not to limit how long the head may work.
  */
 export function advanceObservationLoopGuard(
 	state: ObservationLoopGuard,
-	conditions: { shareLost: boolean; completed: boolean; headActive: boolean; maxIterations: number },
+	conditions: { shareLost: boolean; completed: boolean; headActive: boolean },
 ): { state: ObservationLoopGuard; stopReason: ObservationLoopStopReason } {
 	const next = { ...state, iterations: state.iterations + 1 };
 	if (conditions.shareLost) {
@@ -156,9 +152,6 @@ export function advanceObservationLoopGuard(
 	}
 	if (conditions.completed) {
 		return { state: next, stopReason: "completed" };
-	}
-	if (next.iterations >= conditions.maxIterations) {
-		return { state: next, stopReason: "iteration-limit" };
 	}
 	if (!conditions.headActive) {
 		return { state: next, stopReason: "deactivated" };

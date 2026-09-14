@@ -168,55 +168,47 @@ describe("applyAfterChangeDelivery", () => {
 });
 
 describe("advanceObservationLoopGuard", () => {
-	const initial = { iterations: 0 };
-
-	it("continues an active head and counts the completed turn", () => {
-		expect(advanceObservationLoopGuard(initial, { shareLost: false, completed: false, headActive: true, maxIterations: 25 })).toEqual({
-			state: { iterations: 1 },
-			stopReason: null,
-		});
-	});
-
-	it("stops at the hard iteration limit", () => {
+	it.each([0, 24, 25, 49, 9999])("keeps an active head running after %i turns", (iterations) => {
 		expect(
 			advanceObservationLoopGuard(
-				{ iterations: 24 },
-				{ shareLost: false, completed: false, headActive: true, maxIterations: 25 },
+				{ iterations },
+				{ shareLost: false, completed: false, headActive: true },
 			),
-		).toMatchObject({ stopReason: "iteration-limit", state: { iterations: 25 } });
+		).toEqual({ state: { iterations: iterations + 1 }, stopReason: null });
 	});
 
-	it("stops on an enforceable completion without a grace turn", () => {
+	it.each([0, 9999])("stops on completion after %i turns without a grace turn", (iterations) => {
 		expect(
 			advanceObservationLoopGuard(
-				{ iterations: 1 },
-				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
+				{ iterations },
+				{ shareLost: false, completed: true, headActive: true },
 			),
-		).toEqual({ state: { iterations: 2 }, stopReason: "completed" });
+		).toEqual({ state: { iterations: iterations + 1 }, stopReason: "completed" });
 	});
 
-	it("stops immediately after external deactivation", () => {
+	it.each([0, 9999])("stops on external deactivation after %i turns", (iterations) => {
 		expect(
-			advanceObservationLoopGuard(initial, {
-				shareLost: false,
-				completed: false,
-				headActive: false,
-				maxIterations: 25,
-			}),
-		).toMatchObject({ stopReason: "deactivated" });
+			advanceObservationLoopGuard(
+				{ iterations },
+				{ shareLost: false, completed: false, headActive: false },
+			),
+		).toEqual({ state: { iterations: iterations + 1 }, stopReason: "deactivated" });
 	});
 
-	it("lets share loss override completion but accepts completion at the hard boundary", () => {
+	it.each([0, 9999])("gives share loss priority over completion and deactivation after %i turns", (iterations) => {
 		expect(
 			advanceObservationLoopGuard(
-				{ iterations: 1 },
-				{ shareLost: true, completed: true, headActive: false, maxIterations: 25 },
-			).stopReason,
-		).toBe("share-loss");
+				{ iterations },
+				{ shareLost: true, completed: true, headActive: false },
+			),
+		).toEqual({ state: { iterations: iterations + 1 }, stopReason: "share-loss" });
+	});
+
+	it("accepts completion when the head removed itself", () => {
 		expect(
 			advanceObservationLoopGuard(
-				{ iterations: 24 },
-				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
+				{ iterations: 0 },
+				{ shareLost: false, completed: true, headActive: false },
 			).stopReason,
 		).toBe("completed");
 	});
@@ -230,7 +222,6 @@ describe("decisionFromLoopStopReason", () => {
 			message: "",
 		});
 		expect(decisionFromLoopStopReason("share-loss")?.action).toBe("noop");
-		expect(decisionFromLoopStopReason("iteration-limit")?.action).toBe("noop");
 	});
 
 	it("leaves normal completion to the accepted tool result", () => {
