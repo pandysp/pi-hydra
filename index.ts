@@ -29,7 +29,6 @@ import type {
 	Action,
 	Decision,
 	HydraConfig,
-	ObservationLoopStopReason,
 	ObservationUsage,
 } from "./utils";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
@@ -50,14 +49,12 @@ import type { JudgeResult } from "./judge";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
 import type { HydraCall, ObserveKind } from "./stats";
 import {
-	advanceObservationLoopGuard,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
-	decisionFromLoopStopReason,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
@@ -130,11 +127,6 @@ function observationFailureHint(transport: typeof streamSimple, message: string)
 // Headless runs (`pi -p`) quit as soon as the agent stops, which would cut off
 // an observation still waiting on a slow model. 0 means quit without waiting.
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
-
-// Not a cost limit. A head that still has not reached a decision after this
-// many model turns is not going to, so the loop is wound down with a warning
-// rather than left running.
-const MAX_TOOL_ITERATIONS = 25;
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -427,6 +419,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		failureHint?: string;
 	}
 
+	type ObservationLoopStopReason = "share-loss" | "deactivated" | null;
+
 	interface ObservationToolState {
 		completion: Decision | null;
 		selfRemoved: boolean;
@@ -627,9 +621,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const parsed = parseDecision(text);
 			decisions = parsed ? [parsed] : null;
 		}
-		if (!decisions || decisions.length === 0) {
-			const stopped = decisionFromLoopStopReason(loopStopReason);
-			decisions = stopped ? [stopped] : null;
+		if ((!decisions || decisions.length === 0) && loopStopReason !== null) {
+			decisions = [{
+				action: "noop",
+				reason: loopStopReason === "share-loss" ? "codex cache sharing lost mid-observation" : "head deactivated mid-observation",
+				message: "",
+			}];
 		}
 		if (!decisions || decisions.length === 0) {
 			if (job.completionMode === "enum") throw new Error("classifyJudgeResponse returned neither findings nor an error");
@@ -797,7 +794,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
-		let loopGuard = { iterations: 0 };
+		let iterations = 0;
 		const toolState: ObservationToolState = {
 			completion: null,
 			selfRemoved: false,
@@ -807,7 +804,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Fixed for the whole loop, and the reason the loop can be stopped by
 		// sharing being given up.
 		const sharedSession = sessionId !== undefined && sessionId !== observerSessionId;
-		let stoppedForShareLoss = false;
 		let messages: Awaited<ReturnType<typeof runAgentLoop>>;
 		try {
 			messages = await runAgentLoop(
@@ -871,32 +867,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						}
 						return undefined;
 					},
-					// Not a cost limit. Stops a loop that is never going to
-					// reach a decision, and stops early if the head is turned
-					// off part-way through. A loop running inside the driver's
-					// own session also stops the moment sharing is given up,
-					// so a transport change mid-loop cannot leave a head
-					// writing into the driver's session for another 25 turns.
+					// Cache safety comes before completion or removal.
+					// Count calls for reporting, not as a work limit.
 					finishTurn: () => {
-						let shareLost = false;
-						if (sharedSession) {
-							if (!unsafeForceShare) {
-								codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
-							}
-							shareLost = codexShareLostReason !== null;
+						iterations++;
+						if (sharedSession && !unsafeForceShare) {
+							codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
 						}
-						const advanced = advanceObservationLoopGuard(loopGuard, {
-							shareLost,
-							completed: toolState.completion !== null || toolState.selfRemoved,
-							headActive: registry.isActive(job.head),
-							maxIterations: MAX_TOOL_ITERATIONS,
-						});
-						loopGuard = advanced.state;
-						loopStopReason = advanced.stopReason;
-						if (advanced.stopReason === "share-loss") {
-							stoppedForShareLoss = true;
+						if (sharedSession && codexShareLostReason !== null) {
+							loopStopReason = "share-loss";
+						} else if (toolState.completion !== null || toolState.selfRemoved) {
+							return { action: "end" as const };
+						} else if (!registry.isActive(job.head)) {
+							loopStopReason = "deactivated";
 						}
-						return advanced.stopReason !== null ? { action: "end" as const } : undefined;
+						return loopStopReason !== null ? { action: "end" as const } : undefined;
 					},
 					afterToolCall: async (event) => {
 						// Records which tools the head used, for /hydra-stats.
@@ -917,10 +902,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					if (event.type === "message_end" && event.message.role === "assistant") {
 						usages.push(flattenUsage((event.message as AssistantMessage).usage));
 					}
-					},
-					signal,
-					transport,
-				);
+				},
+				signal,
+				transport,
+			);
 		} catch (error) {
 			if (!signal.aborted) {
 				notifyUser(
@@ -947,23 +932,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			return null;
 		}
-		if (stoppedForShareLoss && response.stopReason === "toolUse") {
+		if (loopStopReason === "share-loss" && response.stopReason === "toolUse") {
 			job.ctx.ui.notify(
-				`hydra: ${job.head} wound down after ${loopGuard.iterations} turn${loopGuard.iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`,
+				`hydra: ${job.head} wound down after ${iterations} turn${iterations === 1 ? "" : "s"} (codex cache sharing lost mid-loop)`,
 				"warning",
 			);
-		} else if (
-			response.stopReason === "toolUse" &&
-			toolState.completion === null &&
-			!toolState.selfRemoved &&
-			registry.isActive(job.head)
-		) {
-			job.ctx.ui.notify(`hydra: ${job.head} hit ${MAX_TOOL_ITERATIONS} turns without deciding; wound down`, "warning");
 		}
 		return {
 			response,
 			usages,
-			iterations: loopGuard.iterations,
+			iterations,
 			toolsUsed,
 			decisions: toolState.completion ? [toolState.completion] : null,
 			parseError: null,

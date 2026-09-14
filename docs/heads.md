@@ -74,7 +74,7 @@ Authoring guidance for heads that act:
 1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
 2. **Report what the main assistant needs, not routine work.** Hydra does not announce a head's writes; each acting head is told to report changes the main assistant needs to know about and to keep routine notes, logs or scores to itself.
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
-4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
+4. **No turn or cost limit.** Hydra does not stop a head just because it has made a set number of model or tool calls. Model-call counts and cost are shown in `/hydra-stats`. Finishing the check, turning the head off, closing the session, or unsafe cache sharing still stops it. Provider and tool limits still apply.
 
 When a head uses `manage_heads` to change the active heads, Hydra steers what changed and the head's explanation to the main assistant, as that head. Failed calls and calls that change nothing send nothing. A head whose `tools` list includes `hydra` also sees the active heads when its check starts; later tool results may show a newer list.
 
