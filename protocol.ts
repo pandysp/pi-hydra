@@ -1,4 +1,5 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { OBSERVER_DELIVERY_GUIDANCE } from "./utils";
 
 /**
  * The driver and every head are shown the same tool description. They have to
@@ -20,7 +21,7 @@ export const hydraToolParameters = Type.Object(
 		delivery: Type.Optional(
 			StringEnum(["none", "print", "steer", "interrupt"] as const, {
 				description:
-					"complete_observation only: none=no feedback; print=user only; steer=normal agent delivery at its next checkpoint; interrupt=emergency abort",
+					"complete_observation only: none=no feedback; print=user only, no driver action; steer=normal non-aborting driver delivery at its next checkpoint; interrupt=emergency abort",
 			}),
 		),
 		message: Type.String({
@@ -112,10 +113,8 @@ export function hydraToolDescription(userHeadDir: string): string {
 		"automatically prints that explanation. `complete_observation` is reserved",
 		"for an active head. Keep feedback concise, ideally under 240 characters.",
 		"Use `none` for no feedback;",
-		"`print` only when the",
-		"agent need not act; `steer` is the normal and only way to reach the agent",
-		"and folds in at its next checkpoint; and `interrupt` is reserved",
-		"for an emergency that must abort the run. Heads are markdown files in",
+		OBSERVER_DELIVERY_GUIDANCE,
+		"Heads are markdown files in",
 		`${userHeadDir} (user) and .pi/hydra (project):`,
 		"frontmatter `name:` and `description:` are required; `tools:` is omitted",
 		"for all tools, `[]` for a judge-only head, or a comma-separated subset;",

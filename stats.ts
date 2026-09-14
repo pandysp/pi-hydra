@@ -5,6 +5,7 @@
  * /hydra-stats) stays in index.ts, which owns the UI.
  */
 import type { Action, HydraConfig, PersistedDelivery } from "./utils";
+import type { JudgeErrorKind } from "./judge";
 
 export type ObserveKind = "piggyback" | "run-end";
 
@@ -40,13 +41,15 @@ export interface HydraCall {
 	// Text blocks of the final response. Judging heads keep up to 2000 chars
 	// (a findings list is short and worth keeping whole), acting heads 200.
 	rawResponse?: string;
-	// Diagnostics for answers that did not parse. A judging head that thinks
-	// and then says nothing looks identical to a truncated one in
-	// `rawResponse`; these fields tell them apart after the fact.
+	// Completion diagnostics distinguish protocol failures, truncation and
+	// empty/thinking-only answers even when rawResponse looks the same.
 	stopReason?: string;
 	reasoningTokens?: number;
 	thinking?: string;
 	parseError?: string;
+	judgeErrorKind?: JudgeErrorKind;
+	/** Bounded names only, never tool arguments. Judges do not execute them. */
+	attemptedTools?: string[];
 	// Acting heads only: model turns in the tool loop and the tools executed.
 	iterations?: number;
 	toolsUsed?: string[];

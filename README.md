@@ -105,7 +105,9 @@ A judge-only head can return several independent findings in one review. hydra g
 | `interrupt` | Abort an active run and deliver the finding; when idle, start the next run with it. This is the emergency cord. |
 | no finding | Deliver nothing; `/hydra-stats` records a noop. |
 
-An interrupt from a snapshot the driver has already moved past is demoted to steer rather than aborting newer work. Acting heads can inspect or change the workspace through their allowed tools before deciding. The old queue route remains internal for compatibility but is not offered to current heads.
+An interrupt from a snapshot the driver has already moved past is demoted to steer rather than aborting newer work. Acting heads can inspect or change the workspace through their allowed tools before deciding. Successful write/edit calls send a path notice at the next checkpoint so the driver can reread changed files. The old queue route remains internal for compatibility but is not offered to current heads.
+
+Correctable judge-protocol failures can also put a bounded runtime notice into context for later observations. These notices do not execute rejected tool requests or wake an idle driver. See [Runtime notices](docs/architecture.md#runtime-notices). Feedback requiring driver action must not rely on `print`; [issue #20](https://github.com/pandysp/pi-hydra/issues/20) explores delivery for users who only read the final answer.
 
 ## Heads and subagents solve different problems
 
