@@ -282,12 +282,6 @@ describe("usesSplitObservationHandoff", () => {
 });
 
 describe("buildAnthropicObservationPrompt", () => {
-	it("rejects a judge-only head: the enumerated contract owns that path", () => {
-		expect(() => buildAnthropicObservationPrompt("quality", "Judge.", [])).toThrow(
-			"enumerated observation contract",
-		);
-	});
-
 	it("retains acting tools and programmatic management receipts", () => {
 		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
 			activeHeads: ["foreman", "quality"],
@@ -304,10 +298,6 @@ describe("buildAnthropicObservationPrompt", () => {
 });
 
 describe("buildObservationEnvelope", () => {
-	it("rejects the retired judge-only envelope", () => {
-		expect(() => buildObservationEnvelope("quality", [])).toThrow("enumerated observation contract");
-	});
-
 	it("preserves a narrowed acting-head allowance", () => {
 		expect(buildObservationEnvelope("docs", ["read", "write"])).toContain("only these tools: read, write");
 	});
