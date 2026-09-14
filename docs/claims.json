@@ -121,6 +121,11 @@
         },
         {
           "path": "index.ts",
+          "start": "afterToolCall: async (event) => {",
+          "end": "async (event) => {"
+        },
+        {
+          "path": "index.ts",
           "start": "function reportJudgeFailure(",
           "end": "function deliveryGateway("
         },
@@ -135,7 +140,7 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "be2de135d9ed11d7d0ed3600c105d246fba55694a17461a762627025fe915c74",
+        "codeHash": "ba0bb76627f9ecc2f850af02062bc16bb57900aad7c69840b91473a513d0f5c7",
         "docHash": "cc1fc8c3dfbb742a3c58fc56f2b1ac19d9b44feb0ccfd77eb28b1a6d18d07df4"
       }
     },

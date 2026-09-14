@@ -283,6 +283,22 @@ describe("bounded runtime reports", () => {
 });
 
 describe("acting file notices through real tools", () => {
+	it.each([false, true])("a successful read neither announces a mutation nor resets a prior write (%s)", async (wrote) => {
+		const h = await harness({ tools: "read, write", afterChange: "noop" });
+		writeFileSync(join(h.cwd, "work.txt"), "before");
+		await h.observe(
+			...(wrote ? [answer([tool("write", { path: "work.txt", content: "after" })], "toolUse")] : []),
+			answer([tool("read", { path: "work.txt" })], "toolUse"),
+			answer([text('{"action":"steer","reason":"checked","message":"Completion note"}')]),
+		);
+		await h.waitCalls(1);
+		expect(h.payloads.at(-1)).toHaveProperty("messages", expect.arrayContaining([
+			expect.objectContaining({ role: "toolResult", toolName: "read", isError: false }),
+		]));
+		expect(h.pi.sendMessage).toHaveBeenCalledTimes(wrote ? 1 : 0);
+		expect(h.calls()[0].action).toBe(wrote ? "noop" : "steer");
+	});
+
 	it.each(["noop", "print"])("announces successful write/edit before completion independently of after-change %s", async (afterChange) => {
 		const h = await harness({ tools: "write, edit", afterChange });
 		await h.observe(
@@ -361,6 +377,8 @@ describe("acting file notices through real tools", () => {
 		const h = await harness({ tools: "write, edit" });
 		mkdirSync(join(h.cwd, "directory"));
 		await h.observe(
+			answer([tool("write", { content: "missing path" })], "toolUse"),
+			answer([tool("edit", { edits: [{ oldText: "before", newText: "after" }] })], "toolUse"),
 			answer([tool("write", { path: "directory", content: "bad" })], "toolUse"),
 			answer([tool("edit", { path: "missing", edits: [{ oldText: "before", newText: "after" }] })], "toolUse"),
 			answer([text('{"action":"noop","reason":"failed","message":""}')]),

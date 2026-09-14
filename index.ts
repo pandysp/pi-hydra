@@ -960,9 +960,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						if (hydraAction !== "complete_observation") {
 							toolsUsed.push(event.toolCall.name);
 						}
-						toolState.fileStateChanged ||=
-							!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit");
-						if (!event.isError) {
+						if (!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit")) {
+							toolState.fileStateChanged = true;
 							announceWrite(job, event.toolCall);
 						}
 						return undefined;
@@ -1099,10 +1098,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Success notices carry paths, not refreshed contents. Failed/aborted tools
 	// can still change disk, and bash mutations are not tracked here.
 	function announceWrite(job: Observation, toolCall: ToolCall) {
-		if (toolCall.name !== "write" && toolCall.name !== "edit") {
-			return;
-		}
-		const path = typeof toolCall.arguments.path === "string" ? toolCall.arguments.path : "a file";
+		const path = toolCall.arguments.path;
 		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write" };
 		try {
 			pi.sendMessage(
