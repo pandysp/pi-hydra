@@ -37,7 +37,16 @@ export interface HydraCall {
 	// since, so counting them would look like a cache problem that is not
 	// there.
 	hitRatio: number;
+	// Text blocks of the final response. Judging heads keep up to 2000 chars
+	// (a findings list is short and worth keeping whole), acting heads 200.
 	rawResponse?: string;
+	// Diagnostics for answers that did not parse. A judging head that thinks
+	// and then says nothing looks identical to a truncated one in
+	// `rawResponse`; these fields tell them apart after the fact.
+	stopReason?: string;
+	reasoningTokens?: number;
+	thinking?: string;
+	parseError?: string;
 	// Acting heads only: model turns in the tool loop and the tools executed.
 	iterations?: number;
 	toolsUsed?: string[];
