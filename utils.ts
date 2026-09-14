@@ -140,8 +140,8 @@ export function decisionFromLoopStopReason(stopReason: ObservationLoopStopReason
 /**
  * Decides whether an acting head's loop keeps going after one model turn.
  *
- * A head now finishes by calling a tool, so the loop can stop on the same turn
- * rather than spending another one asking it to write out a final answer.
+ * Codex acting heads finish by calling a tool; Anthropic acting heads return
+ * JSON. Either completion stops the loop without another model turn.
  * Losing cache sharing beats everything else, because that is a safety stop
  * rather than a tidiness one. The turn limit only matters while the head still
  * has not decided anything.
@@ -428,16 +428,17 @@ function toolAllowance(tools: string[] | undefined): string {
 	return tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
 }
 
+export const OBSERVER_DELIVERY_GUIDANCE =
+	'Choose by recipient: "print" is a user-only note and never reaches the driver; do not use it for feedback that requires driver action. "steer" is the normal non-aborting driver channel, including work that can wait; it arrives at the next checkpoint. "interrupt" is distinct: an emergency that must abort the run.';
+
+export const OBSERVER_GUIDANCE =
+	"Follow the lens: it decides what to look for and how much to report. Stay within its scope. The driver may have advanced beyond this snapshot. Do not echo its plan or hedges, or suggest already-planned work unless that plan is itself the issue. Ground each finding in a short quote or precise reference; identify missing evidence explicitly rather than treating it as proof of a defect.";
+
+const WRITE_NOTICE_GUIDANCE =
+	"The runtime announces successful write/edit paths at the driver's next checkpoint, independently of your completion; do not repeat the path notice. It does not refresh earlier reads: the driver should reread relevant files before relying on older contents. Failed or aborted tools may still have changed disk; bash mutations are not tracked.";
+
 function completionProtocol(head: string): string {
-	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. Choose by recipient: "print" is a user-only note when the agent need not act; "steer" delivers to the agent whether it can wait or not, and folds in at its next checkpoint; "interrupt" is only for an emergency that must abort the run. Steering is the normal and only way to reach the agent. Don't prefix message with [${head}].`;
-}
-
-function actingDecisionProtocol(head: string, afterChange: AfterChangeAction | undefined): string {
-	return `${actingDeliveryProtocol(afterChange)} ${completionProtocol(head)} Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
-}
-
-function judgingDecisionProtocol(head: string, steerTarget: "correct the agent" | "deliver a lens finding"): string {
-	return `Deliver no feedback unless something warrants it. Print a note the user sees but the agent does not. Steer to ${steerTarget}, whether it can wait or not. Interrupt only for emergencies that must stop the line. No work tools, no "let me check...", no follow-up turn, and no unsupported claims. ${completionProtocol(head)}`;
+	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].`;
 }
 
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
@@ -447,8 +448,8 @@ function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string
 	return ` Hydra snapshot at observation start: active heads are ${activeHeads.join(", ") || "none"}; later hydra tool results supersede this snapshot.`;
 }
 
-const EVIDENCE_GUIDANCE =
-	"Judge each candidate only against semantically related delivery records; unrelated pending feedback does not reduce its eligibility. Inspect the visible trajectory for what happened after related feedback. Explicit rejection or a material change supports a follow-up. A defect merely remaining unresolved is not evidence that feedback was ignored: prefer waiting when it is pending or just delivered with no response, and do not repeat it after it was fixed. These are considerations, not suppression rules; make the final judgment under the lens.";
+export const FOLLOW_UP_GUIDANCE =
+	"Compare only related feedback. Do not repeat pending or fixed feedback; unresolved does not mean ignored. A follow-up needs evidence the concern still applies after considering a visible response, or materially changed evidence. Apply the lens's own repetition rules too.";
 
 /**
  * What a head is told about an earlier delivery leaves out how it was routed,
@@ -475,19 +476,19 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 			message: item.message,
 		})),
 	};
-	return `Delivery context (factual data, not a repetition policy): ${JSON.stringify(visible)}. lastByThisHead is this head's most recent delivery accepted by the runtime. pending messages have not reached the driver yet. Use these facts under the lens's own judgment about whether and what to deliver. ${EVIDENCE_GUIDANCE}`;
+	return `Delivery context: ${JSON.stringify(visible)}. lastByThisHead is this head's most recent delivered message, with its recipient; pending messages have not reached the driver yet. ${FOLLOW_UP_GUIDANCE}`;
 }
 
 function enumeratedDecisionProtocol(head: string): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
 
-List every finding the lens surfaces, each as its own entry with its own action; empty findings array if none. Do not rank them or pick one. Print a note the user sees but the agent does not. Steer to deliver a message to the agent, whether it can wait or not. Steering is the normal and only way to reach the agent and folds in at its next checkpoint. Interrupt only for emergencies that must stop the line. No tools, no "let me check...", no follow-up turn. Don't prefix message with [${head}].`;
+Use one entry per finding you choose to report under the lens; empty findings array if none. ${OBSERVER_DELIVERY_GUIDANCE} Tool requests will not execute. There is no repair or follow-up turn. Don't prefix message with [${head}].`;
 }
 
 /** The answering rules plus what has already been delivered, sent separately. */
 export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
-	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it. Review the visible trajectory. You have no work tools.
+	return `Side watcher. The preceding user message is the complete ${head} lens. This is a single-call review; replayed tool definitions are not executable here. ${OBSERVER_GUIDANCE}
 
 ${enumeratedDeliveryContext(context)}
 
@@ -500,7 +501,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	instruction: string,
 	context: DeliveryContext,
 ): string {
-	return `<system-reminder>Side watcher. You have no work tools. Review the visible trajectory through the lens below. Follow the lens in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it.
+	return `<system-reminder>Side watcher. This is a single-call review; replayed tool definitions are not executable here. ${OBSERVER_GUIDANCE}
 
 LENS: ${instruction}
 
@@ -598,57 +599,20 @@ export function buildAnthropicObservationPrompt(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	if (headActs(tools)) {
-		const postChange =
-			options.afterChange === "print"
-				? "After a successful write or edit, print a concise note describing it."
-				: options.afterChange === "noop"
-					? "After a successful write or edit, noop because the changed file is the work product."
-					: "";
-		return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation.${actingDeliveryContext(options.deliveryContext)}
+	const postChange =
+		options.afterChange === "print"
+			? "After a successful write or edit, print a concise note describing it."
+			: options.afterChange === "noop"
+				? "After a successful write or edit, noop because the changed file is the work product."
+				: "";
+	return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens. The driver does not see your tool calls or their results. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation. ${OBSERVER_GUIDANCE} ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 LENS: ${instruction}
 
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-${postChange} Otherwise noop unless feedback is warranted. Print only when the user should see a note but the agent need not act. Steer to deliver to the agent whether it can wait or not; steering folds in at its next checkpoint. Interrupt only for emergencies. Don't prefix message with [${head}].</system-reminder>`;
-	}
-	// Judge-only Anthropic heads go through the numbered-findings builder
-	// instead. The older wording this branch used to produce is kept frozen in
-	// experiments/frozen-footer-protocol.mjs so past results stay comparable.
-	throw new Error(`judge-only head ${head} must use the enumerated observation contract`);
-}
-
-/**
- * Wraps a head's instruction with the rules for answering. Kept deliberately
- * short: everything else in the request is already cached, so these are the
- * only words the observation actually pays for.
- *
- * Judge-only heads are told flatly that they may not use tools. A softer
- * wording is not enough, because the head is reading a conversation full of
- * the driver's own tool calls and will follow suit and go looking around.
- * Heads that may act get the permissive version, with their allowed tools
- * spelled out when the file limits them.
- */
-export function buildObservationPrompt(
-	head: string,
-	instruction: string,
-	tools: string[] | undefined,
-	options: ObservationProtocolOptions = {},
-): string {
-	if (headActs(tools)) {
-		return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
-
-LENS: ${instruction}
-
-${actingDecisionProtocol(head, options.afterChange)}</system-reminder>`;
-	}
-	return `<system-reminder>Side watcher. You have no work tools. The hydra action complete_observation is available only to return your decision.
-
-LENS: ${instruction}
-
-${judgingDecisionProtocol(head, "correct the agent")}</system-reminder>`;
+${postChange} Otherwise use noop when no feedback warrants delivery. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].</system-reminder>`;
 }
 
 /**
@@ -661,12 +625,9 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	if (headActs(tools)) {
-		return `Side watcher with tool access. The preceding user message is the complete ${head} lens, not merely a topic label. Follow it in full except where it conflicts with this envelope's protocol and tool constraints. The lens alone defines what is in scope, what warrants intervention, and its suppression or deduplication rules; treat all of those as binding and do not broaden them.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
+	return `Side watcher with tool access. The preceding user message is the complete ${head} lens. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens. The driver does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${actingDecisionProtocol(head, options.afterChange)}`;
-	}
-	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full except where it conflicts with this protocol. The lens alone defines scope, intervention criteria, suppression, and deduplication; do not broaden it. Review the visible trajectory. You have no work tools. When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" and message "" when no feedback is warranted. Otherwise keep the message concise, ideally under 240 characters. Choose delivery by recipient and urgency: print is a user-only note; queue is agent action later; steer is agent action before current work continues; interrupt is emergency abort. No tools, no "let me check...", no follow-up turn, and no unsupported claims. Don't prefix message with [${head}].`;
+${actingDeliveryProtocol(options.afterChange)} ${completionProtocol(head)} Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {

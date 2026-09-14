@@ -7,9 +7,10 @@
  * entries the driver itself wrote (97%+ hit ratio on Anthropic; on OpenAI
  * Codex the backend's commit latency bounds it lower, see
  * docs/architecture.md). The head
- * returns a validated delivery decision (typed `hydra` completion on OpenAI,
- * compact JSON on Anthropic) naming where its finding lands: nowhere, the
- * TUI, the agent's next turn, its current run, or an emergency abort.
+ * returns validated feedback: judges use findings JSON on both providers;
+ * acting heads use a typed `hydra` completion on Codex and compact JSON on
+ * Anthropic. Print reaches only the user, steer reaches the driver without
+ * aborting, and interrupt aborts for an emergency.
  *
  * A head is one markdown file: frontmatter for identity and capabilities,
  * body for the instruction. Files live in ~/.pi/agent/hydra (user) and
@@ -17,7 +18,7 @@
  * default a head may run the driver's own tools through pi's agent loop
  * before deciding; `tools: []` makes a judge-only head, a list narrows the
  * executable set. Every loop call replays the same byte-true prefix; every
- * file write is announced to the session.
+ * successful write/edit is announced at the driver's next checkpoint.
  *
  * Observations fire at the driver's own cache commit points (see
  * experiments/README.md for the empirical basis):
@@ -87,6 +88,8 @@ import {
 } from "./protocol";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
 import { HeadScheduler } from "./scheduler";
+import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS, JudgeReports } from "./judge";
+import type { JudgeResult } from "./judge";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
 import type { HydraCall, ObserveKind } from "./stats";
 import {
@@ -96,7 +99,6 @@ import {
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
-	buildObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	decisionFromLoopStopReason,
@@ -108,7 +110,6 @@ import {
 	mergeObservationPayload,
 	mergeOpenAIObservationPayload,
 	parseDecision,
-	parseEnumeratedDecision,
 	parseHeadList,
 	parseShutdownGrace,
 	selectFinalAssistant,
@@ -342,16 +343,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				completionMode: "json",
 			};
 		}
-		return usesSplitObservationHandoff(ctx.model?.api)
-			? {
-					prompt: instruction,
-					envelope: buildObservationEnvelope(name, tools, protocol),
-					completionMode: "tool",
-				}
-			: {
-					prompt: buildObservationPrompt(name, instruction, tools, protocol),
-					completionMode: "tool",
-				};
+		// The supported-provider gate leaves Codex as the other acting path.
+		return {
+			prompt: instruction,
+			envelope: buildObservationEnvelope(name, tools, protocol),
+			completionMode: "tool",
+		};
 	}
 
 	// The exact request the driver last sent, kept byte for byte so an
@@ -416,6 +413,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// branch on restore. Live queue state never crosses branch navigation.
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
+	const judgeReports = new JudgeReports();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
@@ -449,6 +447,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
+		judgeReports.restore(ctx.sessionManager.getBranch());
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}
@@ -458,19 +457,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// One observation's outcome. Judge-only heads return enumerated JSON;
 	// acting heads complete through their provider's established channel.
-	interface ObserveOutcome {
+	interface ObserveOutcome extends JudgeResult {
 		response: AssistantMessage;
 		usages: ObservationUsage[];
 		iterations: number;
 		toolsUsed: string[];
-		decisions: Decision[] | null;
 		selfRemoved: boolean;
 		fileStateChanged: boolean;
 		loopStopReason: ObservationLoopStopReason;
-		// Judging heads only: why the findings list did not parse, verbatim from
-		// the parser. Kept for the record so a noop can be told apart from a
-		// broken answer after the fact.
-		parseError: string | null;
+		failureHint?: string;
 	}
 
 	interface ObservationToolState {
@@ -641,13 +636,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			fileStateChanged,
 			loopStopReason,
 			parseError,
+			errorKind,
+			attemptedTools,
 		} = outcome;
 		const summary = summarizeLoopUsage(usages);
 
-		// A zero-usage, zero-content response is a provider hiccup (e.g. an
-		// overload surfaced as an empty result), not an observation.
-		if (summary.input + summary.cacheRead + summary.cacheWrite === 0 && response.content.length === 0) {
-			notifyUser(job.ctx, "hydra: observation call returned empty response (provider overloaded?)", "warning");
+		// Judges record even empty, zero-usage answers as failed observations.
+		if (job.completionMode !== "enum" && summary.input + summary.cacheRead + summary.cacheWrite === 0 && response.content.length === 0) {
+			notifyUser(job.ctx, "hydra: observation call returned no content and zero input usage", "warning");
 			return;
 		}
 
@@ -657,6 +653,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// already been reported to the user, and asking a head that no longer
 		// exists for a decision would only be slower and open a race.
 		let decisions = outcomeDecisions;
+		if (errorKind) {
+			const kind = errorKind;
+			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
+			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
+			notifyUser(
+				job.ctx,
+				`hydra: ${job.head} ${kind}: ${JUDGE_ERROR_DESCRIPTIONS[kind]}${detail}${tools}; stopReason=${response.stopReason}; recorded as noop${outcome.failureHint ?? ""}`,
+				kind === "provider-error" ? "error" : "warning",
+			);
+			decisions = [{ action: "noop", reason: kind, message: "" }];
+		}
 		if ((!decisions || decisions.length === 0) && selfRemoved) {
 			decisions = [{ action: "noop", reason: "completed by self-removal", message: "" }];
 		}
@@ -672,17 +679,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			decisions = stopped ? [stopped] : null;
 		}
 		if (!decisions || decisions.length === 0) {
-			const reason =
-				job.completionMode === "enum"
-					? "unparseable enumerated decision"
-					: job.completionMode === "json"
-						? "unparseable Anthropic decision"
-						: "missing completion tool call";
+			if (job.completionMode === "enum") throw new Error("judge classifier returned neither findings nor a diagnostic");
+			const reason = job.completionMode === "json" ? "unparseable Anthropic decision" : "missing completion tool call";
 			warnOnce(
 				job.ctx,
-				job.completionMode === "enum"
-					? `hydra: ${job.head} answered with an unparseable findings list (${parseError ?? "no parser error"}); recorded as noop`
-					: job.completionMode === "json"
+				job.completionMode === "json"
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
 					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
 			);
@@ -722,11 +723,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			reasoningTokens: response.usage.reasoning,
 			thinking: thinking.length > 0 ? clip(thinking, 2000) : undefined,
 			parseError: parseError ?? undefined,
+			judgeErrorKind: errorKind ?? undefined,
+			attemptedTools: attemptedTools.length ? attemptedTools : undefined,
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
 		};
 		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
+		if (errorKind) reportJudgeFailure(job, outcome);
 
 		registry.revertDiagnosticAfterFire(registryGateway(job.ctx), job.head);
 		updateFooter(job.ctx);
@@ -792,29 +796,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		let response: AssistantMessage;
 		try {
 			response = await call([...baseMessages, prompt]);
-			if (signal.aborted || response.stopReason === "error" || response.stopReason === "aborted") {
-				if (!signal.aborted) {
-					notifyUser(
-						job.ctx,
-						`hydra: observation failed: ${response.errorMessage ?? response.stopReason}${observationFailureHint(transport, response.errorMessage ?? "")}`,
-						"error",
-					);
-				}
-				return null;
-			}
-			const parsed = parseEnumeratedDecision(
-				response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
-			);
+			if (signal.aborted) return null;
+			const classified = classifyJudgeResponse(response);
 			return {
 				response,
 				usages,
 				iterations: 1,
 				toolsUsed: [],
-				decisions: parsed.decisions,
+				...classified,
 				selfRemoved: false,
 				fileStateChanged: false,
 				loopStopReason: null,
-				parseError: parsed.error,
+				failureHint: classified.errorKind === "provider-error" ? observationFailureHint(transport, response.errorMessage ?? "") : undefined,
 			};
 		} catch (error) {
 			if (!signal.aborted) {
@@ -956,7 +949,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						return advanced.stopReason !== null;
 					},
 					afterToolCall: async (event) => {
-						if (signal.aborted) return undefined;
+						// A successful mutation remains a fact if cancellation follows.
+						if (job.branchGeneration !== branchGeneration) return undefined;
 						const hydraAction =
 							event.toolCall.name === "hydra" &&
 							typeof event.toolCall.arguments === "object" &&
@@ -966,9 +960,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						if (hydraAction !== "complete_observation") {
 							toolsUsed.push(event.toolCall.name);
 						}
-						toolState.fileStateChanged ||=
-							!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit");
-						if (!event.isError) {
+						if (!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit")) {
+							toolState.fileStateChanged = true;
 							announceWrite(job, event.toolCall);
 						}
 						return undefined;
@@ -1028,6 +1021,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			toolsUsed,
 			decisions: toolState.completion ? [toolState.completion] : null,
 			parseError: null,
+			errorKind: null,
+			attemptedTools: [],
 			selfRemoved: toolState.selfRemoved,
 			fileStateChanged: toolState.fileStateChanged,
 			loopStopReason,
@@ -1063,10 +1058,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const workTools =
 			allowed === undefined ? standardObservationTools : standardObservationTools.filter((tool) => allowed.includes(tool.name));
-		// Every head gets this tool, including judge-only ones, because it is
-		// how a head reports its decision. Permission is checked per action
-		// instead, so there is only one tool for a model to learn rather than
-		// a separate observer-only variant.
+		// Acting heads get the shared hydra tool. Codex uses it to complete;
+		// Anthropic completes as JSON. Management permission is checked per
+		// action. Judges never enter this loop.
 		return [
 			...workTools,
 			{
@@ -1087,25 +1081,38 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		];
 	}
 
-	// Every file a head writes gets a one-line note, so the driver is never
-	// surprised by files changing under it. This is a record of what happened,
-	// not the head's opinion. Files written from inside a head's bash commands
-	// are not caught here. Known limitation.
-	function announceWrite(job: Observation, toolCall: ToolCall) {
-		if (toolCall.name !== "write" && toolCall.name !== "edit") {
-			return;
+	function reportJudgeFailure(job: Observation, result: Pick<JudgeResult, "errorKind" | "attemptedTools">) {
+		const report = buildJudgeReport(job.head, result);
+		if (!report) return;
+		if (!judgeReports.stage(report.details)) return;
+		try {
+			// Pi reports async send errors. Consumption, restore and settle
+			// reconcile delivery; a send attempt is not an acknowledgment.
+			pi.sendMessage(report, { deliverAs: "steer", triggerTurn: false });
+		} catch (error) {
+			judgeReports.fail(report.details);
+			notifyUser(job.ctx, `hydra: runtime report delivery failed (${errorText(error)})`, "warning");
 		}
-		const path = typeof toolCall.arguments.path === "string" ? toolCall.arguments.path : "a file";
-		const details: FeedbackDetails = { head: job.head, action: "queue", reason: "head file write" };
-		pi.sendMessage(
-			{
-				customType: "hydra-feedback",
-				content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}`,
-				display: true,
-				details,
-			},
-			{ deliverAs: "followUp", triggerTurn: false },
-		);
+	}
+
+	// Success notices carry paths, not refreshed contents. Failed/aborted tools
+	// can still change disk, and bash mutations are not tracked here.
+	function announceWrite(job: Observation, toolCall: ToolCall) {
+		const path = toolCall.arguments.path;
+		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write" };
+		try {
+			pi.sendMessage(
+				{
+					customType: "hydra-feedback",
+					content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}; reread this file before relying on older contents.`,
+					display: true,
+					details,
+				},
+				{ deliverAs: "steer", triggerTurn: false },
+			);
+		} catch (error) {
+			notifyUser(job.ctx, `hydra: ${job.head} changed ${path} but its write notice failed (${errorText(error)})`, "warning");
+		}
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
@@ -1229,6 +1236,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// The first request of a run is skipped, because the observation at the
 	// end of the previous run has already looked at everything before it.
 	pi.on("message_start", (event, ctx) => {
+		if (event.message.role === "custom" && event.message.customType === "hydra-runtime-report") {
+			judgeReports.consume(event.message.details);
+		}
 		if (event.message.role === "user") {
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
@@ -1267,6 +1277,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
+		judgeReports.sync(ctx.sessionManager.getBranch());
+		const undeliveredReports = judgeReports.settle();
+		if (undeliveredReports > 0) {
+			notifyUser(ctx, `hydra: ${undeliveredReports} runtime report(s) never reached the driver; released for retry on a later observation`, "warning");
+		}
 		const orphaned = deliveryLedger.settle();
 		if (orphaned.length > 0) {
 			ctx.ui.notify(
