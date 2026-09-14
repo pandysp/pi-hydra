@@ -1099,7 +1099,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// Success notices carry paths, not refreshed contents. Failed/aborted tools
 	// can still change disk, and bash mutations are not tracked here.
 	function announceWrite(job: Observation, toolCall: ToolCall) {
-		if (job.branchGeneration !== branchGeneration || (toolCall.name !== "write" && toolCall.name !== "edit")) {
+		if (toolCall.name !== "write" && toolCall.name !== "edit") {
 			return;
 		}
 		const path = typeof toolCall.arguments.path === "string" ? toolCall.arguments.path : "a file";
