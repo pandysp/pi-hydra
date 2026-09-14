@@ -441,10 +441,6 @@ function completionProtocol(head: string): string {
 	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].`;
 }
 
-function actingDecisionProtocol(head: string, afterChange: AfterChangeAction | undefined): string {
-	return `${actingDeliveryProtocol(afterChange)} ${completionProtocol(head)} Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
-}
-
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
 	if (activeHeads === undefined || !tools?.includes("hydra")) {
 		return "";
@@ -610,14 +606,13 @@ export function buildAnthropicObservationPrompt(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	if (headActs(tools)) {
-		const postChange =
-			options.afterChange === "print"
-				? "After a successful write or edit, print a concise note describing it."
-				: options.afterChange === "noop"
-					? "After a successful write or edit, noop because the changed file is the work product."
-					: "";
-		return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens. The driver does not see your tool calls or their results. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation. ${OBSERVER_GUIDANCE} ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	const postChange =
+		options.afterChange === "print"
+			? "After a successful write or edit, print a concise note describing it."
+			: options.afterChange === "noop"
+				? "After a successful write or edit, noop because the changed file is the work product."
+				: "";
+	return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens. The driver does not see your tool calls or their results. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation. ${OBSERVER_GUIDANCE} ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 LENS: ${instruction}
 
@@ -625,11 +620,6 @@ When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
 ${postChange} Otherwise use noop when no feedback warrants delivery. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].</system-reminder>`;
-	}
-	// Judge-only Anthropic heads go through the numbered-findings builder
-	// instead. The older wording this branch used to produce is kept frozen in
-	// experiments/frozen-footer-protocol.mjs so past results stay comparable.
-	throw new Error(`judge-only head ${head} must use the enumerated observation contract`);
 }
 
 /**
@@ -642,12 +632,9 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	if (headActs(tools)) {
-		return `Side watcher with tool access. The preceding user message is the complete ${head} lens. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens. The driver does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `Side watcher with tool access. The preceding user message is the complete ${head} lens. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens. The driver does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${actingDecisionProtocol(head, options.afterChange)}`;
-	}
-	throw new Error(`judge-only head ${head} must use the enumerated observation contract`);
+${actingDeliveryProtocol(options.afterChange)} ${completionProtocol(head)} Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {
