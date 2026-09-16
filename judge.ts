@@ -68,10 +68,10 @@ export function buildJudgeReport(head: string, result: Pick<JudgeResult, "errorK
 	};
 	const fact = result.errorKind === "blocked-tool-request"
 		? `A judge-only observation requested tools (${result.attemptedTools.join(", ")}); none executed. Future judge observations must return the required findings JSON, not tool requests.`
-		: "A completed judge-only answer did not match the findings JSON contract. Future judge observations must return one JSON object with a findings array and the required action/reason/message fields.";
+		: "A completed judge-only answer did not match the findings JSON contract. Future judge observations must use that contract.";
 	return {
 		customType: "hydra-runtime-report" as const,
-		content: `Hydra runtime report (not a user request or a lens finding). Head: ${boundedName(head)}. ${fact} The failed observation was recorded as noop, without a repair call. Driver: do not execute the blocked request; you need not acknowledge this notice.`,
+		content: `Hydra runtime report (not a user request or a lens finding). Head: ${boundedName(head)}. ${fact}`,
 		display: true,
 		details,
 	};

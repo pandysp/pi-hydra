@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "f33185a7d64790fec42b0b2cea92f4567a3b15fc61d6ccec6cfe03ee0e54a99a"
+        "docHash": "d3efd84a958a9a04bd3480c0173916f0f7c7a26b281e2a2f22c17c0131d081d8"
       }
     },
     {
@@ -84,8 +84,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "7eee1ab5cce18cc47e7d6f1c265e2a5304e6dfef37b31baaeedbcddf494f38db",
-        "docHash": "83bbfb74922af0bec964a235a612db6321be594b041bd214e431f6f895a0880e"
+        "codeHash": "629f6723b8c11f05942631e874a434925dadd78766265d89b0b5d4124942999d",
+        "docHash": "22727c0c4c467b77e69942a3127ce5b8794f26208d0ca37bee980b5c0c8daad0"
       }
     },
     {
@@ -127,7 +127,7 @@
         {
           "path": "index.ts",
           "start": "function reportJudgeFailure(",
-          "end": "function deliveryGateway("
+          "end": "// One observation per active head"
         },
         {
           "path": "judge.ts",
@@ -140,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "ba0bb76627f9ecc2f850af02062bc16bb57900aad7c69840b91473a513d0f5c7",
-        "docHash": "cc1fc8c3dfbb742a3c58fc56f2b1ac19d9b44feb0ccfd77eb28b1a6d18d07df4"
+        "codeHash": "09204b2bca71ce775ad5501b40f7c0ba33cb9721f5470d65bccb4cc31a25c2ec",
+        "docHash": "a0d785363c7c5f40c082980d0a585b29bb773bac604527b25cb528ac4fe92944"
       }
     },
     {

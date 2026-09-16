@@ -75,7 +75,7 @@ Authoring guidance for heads that act:
 3. **Avoid state-mutating bash mid-run.** The head works while the agent works. Built-in write/edit calls use Pi's file-mutation queue. Successful calls announce the path at the driver's next checkpoint and ask it to reread relevant files; older reads are not refreshed. Writes through bash get neither protection, so keep bash to reads unless you accept that risk. An error or cancellation can follow a filesystem change: no success notice does not prove that disk was untouched.
 4. **Turns are bounded; spend is not.** A head that has not completed after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
 
-Tracked mutations for `after-change` are successful `write` and `edit` calls. Their factual path notices are separate from that completion policy: even `after-change: noop` tells the driver which file changed, without starting a turn if it is idle. The head need not repeat the notice. Any separate finding still follows the declared completion policy; `after-change: noop` suppresses it and `after-change: print` keeps it user-only. Head-set changes have a separate contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
+Tracked mutations for `after-change` are successful `write` and `edit` calls. Their factual path notices are separate from that completion policy: even `after-change: noop` tells the driver which file changed. These [runtime notices](architecture.md#runtime-notices) reach active work but do not start an idle driver; `noop` does not suppress them. The head need not repeat the notice. Any separate finding still follows the declared completion policy; `after-change: noop` suppresses it and `after-change: print` keeps it user-only. Head-set changes have a separate contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
 
 ## Decisions: when findings land
 
@@ -98,7 +98,7 @@ The driver may have advanced while the head was observing. Do not remind it of w
 
 Malformed, empty, truncated, and tool-request judge answers remain failed observations, recorded as noops rather than repaired or interpreted as intentional silence. Correctable protocol failures can also create [runtime notices](architecture.md#runtime-notices) for later observations. These are not head findings and do not execute the rejected request.
 
-Delivered to an idle session, steer and interrupt simply open the next run. `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+In an open session, steer and interrupt start the next run when idle; [shutdown saves the feedback instead](architecture.md#delivery). `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
 
 ## Heads that manage heads
 
@@ -206,7 +206,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Devil's Advocate**: challenge the entire approach. "Why this way and not another?" Zero overlap with code-level review. Do NOT comment on code-level bugs or style; think meta.
 - **Threat-modeler**: attacks the design the way an adversary would, before the code exists.
 
-**Evaluator heads** measure and never intervene. Their findings go to a file or log for later analysis:
+**Evaluator heads** record judgments for later analysis rather than steering findings into the work. File-writing evaluators still produce [runtime notices](architecture.md#runtime-notices), but those do not start idle work:
 
 - **Behavior-annotator**: scores each run against a rubric and appends the scores to an eval log. This is how you run live evals without full-price trajectory replay.
 - **Failure-collector**: records dead ends, retries, and error loops for later analysis of where the agent wastes time.

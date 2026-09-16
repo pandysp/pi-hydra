@@ -1,49 +1,7 @@
 /**
- * hydra: commit-point oversight for pi.
- *
- * Watches the driver's conversation through a side model that replays the
- * driver's exact provider payload with an observation handoff appended. Because
- * the prefix is byte-identical, every observation is a prompt-cache read of
- * entries the driver itself wrote (97%+ hit ratio on Anthropic; on OpenAI
- * Codex the backend's commit latency bounds it lower, see
- * docs/architecture.md). The head
- * returns validated feedback: judges use findings JSON on both providers;
- * acting heads use a typed `hydra` completion on Codex and compact JSON on
- * Anthropic. Print reaches only the user, steer reaches the driver without
- * aborting, and interrupt aborts for an emergency.
- *
- * A head is one markdown file: frontmatter for identity and capabilities,
- * body for the instruction. Files live in ~/.pi/agent/hydra (user) and
- * .pi/hydra (project; a project head shadows a same-named user head). By
- * default a head may run the driver's own tools through pi's agent loop
- * before deciding; `tools: []` makes a judge-only head, a list narrows the
- * executable set. Every loop call replays the same byte-true prefix; every
- * successful write/edit is announced at the driver's next checkpoint.
- *
- * Observations fire at the driver's own cache commit points (see
- * experiments/README.md for the empirical basis):
- *
- * - Piggyback (mid-run): when a driver response begins streaming, the request
- *   that produced it has just been committed to the cache. Replaying that
- *   request is a pure cache read, fresh through the latest tool results.
- * - Run-end (agent_end): no further driver request will carry the final
- *   assistant message M into the cache, so the observation appends M itself,
- *   serialized by pi-ai's own provider code via the onPayload hook. On
- *   Anthropic, the driver's message-level cache marker moves onto M, so the
- *   fork's write also pre-warms the driver's next, human-paced turn. On
- *   OpenAI (GPT-5.6+, implicit breakpoints), no marker exists to move: the
- *   fork reads the warm prefix and pays the newest turn plus its own tail.
- *
- * Usage:
- *   pi install git:github.com/pandysp/pi-hydra
- *   /hydra-heads      no argument opens the picker; an argument sets the
- *                     active heads ("quality,security"), `none` clears them
- *   /hydra-stats      cache hit ratio, cost, and recent decisions
- *   /hydra-debug      dump driver/observation payload pairs for diffing
- *
- * The agent manages head files like any other file and points the heads
- * through the registered `hydra` tool's `manage_heads` action. The active set
- * is session state; everything else about a head lives in its file.
+ * hydra: concurrent specialist observations alongside Pi's driver.
+ * Lifecycle and delivery: docs/architecture.md. Cache mechanics: docs/providers.md.
+ * Usage and head contracts: README.md and docs/heads.md.
  */
 
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -654,15 +612,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// exists for a decision would only be slower and open a race.
 		let decisions = outcomeDecisions;
 		if (errorKind) {
-			const kind = errorKind;
 			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
 			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
 			notifyUser(
 				job.ctx,
-				`hydra: ${job.head} ${kind}: ${JUDGE_ERROR_DESCRIPTIONS[kind]}${detail}${tools}; stopReason=${response.stopReason}; recorded as noop${outcome.failureHint ?? ""}`,
-				kind === "provider-error" ? "error" : "warning",
+				`hydra: ${job.head} ${errorKind}: ${JUDGE_ERROR_DESCRIPTIONS[errorKind]}${detail}${tools}; stopReason=${response.stopReason}; recorded as noop${outcome.failureHint ?? ""}`,
+				errorKind === "provider-error" ? "error" : "warning",
 			);
-			decisions = [{ action: "noop", reason: kind, message: "" }];
+			decisions = [{ action: "noop", reason: errorKind, message: "" }];
 		}
 		if ((!decisions || decisions.length === 0) && selfRemoved) {
 			decisions = [{ action: "noop", reason: "completed by self-removal", message: "" }];
@@ -731,7 +688,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
-		if (errorKind) reportJudgeFailure(job, outcome);
+		reportJudgeFailure(job, outcome);
 
 		registry.revertDiagnosticAfterFire(registryGateway(job.ctx), job.head);
 		updateFooter(job.ctx);
@@ -1087,9 +1044,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!report) return;
 		if (!judgeReports.stage(report.details)) return;
 		try {
-			// Pi reports async send errors. Consumption, restore and settle
-			// reconcile delivery; a send attempt is not an acknowledgment.
-			pi.sendMessage(report, { deliverAs: "steer", triggerTurn: false });
+			// Pi reports async send errors; actual messages establish delivery.
+			pi.sendMessage(report, { deliverAs: "steer" });
 		} catch (error) {
 			judgeReports.fail(report.details);
 			notifyUser(job.ctx, `hydra: runtime report delivery failed (${errorText(error)})`, "warning");
@@ -1109,7 +1065,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					display: true,
 					details,
 				},
-				{ deliverAs: "steer", triggerTurn: false },
+				{ deliverAs: "steer" },
 			);
 		} catch (error) {
 			notifyUser(job.ctx, `hydra: ${job.head} changed ${path} but its write notice failed (${errorText(error)})`, "warning");

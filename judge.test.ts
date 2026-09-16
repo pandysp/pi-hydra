@@ -40,7 +40,8 @@ describe("judge response classification", () => {
 		expect(result.parseError).toContain("PRIVATE instructions");
 		const report = buildJudgeReport("quality", result)!;
 		expect(report.content).toContain("Hydra runtime report (not a user request or a lens finding)");
-		expect(report.content).toContain("you need not acknowledge");
+		expect(report.content).toContain("Future judge observations must use that contract.");
+		expect(report.content).not.toMatch(/acknowledg|driver action/);
 		expect(JSON.stringify(report)).not.toContain("PRIVATE");
 	});
 

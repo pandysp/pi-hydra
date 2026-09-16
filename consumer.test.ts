@@ -43,7 +43,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function consumer(busy: boolean, acting = false) {
+async function consumer(busy: boolean, acting = false, firstObserverResponse?: AssistantMessage["content"]) {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -59,12 +59,15 @@ async function consumer(busy: boolean, acting = false) {
 	const hold = deferred();
 	const entered = deferred();
 	let repeatFailure = false;
+	let observerHold: Promise<void> | null = null;
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 		const request = new Request(input, init);
 		const payload = await request.json();
 		const observing = JSON.stringify(payload.messages).includes("Side watcher");
 		if (observing) {
 			observerPayloads.push(payload);
+			await observerHold;
+			if (observerPayloads.length === 1 && firstObserverResponse) return response(firstObserverResponse);
 			if (observerPayloads.length === 1 || repeatFailure) return response([{ type: "toolCall", id: "blocked-write", name: "write", arguments: { path: "observer.txt", content: "PRIVATE-ARGUMENT" } }]);
 			return response([{ type: "text", text: acting ? '{"action":"noop","reason":"done","message":""}' : '{"findings":[]}' }]);
 		}
@@ -110,8 +113,10 @@ async function consumer(busy: boolean, acting = false) {
 		session.dispose();
 		rmSync(cwd, { recursive: true, force: true });
 	});
-	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, warnings,
+	const entries = (type: string) => sm.getBranch().filter(e => (e.type === "custom" || e.type === "custom_message") && e.customType === type);
+	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, warnings, entries,
 		repeatFailure: () => { repeatFailure = true; },
+		holdObserver: (until: Promise<void>) => { observerHold = until; },
 	};
 }
 
@@ -146,13 +151,89 @@ describe("Pi consumer context and session", () => {
 		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(phrase);
 	});
 
-	it("appends an idle diagnostic without starting a driver turn", async () => {
-		const h = await consumer(false);
+	it.each([{ acting: false, name: "judge report" }, { acting: true, name: "write notice" }])("a late $name leaves a fully idle driver idle and reaches its next user-prompted request", async ({ acting }) => {
+		const h = await consumer(false, acting);
+		if (!acting) h.repeatFailure();
+		const gate = deferred();
+		h.holdObserver(gate.promise);
 		await h.session.prompt("Finish now.");
-		await vi.waitFor(() => expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(1));
-		expect(h.session.isStreaming).toBe(false);
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		expect(h.session.isIdle).toBe(true);
 		expect(h.driverPayloads).toHaveLength(1);
-		expect(h.session.messages.some(m => m.role === "custom" && m.customType === "hydra-runtime-report")).toBe(true);
+		gate.resolve();
+		const type = acting ? "hydra-feedback" : "hydra-runtime-report";
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		await vi.waitFor(() => expect(h.entries(type)).toHaveLength(1));
+		await h.session.waitForIdle();
+		// A runtime fact is recorded, not turned into new work.
+		expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(1);
+		expect(h.session.isIdle).toBe(true);
+		await h.session.prompt("Next task.");
+		expect(h.driverPayloads).toHaveLength(2);
+		const phrase = acting ? "reread this file" : "Hydra runtime report";
+		const delivered = h.driverPayloads[1].messages.filter((message: any) => JSON.stringify(message.content).includes(phrase));
+		expect(delivered).toHaveLength(1);
+		expect(delivered[0].role).toBe("user");
+		if (!acting) expect(JSON.stringify(h.driverPayloads[1])).not.toContain("PRIVATE-ARGUMENT");
+		// The second run ends with its own observation: a repeated judge failure
+		// is deduplicated and the acting head writes nothing more.
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
+		await h.session.waitForIdle();
+		expect(h.entries(type)).toHaveLength(1);
+		expect(h.driverPayloads).toHaveLength(2);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.errors).toEqual([]);
+	});
+
+	it("deliberate observer steering resumes a fully idle driver without a user message", async () => {
+		const h = await consumer(false, false, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"DELIBERATE-STEER"}]}' }]);
+		const gate = deferred();
+		h.holdObserver(gate.promise);
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		expect(h.session.isIdle).toBe(true);
+		gate.resolve();
+		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] DELIBERATE-STEER", undefined);
+		const delivered = h.driverPayloads[1].messages.filter((message: any) => JSON.stringify(message.content).includes("DELIBERATE-STEER"));
+		expect(delivered).toHaveLength(1);
+		expect(delivered[0].role).toBe("user");
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
+		await h.session.waitForIdle();
+		expect(h.driverPayloads).toHaveLength(2);
+		expect(h.entries("hydra-delivery")).toHaveLength(1);
+		expect(h.errors).toEqual([]);
+	});
+
+	it.each([{ acting: false, name: "judge report" }, { acting: true, name: "write notice" }])("a $name finishing during shutdown is recorded without a driver turn", async ({ acting }) => {
+		const h = await consumer(false, acting);
+		const gate = deferred();
+		h.holdObserver(gate.promise);
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		const shutdown = h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		gate.resolve();
+		await shutdown;
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: acting ? "hydra-feedback" : "hydra-runtime-report" }), { deliverAs: "steer" });
+		expect(h.entries(acting ? "hydra-feedback" : "hydra-runtime-report")).toHaveLength(1);
+		expect(h.driverPayloads).toHaveLength(1);
+		expect(h.session.isIdle).toBe(true);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("does not carry a runtime notice across branch navigation after abort", async () => {
+		const h = await consumer(true);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		const firstUser = h.sm.getBranch().find(e => e.type === "message" && e.message.role === "user")!;
+		await h.session.navigateTree(firstUser.id);
+		await h.session.prompt("New branch.");
+		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain("Hydra runtime report");
+		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
 		expect(h.errors).toEqual([]);
 	});
 

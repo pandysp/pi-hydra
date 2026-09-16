@@ -133,12 +133,12 @@ describe("judge observations through the extension", () => {
 		expect(h.calls()[0]).toMatchObject({ action: "noop", judgeErrorKind: "blocked-tool-request", attemptedTools: ["write"], stopReason: "toolUse" });
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 		expect(h.notices()).toHaveLength(1);
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer", triggerTurn: false });
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer" });
 		await h.observe(noop());
 		await h.waitCalls(2);
+		const [report] = vi.mocked(h.pi.sendMessage).mock.calls[0];
 		const payload = JSON.stringify(h.payloads[1]);
-		expect(payload).toContain("Hydra runtime report");
-		expect(payload).toContain("do not execute the blocked request");
+		expect(payload).toContain(JSON.stringify(report.content).slice(1, -1));
 		expect(payload).not.toContain("SECRET-ARGUMENT");
 	});
 
@@ -268,6 +268,19 @@ describe("bounded runtime reports", () => {
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 	});
 
+	it("records a report finishing inside the shutdown grace without starting a driver turn", async () => {
+		const h = await harness();
+		let finish!: (response: AssistantMessage) => void;
+		await h.observe(new Promise(resolve => { finish = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		const shutdown = h.emit({ type: "session_shutdown", reason: "quit" });
+		finish(blocked());
+		await shutdown;
+		expect(h.calls()).toHaveLength(1);
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer" });
+		expect(h.notices()).toHaveLength(1);
+	});
+
 	it("does not inject a response arriving after cancellation", async () => {
 		const h = await harness();
 		let finish!: (response: AssistantMessage) => void;
@@ -310,7 +323,7 @@ describe("acting file notices through real tools", () => {
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("after");
 		expect(h.pi.sendMessage).toHaveBeenCalledTimes(2);
 		for (const [message, options] of vi.mocked(h.pi.sendMessage).mock.calls) {
-			expect(options).toEqual({ deliverAs: "steer", triggerTurn: false });
+			expect(options).toEqual({ deliverAs: "steer" });
 			expect(message.content).toContain("reread");
 		}
 		expect(h.calls()[0].action).toBe(afterChange);
@@ -328,17 +341,18 @@ describe("acting file notices through real tools", () => {
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
 		expect(h.calls()[0]).toMatchObject({ action: afterChange, iterations: 3, toolsUsed: ["write"] });
 		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("reread this file") }), { deliverAs: "steer", triggerTurn: false });
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("reread this file") }), { deliverAs: "steer" });
 		expect(JSON.stringify(h.payloads[2])).toContain('"isError":true');
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("announces a known successful write even if cancellation follows", async () => {
+	it("announces a known successful write even if shutdown follows, recorded without a driver turn", async () => {
 		const h = await harness({ tools: "write" });
 		vi.stubEnv("HYDRA_SHUTDOWN_GRACE_MS", "0");
 		boundary.afterFileTool = () => h.emit({ type: "session_shutdown", reason: "quit" });
 		await h.observe(answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"));
 		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-feedback" }), { deliverAs: "steer" });
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
 		expect(h.calls()).toHaveLength(0);
 	});

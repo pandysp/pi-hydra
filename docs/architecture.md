@@ -57,8 +57,9 @@ Decisions from the September 2026 prompt review:
 | Anchor findings to a short quote or precise reference; name missing evidence. | A plausible reading can become an unsupported conclusion. A reference makes the finding checkable, but does not prove its interpretation correct. Requiring a literal quote for an omission would invite invention. |
 | Say the driver may have moved on. | Observers read snapshots, not a paused driver. A fixed claim that the driver is always one or two steps ahead would be false at run end. Planned work needs no reminder unless that plan is itself the problem. |
 | Keep steer as the normal non-aborting driver channel. | Urgent-only wording can divert useful, actionable feedback into `print`, where the driver never sees it. The user may not watch the live transcript either; [issue #20](https://github.com/pandysp/pi-hydra/issues/20) leaves the future of print open. |
-| Put bounded, correctable protocol errors in context. | A warning only on screen cannot help later observers correct their output. A labeled runtime report carries the known failure without replaying the rejected command or claiming to know why an empty answer occurred. Unbounded reports or waking an idle driver could create a feedback loop. |
-| Move existing write notices to the next checkpoint. | The notice mechanism already existed, but follow-up delivery could leave the driver working on old file contents until its tool loop ended. Reusing it avoids a second notifier; a path notice still requires a fresh read. |
+| Put bounded, correctable protocol errors in context. | A warning only on screen cannot help later observers correct their output. A labeled runtime report carries the known failure without replaying the rejected command or claiming to know why an empty answer occurred. Bounding repeated reports avoids filling context with the same correction. |
+| Deliver existing write notices at the next checkpoint. | Waiting until work ends leaves an active driver relying on old reads. Reusing the existing notifier avoids a second mechanism; a path notice still requires a fresh read. |
+| Keep runtime facts from starting idle work. | Waking on every write makes a file-only evaluator generate a write → response → write cycle. Save the fact when idle; a head needing a response uses the existing steer decision. |
 
 These are design choices, not a measured claim that the new prompts eliminate stale or incorrect findings.
 
@@ -107,12 +108,14 @@ OpenAI acting heads normally finish with the typed `hydra` completion action; su
 
 ## Delivery
 
-Evaluation and delivery are separate:
+Evaluation and delivery are separate. In an open session:
 
 - `print` renders a user-only TUI note in interactive mode and never enters the driver's context;
-- `steer` sends a real user message at the driver's next checkpoint;
+- `steer` sends a real user message at the driver's next checkpoint, or starts the next run when idle;
 - `interrupt` aborts an active run and delivers the finding; when idle, it simply starts the next run with that message;
 - a valid quiet decision is persisted as a noop.
+
+During shutdown, steer and interrupt findings use the internal queue route: they are saved as context instead of restarting an idle driver.
 
 Judge findings are grouped into at most one user-only batch and one agent-directed batch. An interrupt based on a stale snapshot is demoted to steer: one turn of delay is safer than aborting newer work from an old judgment.
 
@@ -120,11 +123,13 @@ A delivery ledger tracks pending and successful findings. The prompt identifies 
 
 ### Runtime notices
 
-Runtime notices are facts about Hydra's operation, not findings from a lens. Successful `write` and `edit` calls announce the head, operation, and path and ask the driver to reread relevant files. The notice is queued at the next checkpoint independently of `after-change`; it does not start a turn when the driver is idle. It does not update older read results or cover writes performed through bash. An error or cancellation can occur after a tool has changed disk, so a missing success notice is not a rollback guarantee.
+Runtime notices are facts about Hydra's operation, not findings from a lens. They reach the next checkpoint while the driver is working. When idle, they are saved for its next request without starting a new response. A head that needs the driver to react uses a steer decision, which can resume idle work.
+
+Successful `write` and `edit` calls announce the head, operation, and path and ask the driver to reread relevant files. The notice is independent of `after-change`; it does not update older read results or cover writes performed through bash. An error or cancellation can occur after a tool has changed disk, so a missing success notice is not a rollback guarantee.
 
 Correctable judge failures—attempted tool calls and malformed nonempty completed answers—also get a labeled context notice. They tell future observations which contract to follow, without asking the driver to replay a rejected tool request or acknowledge the notice. Empty answers, truncation, and provider failures remain diagnostics, not guesses about observer intent.
 
-A protocol-error notice is bounded to one per head and error kind on the selected session branch. Pending and consumed notices are distinct; only actual context messages restore consumed state. Repeated failures remain recorded. Notices do not wake an idle driver or count as lens deliveries. Custom messages still serialize into user-role input; the runtime label identifies their source, not a separate model authority level.
+A protocol-error notice is bounded to one per head and error kind on the selected session branch. Pending and consumed notices are distinct; only actual context messages restore consumed state. Repeated failures remain recorded. Runtime notices do not count as lens deliveries. Custom messages still serialize into user-role input; the runtime label identifies their source, not a separate model authority level.
 
 ## State and observability
 

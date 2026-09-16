@@ -437,10 +437,6 @@ export const OBSERVER_GUIDANCE =
 const WRITE_NOTICE_GUIDANCE =
 	"The runtime announces successful write/edit paths at the driver's next checkpoint, independently of your completion; do not repeat the path notice. It does not refresh earlier reads: the driver should reread relevant files before relying on older contents. Failed or aborted tools may still have changed disk; bash mutations are not tracked.";
 
-function completionProtocol(head: string): string {
-	return `When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].`;
-}
-
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
 	if (activeHeads === undefined || !tools?.includes("hydra")) {
 		return "";
@@ -490,12 +486,12 @@ function enumeratedDecisionProtocol(head: string): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
 
-Use one entry per finding you choose to report under the lens; empty findings array if none. ${OBSERVER_DELIVERY_GUIDANCE} Tool requests will not execute. There is no repair or follow-up turn. Don't prefix message with [${head}].`;
+Use one entry per finding you choose to report under the lens; empty findings array if none. ${OBSERVER_DELIVERY_GUIDANCE} Tool requests will not execute, even when their definitions are replayed. This is a single-call review with no repair or follow-up turn. Don't prefix message with [${head}].`;
 }
 
 /** The answering rules plus what has already been delivered, sent separately. */
 export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
-	return `Side watcher. The preceding user message is the complete ${head} lens. This is a single-call review; replayed tool definitions are not executable here. ${OBSERVER_GUIDANCE}
+	return `Side watcher. The preceding user message is the complete ${head} lens. ${OBSERVER_GUIDANCE}
 
 ${enumeratedDeliveryContext(context)}
 
@@ -508,7 +504,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	instruction: string,
 	context: DeliveryContext,
 ): string {
-	return `<system-reminder>Side watcher. This is a single-call review; replayed tool definitions are not executable here. ${OBSERVER_GUIDANCE}
+	return `<system-reminder>Side watcher. ${OBSERVER_GUIDANCE}
 
 LENS: ${instruction}
 
@@ -619,7 +615,7 @@ LENS: ${instruction}
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-${postChange} Otherwise use noop when no feedback warrants delivery. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].</system-reminder>`;
+${postChange}${postChange ? " Otherwise use" : "Use"} noop when no feedback warrants delivery. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}].</system-reminder>`;
 }
 
 /**
@@ -634,7 +630,7 @@ export function buildObservationEnvelope(
 ): string {
 	return `Side watcher with tool access. The preceding user message is the complete ${head} lens. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens. The driver does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${actingDeliveryProtocol(options.afterChange)} ${completionProtocol(head)} Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
+${actingDeliveryProtocol(options.afterChange)} When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" with message "" when no feedback warrants delivery. Otherwise message must be non-empty and concise, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Don't prefix message with [${head}]. Removing your own head successfully completes the observation; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {
