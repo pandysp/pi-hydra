@@ -24,14 +24,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Install compatibility SDK
+        if: matrix.pi == 'locked'
+      - name: Declare compatibility SDK
         if: matrix.pi != 'locked'
         run: >-
-          npm install --no-save --package-lock=false
-          @earendil-works/pi-ai@${{ matrix.pi }}
-          @earendil-works/pi-agent-core@${{ matrix.pi }}
-          @earendil-works/pi-coding-agent@${{ matrix.pi }}
-          @earendil-works/pi-tui@${{ matrix.pi }}
+          npm pkg set
+          devDependencies.@earendil-works/pi-ai=${{ matrix.pi }}
+          devDependencies.@earendil-works/pi-agent-core=${{ matrix.pi }}
+          devDependencies.@earendil-works/pi-coding-agent=${{ matrix.pi }}
+          devDependencies.@earendil-works/pi-tui=${{ matrix.pi }}
+      - name: Install compatibility SDK
+        if: matrix.pi != 'locked'
+        run: npm install
       - run: npm run check
       - run: npm test
       - name: syntax-check experiments
