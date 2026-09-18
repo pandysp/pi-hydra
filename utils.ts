@@ -478,6 +478,13 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 	return `Delivery context (factual data, not a repetition policy): ${JSON.stringify(visible)}. lastByThisHead is this head's most recent delivery accepted by the runtime. pending messages have not reached the driver yet. Use these facts under the lens's own judgment about whether and what to deliver. ${EVIDENCE_GUIDANCE}`;
 }
 
+/**
+ * Said right after the opener. A head reads the driver's own conversation,
+ * tools included, so with only a lens and a protocol it can take itself for
+ * the driver and write the driver's next reply or call its tools.
+ */
+const WATCHER_IDENTITY = "You are not the main agent; it keeps working on its own. Do not continue its task or answer for it.";
+
 function enumeratedDecisionProtocol(head: string): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
@@ -487,7 +494,7 @@ List every finding the lens surfaces, each as its own entry with its own action;
 
 /** The answering rules plus what has already been delivered, sent separately. */
 export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
-	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it. Review the visible trajectory. You have no work tools.
+	return `Side watcher. ${WATCHER_IDENTITY} The preceding user message is the complete ${head} lens. Follow it in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it. Review the visible trajectory. You have no work tools.
 
 ${enumeratedDeliveryContext(context)}
 
@@ -500,7 +507,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	instruction: string,
 	context: DeliveryContext,
 ): string {
-	return `<system-reminder>Side watcher. You have no work tools. Review the visible trajectory through the lens below. Follow the lens in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it.
+	return `<system-reminder>Side watcher. ${WATCHER_IDENTITY} You have no work tools. Review the visible trajectory through the lens below. Follow the lens in full; the lens alone defines scope, intervention criteria, suppression, and deduplication. Do not broaden it.
 
 LENS: ${instruction}
 
@@ -605,7 +612,7 @@ export function buildAnthropicObservationPrompt(
 				: options.afterChange === "noop"
 					? "After a successful write or edit, noop because the changed file is the work product."
 					: "";
-		return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation.${actingDeliveryContext(options.deliveryContext)}
+		return `<system-reminder>Side watcher with tool access. ${WATCHER_IDENTITY}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. manage_heads is available only when hydra is among your allowed work tools. A successful manage_heads change prints its own receipt automatically; removing your own head completes the observation.${actingDeliveryContext(options.deliveryContext)}
 
 LENS: ${instruction}
 
@@ -638,13 +645,13 @@ export function buildObservationPrompt(
 	options: ObservationProtocolOptions = {},
 ): string {
 	if (headActs(tools)) {
-		return `<system-reminder>Side watcher with tool access.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
+		return `<system-reminder>Side watcher with tool access. ${WATCHER_IDENTITY}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on your lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
 
 LENS: ${instruction}
 
 ${actingDecisionProtocol(head, options.afterChange)}</system-reminder>`;
 	}
-	return `<system-reminder>Side watcher. You have no work tools. The hydra action complete_observation is available only to return your decision.
+	return `<system-reminder>Side watcher. ${WATCHER_IDENTITY} You have no work tools. The hydra action complete_observation is available only to return your decision.
 
 LENS: ${instruction}
 
@@ -662,11 +669,11 @@ export function buildObservationEnvelope(
 	options: ObservationProtocolOptions = {},
 ): string {
 	if (headActs(tools)) {
-		return `Side watcher with tool access. The preceding user message is the complete ${head} lens, not merely a topic label. Follow it in full except where it conflicts with this envelope's protocol and tool constraints. The lens alone defines what is in scope, what warrants intervention, and its suppression or deduplication rules; treat all of those as binding and do not broaden them.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
+		return `Side watcher with tool access. ${WATCHER_IDENTITY} The preceding user message is the complete ${head} lens, not merely a topic label. Follow it in full except where it conflicts with this envelope's protocol and tool constraints. The lens alone defines what is in scope, what warrants intervention, and its suppression or deduplication rules; treat all of those as binding and do not broaden them.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or act on the lens; the main agent does not see your tool calls, only files you change and feedback you route. The hydra action complete_observation is always available. manage_heads is available only when hydra is among your allowed work tools.${actingDeliveryContext(options.deliveryContext)}
 
 ${actingDecisionProtocol(head, options.afterChange)}`;
 	}
-	return `Side watcher. The preceding user message is the complete ${head} lens. Follow it in full except where it conflicts with this protocol. The lens alone defines scope, intervention criteria, suppression, and deduplication; do not broaden it. Review the visible trajectory. You have no work tools. When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" and message "" when no feedback is warranted. Otherwise keep the message concise, ideally under 240 characters. Choose delivery by recipient and urgency: print is a user-only note; queue is agent action later; steer is agent action before current work continues; interrupt is emergency abort. No tools, no "let me check...", no follow-up turn, and no unsupported claims. Don't prefix message with [${head}].`;
+	return `Side watcher. ${WATCHER_IDENTITY} The preceding user message is the complete ${head} lens. Follow it in full except where it conflicts with this protocol. The lens alone defines scope, intervention criteria, suppression, and deduplication; do not broaden it. Review the visible trajectory. You have no work tools. When finished, call hydra exactly once, alone in its turn, with action "complete_observation". Use delivery "none" and message "" when no feedback is warranted. Otherwise keep the message concise, ideally under 240 characters. Choose delivery by recipient and urgency: print is a user-only note; queue is agent action later; steer is agent action before current work continues; interrupt is emergency abort. No tools, no "let me check...", no follow-up turn, and no unsupported claims. Don't prefix message with [${head}].`;
 }
 
 export interface HeadCatalog {

@@ -678,13 +678,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					: job.completionMode === "json"
 						? "unparseable Anthropic decision"
 						: "missing completion tool call";
-			warnOnce(
+			// Every miss is shown: each one is a separate observation lost, and a
+			// head that keeps missing is the signal the user needs to see.
+			notifyUser(
 				job.ctx,
 				job.completionMode === "enum"
 					? `hydra: ${job.head} answered with an unparseable findings list (${parseError ?? "no parser error"}); recorded as noop`
 					: job.completionMode === "json"
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`
 					: `hydra: ${job.head} ended without complete_observation; recorded as noop`,
+				"warning",
 			);
 			decisions = [{ action: "noop", reason, message: "" }];
 		}
@@ -802,9 +805,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				}
 				return null;
 			}
-			const parsed = parseEnumeratedDecision(
-				response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
-			);
+			// A judging head that calls a tool has taken itself for the driver.
+			// Nothing runs, but the record should say what happened rather than
+			// that an empty text was not JSON.
+			const toolCall = response.content.find((block) => block.type === "toolCall");
+			const parsed = toolCall
+				? { decisions: null, error: `head called tool ${toolCall.name} instead of returning findings` }
+				: parseEnumeratedDecision(
+						response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"),
+					);
 			return {
 				response,
 				usages,
