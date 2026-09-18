@@ -346,19 +346,6 @@ describe("enumerated steer-only judge completion", () => {
 		expect(prompt).toContain('"recipient":"agent"');
 	});
 
-	it("tells every head it is not the main assistant", () => {
-		const identity = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
-		for (const text of [
-			buildEnumeratedJudgeObservationEnvelope("security", context),
-			buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context),
-			buildAnthropicObservationPrompt("docs", "Keep notes.", ["read", "write"]),
-			buildObservationEnvelope("quality", []),
-			buildObservationEnvelope("docs", ["read", "write"]),
-		]) {
-			expect(text).toContain(identity);
-		}
-	});
-
 	it("parses an empty findings list as noop", () => {
 		expect(parseEnumeratedDecision('{"findings":[]}')).toEqual({
 			decisions: [{ action: "noop", reason: "no findings", message: "" }],
@@ -442,8 +429,12 @@ describe("shared observer guidance", () => {
 	for (const [name, build] of Object.entries(paths)) {
 		it(`${name} uses the shared contract`, () => {
 			const prompt = build();
+			const identity = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
+			expect(OBSERVER_GUIDANCE.startsWith(`You are reviewing the main assistant's work. ${identity}`)).toBe(true);
+			expect(prompt.replace(/^<system-reminder>/, "").startsWith(OBSERVER_GUIDANCE)).toBe(true);
+			expect(prompt.split(identity)).toHaveLength(2);
 			for (const block of [OBSERVER_GUIDANCE, FOLLOW_UP_GUIDANCE, OBSERVER_DELIVERY_GUIDANCE]) {
-				expect(prompt).toContain(block);
+				expect(prompt.split(block)).toHaveLength(2);
 			}
 			expect(prompt).toContain('"recipient":"user"');
 			expect(prompt).not.toMatch(/\bqueue\b|List every finding|empty list is normal/);
