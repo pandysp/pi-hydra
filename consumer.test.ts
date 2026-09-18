@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore, Type } from "@earendil-works/pi-ai";
@@ -258,13 +258,25 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("Pi reports asynchronous send failure; Hydra releases the undelivered pending notice at settle", async () => {
-		const h = await consumer(false);
+	it.each([{ acting: false, name: "error notice" }, { acting: true, name: "write notice" }])("Pi reports an asynchronous $name send failure without hiding the head's work", async ({ acting }) => {
+		const h = await consumer(false, acting);
 		vi.spyOn(h.session, "sendCustomMessage").mockRejectedValueOnce(new Error("asynchronous host failure"));
 		await h.session.prompt("Finish now.");
 		await vi.waitFor(() => expect(h.errors).toContainEqual(expect.objectContaining({ event: "send_message", error: "asynchronous host failure" })));
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
 		await h.session.extensionRunner.emit({ type: "agent_settled" });
 		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
+		if (acting) {
+			expect(readFileSync(join(h.cwd, "observer.txt"), "utf8")).toBe("PRIVATE-ARGUMENT");
+			const result = h.observerPayloads[1].messages.flatMap((message: any) => message.content)
+				.find((block: any) => block.type === "tool_result" && block.tool_use_id === "blocked-write");
+			expect(result).toBeDefined();
+			expect(result.is_error).not.toBe(true);
+		} else {
+			expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
+			h.repeatFailure();
+			await h.session.prompt("Next task.");
+			await vi.waitFor(() => expect(h.entries("hydra-runtime-report")).toHaveLength(1));
+		}
 	});
 });

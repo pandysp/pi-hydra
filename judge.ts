@@ -89,8 +89,11 @@ function reportKey(details: JudgeReportDetails): string {
 	return `${details.head}:${details.errorKind}`;
 }
 
-// Error notices must not replace the head's last finding. Only a message
-// that arrived counts as delivered, not an attempted send.
+// One notice per head and error kind on the current branch. Only a message
+// that arrived counts as delivered, not an attempted send: cancelling in Pi
+// can clear queued messages. `pending` also stops a second notice
+// while the first is still queued, which happens when a slow head fails
+// twice before the main assistant's current response ends.
 export class JudgeReports {
 	private readonly delivered = new Set<string>();
 	private readonly pending = new Set<string>();
@@ -100,10 +103,6 @@ export class JudgeReports {
 		if (this.delivered.has(key) || this.pending.has(key)) return false;
 		this.pending.add(key);
 		return true;
-	}
-
-	fail(details: JudgeReportDetails): void {
-		this.pending.delete(reportKey(details));
 	}
 
 	consume(value: unknown): void {

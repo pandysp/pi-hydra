@@ -61,7 +61,6 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 	const payloads: unknown[] = [];
 	const pending: CustomSend[] = [];
 	let idle = true;
-	let sendFailure = false;
 	const api = options.api ?? "anthropic-messages";
 	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : "openai-codex", id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
 	const transport = vi.fn((model: Model<Api>, context: { messages: Message[] }, opts: { onPayload: (payload: unknown) => unknown }) => {
@@ -90,8 +89,8 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 		registerFlag: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), registerMessageRenderer: vi.fn(),
 		getFlag: () => undefined,
 		appendEntry: (type: string, data: unknown) => sm.appendCustomEntry(type, data),
+		// Model active-session delivery; consumer.test.ts covers Pi's async failures.
 		sendMessage: vi.fn((message: CustomSend) => {
-			if (sendFailure) throw new Error("host send failed");
 			if (idle) sm.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
 			else pending.push(message);
 		}),
@@ -117,7 +116,7 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	return { cwd, sm, root, ctx, pi, payloads, pending, transport, notify, emit, consume, observe, calls, notices,
-		busy: () => { idle = false; }, idle: () => { idle = true; }, failSend: (value: boolean) => { sendFailure = value; },
+		busy: () => { idle = false; }, idle: () => { idle = true; },
 		waitCalls: async (count: number) => { await vi.waitFor(() => expect(calls(), JSON.stringify(notify.mock.calls)).toHaveLength(count)); },
 	};
 }
@@ -199,6 +198,27 @@ describe("one error notice per head and error type", () => {
 		expect(JSON.stringify(h.payloads[4])).toContain('\\"lastByThisHead\\":null');
 	});
 
+	it("coalesces checks without queuing a second notice before the first arrives", async () => {
+		const h = await harness();
+		h.busy();
+		let finish!: (response: AssistantMessage) => void;
+		await h.observe(new Promise(resolve => { finish = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		// The main assistant advances while the first head check is still running.
+		await h.observe(blocked());
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		finish(blocked());
+		await h.waitCalls(2);
+		// Both checks finished, but the main assistant has not drained its queue.
+		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
+		expect(h.pending).toHaveLength(1);
+		expect(h.notices()).toHaveLength(0);
+		await h.consume(h.pending.shift()!);
+		await h.emit({ type: "agent_settled" });
+		expect(h.notices()).toHaveLength(1);
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"), "warning");
+	});
+
 	it("allows a notice that never arrived to be sent on a later check", async () => {
 		const h = await harness();
 		h.busy();
@@ -213,17 +233,14 @@ describe("one error notice per head and error type", () => {
 		expect(h.notices()).toHaveLength(1);
 	});
 
-	it("reports an immediate send failure and allows a later retry", async () => {
+	it("surfaces an expired extension API as an observation error, not a retryable send failure", async () => {
 		const h = await harness();
-		h.failSend(true);
+		// Pi's API guard throws for expired extensions before its async sender runs.
+		vi.mocked(h.pi.sendMessage).mockImplementation(() => { throw new Error("Extension context is stale"); });
 		await h.observe(blocked());
-		await h.waitCalls(1);
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith("hydra: observe error: Extension context is stale", "error"));
+		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
 		expect(h.notices()).toHaveLength(0);
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("error notice delivery failed (host send failed)"), "warning");
-		h.failSend(false);
-		await h.observe(blocked());
-		await h.waitCalls(2);
-		expect(h.notices()).toHaveLength(1);
 	});
 
 	it("restores only actual messages on the selected branch, not attempted sends or call records", async () => {
@@ -372,19 +389,6 @@ describe("file notices through real tools", () => {
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 		expect(h.calls()).toHaveLength(0);
-	});
-
-	it("does not turn a notice failure into a failed file tool", async () => {
-		const h = await harness({ tools: "write", afterChange: "print" });
-		h.failSend(true);
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
-			answer([text('{"action":"noop","reason":"changed","message":""}')]),
-		);
-		await h.waitCalls(1);
-		expect(h.calls()[0].action).toBe("print");
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("write notice failed (host send failed)"), "warning");
-		expect(JSON.stringify(h.payloads[1])).toContain('"isError":false');
 	});
 
 	it("does not announce success for failing write or edit tools", async () => {

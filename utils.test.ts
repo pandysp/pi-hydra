@@ -323,6 +323,24 @@ describe("buildObservationEnvelope", () => {
 	});
 });
 
+describe("after-change instructions", () => {
+	it.each([undefined, "noop", "print"] as const)("preserves %s for both completion formats", (afterChange) => {
+		const anthropic = buildAnthropicObservationPrompt("docs", "Keep notes.", ["write"], { afterChange });
+		const codex = buildObservationEnvelope("docs", ["write"], { afterChange });
+		for (const [prompt, field, silent] of [[anthropic, "action", "noop"], [codex, "delivery", "none"]]) {
+			if (afterChange === undefined) {
+				expect(prompt).not.toContain("After a successful write or edit");
+				continue;
+			}
+			const action = afterChange === "noop" ? silent : "print";
+			expect(prompt.match(/After a successful write or edit/g)).toHaveLength(1);
+			expect(prompt).toContain(`finish with ${field} "${action}"`);
+			expect(prompt).toContain("Hydra enforces this");
+			expect(prompt).toContain(afterChange === "print" ? "a short note about the change" : "the changed file is the result");
+		}
+	});
+});
+
 describe("enumerated steer-only judge completion", () => {
 	const context = {
 		lastByThisHead: { delivery: "queue" as const, message: "Fix the redirect." },

@@ -1045,13 +1045,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const report = buildJudgeReport(job.head, result);
 		if (!report) return;
 		if (!judgeReports.stage(report.details)) return;
-		try {
-			// Pi reports delayed send errors; only actual messages count as delivered.
-			pi.sendMessage(report, { deliverAs: "steer" });
-		} catch (error) {
-			judgeReports.fail(report.details);
-			notifyUser(job.ctx, `hydra: error notice delivery failed (${errorText(error)})`, "warning");
-		}
+		// Pi reports async send errors; settle warns and releases undelivered
+		// notices for retry. Let lifecycle errors propagate to the caller.
+		pi.sendMessage(report, { deliverAs: "steer" });
 	}
 
 	// Notices carry paths, not updated contents. Failed or stopped tools can
@@ -1059,19 +1055,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function announceWrite(job: Observation, toolCall: ToolCall) {
 		const path = toolCall.arguments.path;
 		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write" };
-		try {
-			pi.sendMessage(
-				{
-					customType: "hydra-feedback",
-					content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}; reread this file before relying on older contents.`,
-					display: true,
-					details,
-				},
-				{ deliverAs: "steer" },
-			);
-		} catch (error) {
-			notifyUser(job.ctx, `hydra: ${job.head} changed ${path} but its write notice failed (${errorText(error)})`, "warning");
-		}
+		pi.sendMessage(
+			{
+				customType: "hydra-feedback",
+				content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}; reread this file before relying on older contents.`,
+				display: true,
+				details,
+			},
+			{ deliverAs: "steer" },
+		);
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {

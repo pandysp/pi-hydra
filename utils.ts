@@ -417,14 +417,13 @@ const ENUMERATED_DECISION_SHAPE =
 const MANAGEMENT_NOTE =
 	"A successful manage_heads change automatically shows the user a note. Do not repeat that note in your final message.";
 
-function actingDeliveryProtocol(afterChange: AfterChangeAction | undefined): string {
-	const afterChangeRule =
-		afterChange === "print"
-			? 'After a successful write or edit, finish with delivery "print" and a short note about the change; Hydra enforces this.'
-			: afterChange === "noop"
-				? 'After a successful write or edit, finish with delivery "none"; Hydra enforces this because the changed file is the result.'
-				: "";
-	return `${afterChangeRule}${afterChangeRule ? " " : ""}${MANAGEMENT_NOTE}`;
+function afterChangeProtocol(afterChange: AfterChangeAction | undefined, field: "action" | "delivery"): string {
+	if (afterChange === undefined) return "";
+	const action = afterChange === "noop" && field === "delivery" ? "none" : afterChange;
+	const explanation = afterChange === "print"
+		? " and a short note about the change; Hydra enforces this."
+		: "; Hydra enforces this because the changed file is the result.";
+	return `After a successful write or edit, finish with ${field} "${action}"${explanation} `;
 }
 
 function toolAllowance(tools: string[] | undefined): string {
@@ -598,12 +597,7 @@ export function buildAnthropicObservationPrompt(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	const postChange =
-		options.afterChange === "print"
-			? "After a successful write or edit, print a short note about the change."
-			: options.afterChange === "noop"
-				? "After a successful write or edit, use noop because the changed file is the result."
-				: "";
+	const postChange = afterChangeProtocol(options.afterChange, "action");
 	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 HEAD INSTRUCTIONS: ${instruction}
@@ -611,7 +605,7 @@ HEAD INSTRUCTIONS: ${instruction}
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-${postChange}${postChange ? " Otherwise use" : "Use"} noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}].</system-reminder>`;
+${postChange}${postChange ? "Otherwise use" : "Use"} noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}].</system-reminder>`;
 }
 
 /**
@@ -625,7 +619,7 @@ export function buildObservationEnvelope(
 ): string {
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${actingDeliveryProtocol(options.afterChange)} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
+${afterChangeProtocol(options.afterChange, "delivery")}${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {
