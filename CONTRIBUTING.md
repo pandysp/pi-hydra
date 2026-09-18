@@ -9,8 +9,13 @@ git clone https://github.com/pandysp/pi-hydra
 mkdir -p ~/.pi/agent/extensions
 ln -sfn "$(pwd)/pi-hydra" ~/.pi/agent/extensions/hydra
 cd pi-hydra
-npm install      # dev tooling only
+npm update @earendil-works/pi-agent-core @earendil-works/pi-ai \
+  @earendil-works/pi-coding-agent @earendil-works/pi-tui
 ```
+
+This installs the development tooling and refreshes all four Pi packages to the
+latest stable release, just as [CI](.github/workflows/ci.yml) does. Older Pi
+versions are not tested.
 
 If you installed hydra via the README quickstart, run `pi remove git:github.com/pandysp/pi-hydra` first; the git package and the symlink are separate load paths, and keeping both loads hydra twice.
 

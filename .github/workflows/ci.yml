@@ -7,35 +7,21 @@ on:
 
 jobs:
   check:
-    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: check
-            pi: locked
-          - name: check-pi-0.85.1
-            pi: 0.85.1
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-        if: matrix.pi == 'locked'
-      - name: Declare compatibility SDK
-        if: matrix.pi != 'locked'
+      - name: Install latest Pi and development tooling
         run: >-
-          npm pkg set
-          devDependencies.@earendil-works/pi-ai=${{ matrix.pi }}
-          devDependencies.@earendil-works/pi-agent-core=${{ matrix.pi }}
-          devDependencies.@earendil-works/pi-coding-agent=${{ matrix.pi }}
-          devDependencies.@earendil-works/pi-tui=${{ matrix.pi }}
-      - name: Install compatibility SDK
-        if: matrix.pi != 'locked'
-        run: npm install
+          npm update
+          @earendil-works/pi-agent-core
+          @earendil-works/pi-ai
+          @earendil-works/pi-coding-agent
+          @earendil-works/pi-tui
+      - run: npm ls --depth=0
       - run: npm run check
       - run: npm test
       - name: syntax-check experiments
