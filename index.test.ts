@@ -391,6 +391,55 @@ describe("file notices through real tools", () => {
 		expect(h.calls()).toHaveLength(0);
 	});
 
+	it("tracks separate notices for repeated writes to the same file", async () => {
+		const h = await harness({ tools: "write", afterChange: "noop" });
+		h.busy();
+		await h.observe(
+			answer([tool("write", { path: "work.txt", content: "first" })], "toolUse"),
+			answer([tool("write", { path: "work.txt", content: "second" })], "toolUse"),
+			answer([text('{"action":"noop","reason":"changed","message":""}')]),
+		);
+		await h.waitCalls(1);
+		expect(h.pending).toHaveLength(2);
+		// Only the second notice arrives; identical text must not hide the first.
+		await h.consume(h.pending.pop()!);
+		h.pending.splice(0);
+		await h.emit({ type: "agent_settled" });
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("1 file-change notice(s) did not reach"), "warning");
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("[critic] wrote work.txt"), "warning");
+		h.notify.mockClear();
+		await h.emit({ type: "agent_settled" });
+		expect(h.notify).not.toHaveBeenCalled();
+	});
+
+	it.each([true, false])("does not warn for arrived file notices (busy: %s)", async (busy) => {
+		const h = await harness({ tools: "write", afterChange: "noop" });
+		if (busy) h.busy();
+		await h.observe(
+			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
+			answer([text('{"action":"noop","reason":"changed","message":""}')]),
+		);
+		await h.waitCalls(1);
+		if (busy) await h.consume(h.pending.shift()!);
+		await h.emit({ type: "agent_settled" });
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("file-change notice(s) did not reach"), "warning");
+	});
+
+	it("does not carry pending file notices into another branch", async () => {
+		const h = await harness({ tools: "write", afterChange: "noop" });
+		h.busy();
+		await h.observe(
+			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
+			answer([text('{"action":"noop","reason":"changed","message":""}')]),
+		);
+		await h.waitCalls(1);
+		const previous = h.sm.getLeafId()!;
+		h.sm.branch(h.root);
+		await h.emit({ type: "session_tree", oldLeafId: previous, newLeafId: h.root });
+		await h.emit({ type: "agent_settled" });
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("file-change notice(s) did not reach"), "warning");
+	});
+
 	it("does not announce success for failing write or edit tools", async () => {
 		const h = await harness({ tools: "write, edit" });
 		mkdirSync(join(h.cwd, "directory"));

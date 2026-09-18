@@ -58,6 +58,8 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 	const observerPayloads: any[] = [];
 	const hold = deferred();
 	const entered = deferred();
+	const finalDriver = deferred();
+	let pauseFinalDriver = false;
 	let repeatFailure = false;
 	let observerHold: Promise<void> | null = null;
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -73,6 +75,7 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 		}
 		driverPayloads.push(payload);
 		if (busy && driverPayloads.length <= 2) return response([{ type: "toolCall", id: `checkpoint-${driverPayloads.length}`, name: "checkpoint", arguments: {} }]);
+		if (pauseFinalDriver) await finalDriver.promise;
 		return response([{ type: "text", text: "Driver done." }]);
 	});
 	modelRuntime.registerProvider("anthropic", {
@@ -108,6 +111,7 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 	expect(errors).toEqual([]);
 	cleanups.push(async () => {
 		hold.resolve();
+		finalDriver.resolve();
 		await session.waitForIdle();
 		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		session.dispose();
@@ -117,6 +121,7 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, warnings, entries,
 		repeatFailure: () => { repeatFailure = true; },
 		holdObserver: (until: Promise<void>) => { observerHold = until; },
+		holdFinalDriver: () => { pauseFinalDriver = true; return finalDriver; },
 	};
 }
 
@@ -185,6 +190,31 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it.each([{ acting: false, name: "error notice" }, { acting: true, name: "write notice" }])("an automatic $name during the final response is read on one additional model call", async ({ acting }) => {
+		const h = await consumer(true, acting);
+		const observer = deferred();
+		h.holdObserver(observer.promise);
+		const driver = h.holdFinalDriver();
+		const running = h.session.prompt("Work through checkpoints.");
+		try {
+			await h.entered.promise;
+			h.hold.resolve();
+			await vi.waitFor(() => expect(h.driverPayloads).toHaveLength(3));
+			observer.resolve();
+			await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+			expect(h.session.isStreaming).toBe(true);
+		} finally {
+			observer.resolve();
+			driver.resolve();
+		}
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expect(h.driverPayloads).toHaveLength(4);
+		expect(JSON.stringify(h.driverPayloads[3])).toContain(acting ? "reread this file" : "Hydra error notice");
+		expect(h.entries(acting ? "hydra-feedback" : "hydra-runtime-report")).toHaveLength(1);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("deliberate observer steering resumes a fully idle main assistant without a user message", async () => {
 		const h = await consumer(false, false, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"DELIBERATE-STEER"}]}' }]);
 		const gate = deferred();
@@ -237,6 +267,22 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it("warns which file changed when cancellation drops its notice", async () => {
+		const h = await consumer(true, true);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+		expect(readFileSync(join(h.cwd, "observer.txt"), "utf8")).toBe("PRIVATE-ARGUMENT");
+		h.session.clearQueue();
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("file-change notice(s) did not reach"));
+		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("[critic] wrote observer.txt"));
+		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("a host-cleared busy notice can retry after abort and branch navigation", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
@@ -267,6 +313,7 @@ describe("Pi consumer context and session", () => {
 		await h.session.extensionRunner.emit({ type: "agent_settled" });
 		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
 		if (acting) {
+			expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("[critic] wrote observer.txt"));
 			expect(readFileSync(join(h.cwd, "observer.txt"), "utf8")).toBe("PRIVATE-ARGUMENT");
 			const result = h.observerPayloads[1].messages.flatMap((message: any) => message.content)
 				.find((block: any) => block.type === "tool_result" && block.tool_use_id === "blocked-write");

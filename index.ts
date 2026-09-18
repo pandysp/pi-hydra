@@ -182,6 +182,7 @@ interface FeedbackDetails {
 	head: string;
 	action: Action;
 	reason: string;
+	noticeId?: string;
 	// Pre-rename entries persisted `lens`; the renderer falls back to it.
 	lens?: string;
 }
@@ -372,6 +373,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
 	const judgeReports = new JudgeReports();
+	const pendingWriteNotices = new Map<string, string>();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
@@ -406,6 +408,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
 		judgeReports.restore(ctx.sessionManager.getBranch());
+		pendingWriteNotices.clear();
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}
@@ -1054,16 +1057,37 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// still change files. Changes made through bash are not tracked here.
 	function announceWrite(job: Observation, toolCall: ToolCall) {
 		const path = toolCall.arguments.path;
-		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write" };
+		// Repeated writes to the same path need separate delivery receipts.
+		const noticeId = uuidv7();
+		const change = `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}`;
+		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write", noticeId };
+		pendingWriteNotices.set(noticeId, change);
 		pi.sendMessage(
 			{
 				customType: "hydra-feedback",
-				content: `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}; reread this file before relying on older contents.`,
+				content: `${change}; reread this file before relying on older contents.`,
 				display: true,
 				details,
 			},
 			{ deliverAs: "steer" },
 		);
+	}
+
+	function consumeWriteNotice(details: unknown) {
+		if (typeof details !== "object" || details === null) return;
+		const noticeId = (details as Partial<FeedbackDetails>).noticeId;
+		if (typeof noticeId === "string") pendingWriteNotices.delete(noticeId);
+	}
+
+	function settleWriteNotices(ctx: ExtensionContext) {
+		// Idle sends are saved without an extension message_start event in Pi.
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.type === "custom_message" && entry.customType === "hydra-feedback") consumeWriteNotice(entry.details);
+		}
+		if (pendingWriteNotices.size === 0) return;
+		const missing = [...pendingWriteNotices.values()];
+		pendingWriteNotices.clear();
+		notifyUser(ctx, `hydra: ${missing.length} file-change notice(s) did not reach the main assistant. Files are already changed; reread them before continuing:\n${missing.join("\n")}`, "warning");
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
@@ -1198,6 +1222,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				deliveryLedger.discardIdleUserDeliveries();
 			}
 		} else if (event.message.role === "custom" && event.message.customType === "hydra-feedback") {
+			consumeWriteNotice(event.message.details);
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
 				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), {
@@ -1228,6 +1253,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
+		settleWriteNotices(ctx);
 		judgeReports.sync(ctx.sessionManager.getBranch());
 		const undeliveredReports = judgeReports.settle();
 		if (undeliveredReports > 0) {

@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "336292190169b019d4ec6e7ce66b186a7887a4a5fccc1ec0c38b4831f1a75f9e",
+        "codeHash": "c46c1bd1e9ab541b44557d837d4daad1e2418691790a060315bc0c66b4c7d0d5",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -140,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "11ad45c381db2ab0bbd765d93d9c1ab2572f67036ebd5fbb20ea2454b705e779",
-        "docHash": "869b76ab1ad53aa848529b9014aa227da228b2b72cf1ab6c544a4bb437976590"
+        "codeHash": "89c3ee224d2bbe1419d6a1745c3821aa8ca4cdb48c5b6d9299e2d168113c895b",
+        "docHash": "76f53ce7f9dfcebf160d2493a61c415bc9c45b14c908caa8d79ff98f675534bd"
       }
     },
     {
@@ -191,7 +191,7 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "0f95b406b910d9604ca3ae899de677db3aaade92c448693a0e818b01d46d2b59",
+        "codeHash": "567ca248871936c8ff4b2dff83a4a0a952c7a08878bc5aceb65d4e680e5275bd",
         "docHash": "f6957e41bbf8561bd63641dd14850ba2478bd69542ebc2ffabd9d8ba9cf806f5"
       }
     }
