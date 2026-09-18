@@ -638,7 +638,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!decisions || decisions.length === 0) {
 			if (job.completionMode === "enum") throw new Error("classifyJudgeResponse returned neither findings nor an error");
 			const reason = job.completionMode === "json" ? "unparseable Anthropic decision" : "missing completion tool call";
-			warnOnce(
+			// Every miss is shown: each one is a separate observation lost, and a
+			// head that keeps missing is the signal the user needs to see.
+			notifyUser(
 				job.ctx,
 				job.completionMode === "json"
 					? `hydra: ${job.head} answered with an unparseable JSON decision; recorded as noop`

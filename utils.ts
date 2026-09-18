@@ -479,11 +479,12 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 }
 
 /**
- * Said right after the opener. A head reads the driver's own conversation,
- * tools included, so with only a lens and a protocol it can take itself for
- * the driver and write the driver's next reply or call its tools.
+ * Said right after the opener. A head reads the main assistant's own
+ * conversation, tools included, so with only its instructions and a protocol
+ * it can take itself for the assistant and write its next reply or call its
+ * tools.
  */
-const WATCHER_IDENTITY = "You are not the main agent; it keeps working on its own. Do not continue its task or answer for it.";
+const WATCHER_IDENTITY = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
 
 function enumeratedDecisionProtocol(head: string): string {
 	return `Reply with one JSON object, nothing else:
@@ -494,7 +495,7 @@ Return one entry for each finding you choose to report under this head's instruc
 
 /** The answering rules plus what has already been delivered, sent separately. */
 export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
-	return `You are reviewing the main assistant's work. The previous user message contains all instructions for the ${head} head. ${OBSERVER_GUIDANCE}
+	return `You are reviewing the main assistant's work. ${WATCHER_IDENTITY} The previous user message contains all instructions for the ${head} head. ${OBSERVER_GUIDANCE}
 
 ${enumeratedDeliveryContext(context)}
 
@@ -507,7 +508,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	instruction: string,
 	context: DeliveryContext,
 ): string {
-	return `<system-reminder>You are reviewing the main assistant's work. ${OBSERVER_GUIDANCE}
+	return `<system-reminder>You are reviewing the main assistant's work. ${WATCHER_IDENTITY} ${OBSERVER_GUIDANCE}
 
 HEAD INSTRUCTIONS: ${instruction}
 
@@ -611,7 +612,7 @@ export function buildAnthropicObservationPrompt(
 			: options.afterChange === "noop"
 				? "After a successful write or edit, use noop because the changed file is the result."
 				: "";
-	return `<system-reminder>You are reviewing the main assistant's work.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${OBSERVER_GUIDANCE} ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `<system-reminder>You are reviewing the main assistant's work. ${WATCHER_IDENTITY}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${OBSERVER_GUIDANCE} ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 HEAD INSTRUCTIONS: ${instruction}
 
@@ -630,7 +631,7 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	return `You are reviewing the main assistant's work. The previous user message contains all instructions for the ${head} head. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `You are reviewing the main assistant's work. ${WATCHER_IDENTITY} The previous user message contains all instructions for the ${head} head. ${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 ${actingDeliveryProtocol(options.afterChange)} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }

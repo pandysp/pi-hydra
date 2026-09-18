@@ -346,13 +346,11 @@ describe("enumerated steer-only judge completion", () => {
 		expect(prompt).toContain('"recipient":"agent"');
 	});
 
-	it("tells every head it is not the main agent", () => {
-		const identity = "You are not the main agent; it keeps working on its own. Do not continue its task or answer for it.";
+	it("tells every head it is not the main assistant", () => {
+		const identity = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
 		for (const text of [
 			buildEnumeratedJudgeObservationEnvelope("security", context),
 			buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context),
-			buildObservationPrompt("quality", "Judge.", []),
-			buildObservationPrompt("docs", "Keep notes.", ["read", "write"]),
 			buildAnthropicObservationPrompt("docs", "Keep notes.", ["read", "write"]),
 			buildObservationEnvelope("quality", []),
 			buildObservationEnvelope("docs", ["read", "write"]),

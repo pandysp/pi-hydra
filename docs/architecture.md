@@ -34,7 +34,7 @@ The provider-specific timing and cache consequences are canonical in [Provider l
 Each prompt combines the head's instructions with Hydra's rules:
 
 - The head file says what to check and how much to report.
-- Hydra explains which tools are allowed, how to finish, who receives feedback, and what feedback has already been sent.
+- Hydra says first that the head is not the main assistant and must not continue its task, then explains which tools are allowed, how to finish, who receives feedback, and what feedback has already been sent.
 
 `observationHandoffFor()` chooses the format below. Hidden test heads use a fixed prompt.
 
