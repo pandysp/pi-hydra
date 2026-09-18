@@ -1,6 +1,6 @@
 # Heads
 
-A product head watches with its own perspective: it reviews complete captured requests from the agent's provider trajectory and reports findings through print, steer, or interrupt (or stays quiet). A busy head keeps only the newest waiting snapshot, so superseded intermediate snapshots may be skipped. One Markdown file carries the head's identity, capabilities, and instruction; activation is separate session state.
+A head is a helper that checks the main assistant's work. It can report a finding or say nothing. Each head has one Markdown file with its name, allowed tools and instructions. The session records which heads are active. If a head is busy, Hydra keeps only the newest waiting copy of the conversation for its next check.
 
 ## Head files
 
@@ -11,7 +11,7 @@ description: Correctness risks, missing verification, dangerous assumptions
 autostart: true
 tools: []
 ---
-Review through a QUALITY lens. Focus on correctness risks, missing
+Check code quality. Focus on correctness risks, missing
 verification, dangerous assumptions, and code that looks likely to break.
 Do NOT nitpick style.
 ```
@@ -64,41 +64,48 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 ## Tools: acting heads
 
-By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are what hydra can execute; a call to anything else the agent carries (another extension's tool, MCP) returns pi's standard error result and the head moves on. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
+By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` narrows work actions. A list (`tools: read, grep`) is enforced at execution: the head's prompt states the allowance, and a call outside the list gets pi's standard unknown-tool error, costing the head one recovery turn. `tools: []` makes a judge-only head, which returns its findings in one JSON object (see below). A judge's tool request is never executed and gets no recovery turn; Hydra records the failure and can put a bounded correction notice into context for later observations. `manage_heads` is allowed only when `tools` is omitted or explicitly includes `hydra`. The provider payload still advertises the driver's exact tool schemas for cache parity, so narrowing changes what a head can execute, never the captured prefix. Hydra chooses the provider's acting-completion channel; [Completion channels](providers.md#completion-channels) is the canonical reference.
+`tools:` limits what a head can run. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
+
+A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
 
 Authoring guidance for heads that act:
 
-1. **Write a positive contract.** State the head's purpose, the observable condition that warrants work, the work itself, what done means, and delivery. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful shape, not special syntax. Positive conditions generalize better than accumulating benchmark-shaped exception lists.
-2. **Declare post-mutation delivery where it matters.** After a successful `write` or `edit`, `after-change: noop` makes the file the work product; `after-change: print` requires a note. Hydra enforces the declared outcome. It does not make the head act. Without it, the head chooses delivery.
-3. **Avoid state-mutating bash mid-run.** The head works while the agent works. Built-in write/edit calls use Pi's file-mutation queue. Successful calls announce the path at the driver's next checkpoint and ask it to reread relevant files; older reads are not refreshed. Writes through bash get neither protection, so keep bash to reads unless you accept that risk. An error or cancellation can follow a filesystem change: no success notice does not prove that disk was untouched.
-4. **Turns are bounded; spend is not.** A head that has not completed after 25 model turns is wound down with a warning. There is no cost ceiling; the head's instruction is the throttle.
+1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
+2. **Choose what happens after a file change.** After a successful `write` or `edit`, `after-change: noop` sends no finding; `after-change: print` requires a user-only note. Hydra enforces this choice, but it does not make the head act. Without the setting, the head chooses how to report.
+3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection and Hydra's file notices. Use bash only to read files unless you accept those risks. See [automatic notices](architecture.md#runtime-notices) for what Hydra can report.
+4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
 
-Tracked mutations for `after-change` are successful `write` and `edit` calls. Their factual path notices are separate from that completion policy: even `after-change: noop` tells the driver which file changed. These [runtime notices](architecture.md#runtime-notices) reach active work but do not start an idle driver; `noop` does not suppress them. The head need not repeat the notice. Any separate finding still follows the declared completion policy; `after-change: noop` suppresses it and `after-change: print` keeps it user-only. Head-set changes have a separate contract: a successful observer `manage_heads` call automatically prints one receipt whose factual prefix comes from the runtime and whose message explains why the change fits. Idempotent and failed operations print nothing. Successful self-removal ends the observation immediately. A head whose `tools` list explicitly includes `hydra` also receives the active-set snapshot at observation start; later tool results are authoritative.
+Do not repeat Hydra's automatic file notice in the head's final message. See [notice rules](architecture.md#runtime-notices) for when and how it is sent.
+
+When a head uses `manage_heads` to change the active heads, Hydra automatically shows the user what changed and the head's explanation. Failed calls and calls that change nothing show no note. A head whose `tools` list includes `hydra` also sees the active heads when its check starts; later tool results may show a newer list.
 
 ## Decisions: when findings land
 
-An acting head is instructed to finish fallible work before choosing no feedback, print, steer, or interrupt. For typed completion, Hydra enforces the narrower guarantee that the terminal action is the only tool call in its turn; it cannot prove that every intended check is finished. Hydra selects and validates the provider-specific completion channel, as described in [Completion channels](providers.md#completion-channels).
+A head with tools must finish its checks and tool work before reporting. See [Completion channels](providers.md#completion-channels) for how to finish on each provider.
 
-A judge-only head uses one enumerated findings contract:
+A head without tools returns one JSON object:
 
 ```json
 {"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}
 ```
 
-The lens decides what warrants reporting. Return one entry per finding, or an empty array when there are none. Ground each finding in a short quote or precise reference; for an omission, say which evidence is missing. A quote makes a finding checkable, not automatically correct. Each finding chooses its own delivery. Hydra preserves every accepted message exactly once: all `print` findings become one user-only note, while all `steer` and `interrupt` findings become one agent message. That agent message interrupts only if one finding chose `interrupt`; otherwise it steers. A response therefore creates at most two deliveries and never leaks a user-only finding into the agent's context.
+This head's instructions define what to check and how much to report. Return one entry per finding, or an empty array if there are none. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing. A quote lets someone check the finding; it does not prove the finding is right.
 
-- `print`: a note to you. In interactive mode the message renders in the TUI and never enters the agent's context. A head can choose this route when only the user needs the finding.
-- `steer`: the normal non-aborting agent-directed route. The finding folds into the agent's context as a real user message at its next checkpoint. Feedback requiring driver action belongs here, not in `print`; it need not qualify as an emergency.
-- `interrupt`: the cord. An active run is aborted and the finding opens the next one; if the snapshot is already stale, Hydra demotes it to steer rather than abort newer work.
-- `none` (acting completions only): nothing to report; nothing is delivered anywhere. In the judge contract silence is the empty findings array: `none` is not a valid finding action, and one invalid action makes hydra discard every finding in that response. `/hydra-stats` labels silent outcomes `noop`.
+Choose an action for each finding:
 
-The driver may have advanced while the head was observing. Do not remind it of work already planned or underway unless the plan itself is the concern. Do not repeat its hedges, narrate its actions, or resend pending or fixed feedback. Follow up only with evidence that the concern still applies after considering the driver's response, or with materially changed evidence; remaining unresolved alone is not proof of being ignored.
+- `print` when only the user needs the note.
+- `steer` when the main assistant needs the feedback, even if it can wait.
+- `interrupt` for an emergency that must stop the run.
 
-Malformed, empty, truncated, and tool-request judge answers remain failed observations, recorded as noops rather than repaired or interpreted as intentional silence. Correctable protocol failures can also create [runtime notices](architecture.md#runtime-notices) for later observations. These are not head findings and do not execute the rejected request.
+The head's instructions decide when it may interrupt. Say so explicitly if it must never interrupt.
 
-In an open session, steer and interrupt start the next run when idle; [shutdown saves the feedback instead](architecture.md#delivery). `after-change` standardizes one narrow write/edit case and does nothing when no mutation occurred. When a head may pull the cord is part of its instruction: a head that should never interrupt is a head whose file says so. The old queue route remains in the extension for compatibility but is not part of the head contract. This holds for project heads and agent-written heads too; the file is the audit trail, and pi's folder trust is the consent boundary.
+See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time and shutdown.
+
+Use `none` only when finishing through the `hydra` tool with nothing to report. Heads using the findings JSON instead return an empty array; `none` is not a valid finding action. Invalid answers follow the [failed-check rules](architecture.md#failed-checks).
+
+The main assistant may have moved on while the head was checking. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Do not repeat feedback still waiting for delivery or a problem that is fixed. Follow up only with evidence that the problem still applies after checking the visible response, or with new evidence that changes the finding. A problem that remains does not prove the feedback was ignored.
 
 ## Heads that manage heads
 
@@ -141,7 +148,7 @@ DELIVER: Print the edit you made; complete with none when the act condition is
 not met.
 ```
 
-Foreman changes are visible by construction: `manage_heads` accepts a required explanation and auto-prints it only when the set actually changes. Self-removal prints and terminates in that same call. Tuner edits are visible through its `after-change: print` contract. A print renders in the TUI and never enters the agent's context. The tuner's successful write/edit calls also send the driver a path notice at its next checkpoint, independently of the print. The notice asks for a fresh read; it does not carry a finding or refresh cached file contents. The two combine well: a foreman can activate the tuner when a session warrants it.
+The examples use the [management and after-change settings](#tools-acting-heads) described above; file changes follow the [automatic notice rules](architecture.md#runtime-notices). A foreman can activate the tuner when needed.
 
 ## Example heads (minimal overlap)
 
@@ -206,7 +213,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Devil's Advocate**: challenge the entire approach. "Why this way and not another?" Zero overlap with code-level review. Do NOT comment on code-level bugs or style; think meta.
 - **Threat-modeler**: attacks the design the way an adversary would, before the code exists.
 
-**Evaluator heads** record judgments for later analysis rather than steering findings into the work. File-writing evaluators still produce [runtime notices](architecture.md#runtime-notices), but those do not start idle work:
+**Evaluator heads** save assessments for later study instead of sending findings to the main assistant. Their file writes still produce [automatic notices](architecture.md#runtime-notices):
 
 - **Behavior-annotator**: scores each run against a rubric and appends the scores to an eval log. This is how you run live evals without full-price trajectory replay.
 - **Failure-collector**: records dead ends, retries, and error loops for later analysis of where the agent wastes time.

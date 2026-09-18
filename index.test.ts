@@ -53,7 +53,7 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 	const cwd = mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
-	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n${options.afterChange ? `after-change: ${options.afterChange}\n` : ""}---\nFollow this test lens.\n`);
+	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n${options.afterChange ? `after-change: ${options.afterChange}\n` : ""}---\nFollow these test instructions.\n`);
 	const sm = SessionManager.inMemory(cwd);
 	const root = sm.appendCustomEntry("hydra-config", { heads: ["critic"] });
 	const handlers = new Map<string, Handler>();
@@ -109,7 +109,7 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 		await emit({ type: "message_start", message: answer([text("Driver is working")]) });
 	};
 	await emit({ type: "agent_start" });
-	// The first driver response is deliberately skipped by Hydra.
+	// The first main assistant response is deliberately skipped by Hydra.
 	await emit({ type: "before_provider_request", payload: api === "anthropic-messages" ? { messages: [] } : { input: [] } });
 	await emit({ type: "message_start", message: answer([text("First driver response")]) });
 	cleanups.push(async () => {
@@ -122,7 +122,7 @@ async function harness(options: { tools?: string; afterChange?: string; api?: "a
 	};
 }
 
-describe("judge observations through the extension", () => {
+describe("heads without tools through the extension", () => {
 	it.each(["anthropic-messages", "openai-codex-responses"] as const)("%s never executes or repairs a tool request and reports it in future context", async (api) => {
 		const h = await harness({ api });
 		const target = join(h.cwd, "must-not-exist");
@@ -150,7 +150,7 @@ describe("judge observations through the extension", () => {
 		["malformed", answer([text("SECRET-PROSE")]), "malformed-findings", true],
 		["provider error", { ...answer([tool("write", {})], "error"), errorMessage: "provider unavailable" }, "provider-error", false],
 		["provider abort", answer([tool("write", {})], "aborted"), "aborted", false],
-	] as const)("records %s precisely without speculative context", async (_name, response, kind, report) => {
+	] as const)("records %s without guessing why it happened", async (_name, response, kind, report) => {
 		const h = await harness();
 		await h.observe(response);
 		await h.waitCalls(1);
@@ -176,9 +176,9 @@ describe("judge observations through the extension", () => {
 	});
 });
 
-describe("bounded runtime reports", () => {
+describe("one error notice per head and error type", () => {
 	const blocked = () => answer([tool("write", { path: "ignored", content: "not executed" })], "toolUse");
-	it("deduplicates pending and delivered reports by head/kind without resetting on success", async () => {
+	it("sends each error notice once per head and type, even after a successful check", async () => {
 		const h = await harness();
 		h.busy();
 		await h.observe(blocked());
@@ -199,27 +199,27 @@ describe("bounded runtime reports", () => {
 		expect(JSON.stringify(h.payloads[4])).toContain('\\"lastByThisHead\\":null');
 	});
 
-	it("releases a queued report that never arrives at settle and retries later", async () => {
+	it("allows a notice that never arrived to be sent on a later check", async () => {
 		const h = await harness();
 		h.busy();
 		await h.observe(blocked());
 		await h.waitCalls(1);
 		h.pending.splice(0); // Host abort cleared its queue, not a successful delivery.
 		await h.emit({ type: "agent_settled" });
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("runtime report(s) never reached"), "warning");
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"), "warning");
 		h.idle();
 		await h.observe(blocked());
 		await h.waitCalls(2);
 		expect(h.notices()).toHaveLength(1);
 	});
 
-	it("rolls back synchronous send failure and reports it loudly", async () => {
+	it("reports an immediate send failure and allows a later retry", async () => {
 		const h = await harness();
 		h.failSend(true);
 		await h.observe(blocked());
 		await h.waitCalls(1);
 		expect(h.notices()).toHaveLength(0);
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("runtime report delivery failed (host send failed)"), "warning");
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("error notice delivery failed (host send failed)"), "warning");
 		h.failSend(false);
 		await h.observe(blocked());
 		await h.waitCalls(2);
@@ -268,7 +268,7 @@ describe("bounded runtime reports", () => {
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 	});
 
-	it("records a report finishing inside the shutdown grace without starting a driver turn", async () => {
+	it("records an error notice finishing inside the shutdown grace without starting a main assistant turn", async () => {
 		const h = await harness();
 		let finish!: (response: AssistantMessage) => void;
 		await h.observe(new Promise(resolve => { finish = resolve; }));
@@ -295,8 +295,8 @@ describe("bounded runtime reports", () => {
 	});
 });
 
-describe("acting file notices through real tools", () => {
-	it.each([false, true])("a successful read neither announces a mutation nor resets a prior write (%s)", async (wrote) => {
+describe("file notices through real tools", () => {
+	it.each([false, true])("a successful read neither announces a file change nor resets a prior write (%s)", async (wrote) => {
 		const h = await harness({ tools: "read, write", afterChange: "noop" });
 		writeFileSync(join(h.cwd, "work.txt"), "before");
 		await h.observe(
@@ -346,7 +346,7 @@ describe("acting file notices through real tools", () => {
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("announces a known successful write even if shutdown follows, recorded without a driver turn", async () => {
+	it("announces a known successful write even if shutdown follows, recorded without a main assistant turn", async () => {
 		const h = await harness({ tools: "write" });
 		vi.stubEnv("HYDRA_SHUTDOWN_GRACE_MS", "0");
 		boundary.afterFileTool = () => h.emit({ type: "session_shutdown", reason: "quit" });

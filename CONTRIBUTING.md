@@ -41,18 +41,18 @@ Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces
 
 ## Branches and research
 
-Product PRs branch from `main` and target `main`. Keep them focused:
-`pi install git:…` clones the repository, so `main` is the shipped package.
+Start product changes from `main` and open PRs against `main`. Keep each PR
+focused: `pi install git:…` installs this branch, so users get what is on it.
 
-Research lives on `openai-cache-clean`. Bring selected product changes into
-separate, main-based PRs; never merge the research branch as a whole. Its
+Research lives on `openai-cache-clean`. Bring individual product changes into
+separate PRs from `main`; never merge the whole research branch. See its
 [research workflow](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/CONTRIBUTING.md#working-in-the-research-branch)
-belongs there, not in the product contribution guide.
+for research-specific instructions.
 
 ## Keep the shipped package small
 
-- Keep experimental and retired protocols out of the shipped root modules.
-- Commit artifacts only when a test or manifest consumes them; keep other
+- Keep experiments and retired code out of the shipped root modules.
+- Commit generated files only when a test or manifest uses them; keep other
   research outputs in the research archive.
-- Evidence cited by documentation must have a durable home in the repository
-  or research archive, never only in auto-pruned scratch storage.
+- Save evidence linked from docs in the repository or research archive,
+  not just in scratch folders that will be deleted.

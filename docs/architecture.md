@@ -31,37 +31,19 @@ The provider-specific timing and cache consequences are canonical in [Provider l
 
 ## Prompt construction
 
-There is no universal head prompt. A handoff combines two responsibilities:
+Each prompt combines the head's instructions with Hydra's rules:
 
-```text
-head Markdown body       Hydra protocol
-(specialist policy)  +   (tools, completion, delivery)
-```
+- The head file says what to check and how much to report.
+- Hydra explains which tools are allowed, how to finish, who receives feedback, and what feedback has already been sent.
 
-`observationHandoffFor()` chooses one of four paths for product heads (hidden diagnostic heads use a fixed test prompt):
+`observationHandoffFor()` chooses the format below. Hidden test heads use a fixed prompt.
 
-| | Judge-only | Acting |
+| Provider | Where the instructions go | How the head finishes |
 |---|---|---|
-| Anthropic | Combined lens and protocol | Combined acting prompt and JSON completion |
-| OpenAI Codex | User lens plus developer envelope | User lens plus developer envelope and typed completion |
+| Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
+| OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
 
-The head file defines its remit and how much to report. Hydra explains the runtime: permitted tools, delivery recipients, prior feedback, output shape, and completion. Shared guidance asks heads to ground findings in the visible evidence and account for the driver continuing while they observe. It does not prescribe a finding quota or require silence.
-
-### Observer contract decisions
-
-Decisions from the September 2026 prompt review:
-
-| Decision | Problem it addresses; alternative considered |
-|---|---|
-| Keep calibration in the lens. | Global instructions to list everything or treat silence as normal compete with the head's purpose. The wrapper specifies the response shape, not the reporting volume. |
-| Anchor findings to a short quote or precise reference; name missing evidence. | A plausible reading can become an unsupported conclusion. A reference makes the finding checkable, but does not prove its interpretation correct. Requiring a literal quote for an omission would invite invention. |
-| Say the driver may have moved on. | Observers read snapshots, not a paused driver. A fixed claim that the driver is always one or two steps ahead would be false at run end. Planned work needs no reminder unless that plan is itself the problem. |
-| Keep steer as the normal non-aborting driver channel. | Urgent-only wording can divert useful, actionable feedback into `print`, where the driver never sees it. The user may not watch the live transcript either; [issue #20](https://github.com/pandysp/pi-hydra/issues/20) leaves the future of print open. |
-| Put bounded, correctable protocol errors in context. | A warning only on screen cannot help later observers correct their output. A labeled runtime report carries the known failure without replaying the rejected command or claiming to know why an empty answer occurred. Bounding repeated reports avoids filling context with the same correction. |
-| Deliver existing write notices at the next checkpoint. | Waiting until work ends leaves an active driver relying on old reads. Reusing the existing notifier avoids a second mechanism; a path notice still requires a fresh read. |
-| Keep runtime facts from starting idle work. | Waking on every write makes a file-only evaluator generate a write → response → write cycle. Save the fact when idle; a head needing a response uses the existing steer decision. |
-
-These are design choices, not a measured claim that the new prompts eliminate stale or incorrect findings.
+The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
 ## Payload merge
 
@@ -96,50 +78,54 @@ An in-flight observation runs to completion unless lifecycle shutdown aborts it.
 
 ## Acting heads
 
-Tool permissions come from the head file:
+Head files control [which tools a head may use](heads.md#tools-acting-heads).
 
-- omitted `tools:` grants all tools hydra can execute;
-- a list narrows execution to that subset;
-- `tools: []` creates a judge-only head.
+Heads without tools make one model call; heads with tools use Pi's `runAgentLoop`. See [Failed checks](#failed-checks) for errors and retries. Each model call keeps the copied part of the main assistant's request unchanged. Whether the provider reads it from cache depends on the provider.
 
-Judge-only heads make one call and execute no tools. The replayed request still contains the driver's tool schemas; a judge's attempted tool call is rejected rather than executed or given a repair turn. Acting heads run through `runAgentLoop` from Pi's agent core, preserving Pi's argument validation, tool errors, execution policy, and cancellation behavior. Every loop iteration still replays the captured driver prefix; whether that replay is a cache hit remains provider-dependent.
-
-OpenAI acting heads normally finish with the typed `hydra` completion action; successful self-removal is terminal without a second call. Anthropic acting heads return a compact validated JSON decision; their actual work and head management still use tools. Provider rationale and measured comparisons live in [Completion channels](providers.md#completion-channels).
+How a head finishes depends on the provider; see [Completion channels](providers.md#completion-channels).
 
 ## Delivery
 
-Evaluation and delivery are separate. In an open session:
+In an open session:
 
-- `print` renders a user-only TUI note in interactive mode and never enters the driver's context;
-- `steer` sends a real user message at the driver's next checkpoint, or starts the next run when idle;
-- `interrupt` aborts an active run and delivers the finding; when idle, it simply starts the next run with that message;
-- a valid quiet decision is persisted as a noop.
+- `print` shows a note in Pi's interactive interface. It shows nothing in `pi -p`, and the main assistant never sees it.
+- `steer` sends the finding as a user message before the main assistant's next model request. If it is idle, the message starts a new run.
+- `interrupt` stops active work and starts a new run with the finding. If already idle, it just starts the new run.
+- No finding means no message. Hydra saves the result as `noop`.
 
-During shutdown, steer and interrupt findings use the internal queue route: they are saved as context instead of restarting an idle driver.
+During shutdown, Hydra uses its internal `queue` route to save `steer` and `interrupt` messages instead of starting idle work. `queue` also supports older sessions, but is not offered to heads.
 
-Judge findings are grouped into at most one user-only batch and one agent-directed batch. An interrupt based on a stale snapshot is demoted to steer: one turn of delay is safer than aborting newer work from an old judgment.
+Hydra groups findings from each answer into at most two messages. All `print` findings go in one user-only note. All `steer` and `interrupt` findings go in one message for the main assistant, which interrupts if any finding chose it. Every accepted finding appears once; user-only findings never reach the main assistant. An interrupt based on an old copy of the conversation becomes a steer, so it does not stop newer work.
 
-A delivery ledger tracks pending and successful findings. The prompt identifies each recipient: a printed note is not evidence that the driver saw it. An unresolved concern alone does not show that feedback was ignored. The old queue route remains internal for compatibility but is not offered in current prompts or schemas.
+Hydra tracks which messages are waiting and which arrived. Heads are told who received each message; a user-only note does not mean the main assistant saw it.
 
 ### Runtime notices
 
-Runtime notices are facts about Hydra's operation, not findings from a lens. They reach the next checkpoint while the driver is working. When idle, they are saved for its next request without starting a new response. A head that needs the driver to react uses a steer decision, which can resume idle work.
+Hydra adds automatic notices about changed files and some head errors. These are not findings from a head. While the main assistant is working, it receives them before its next model request. When idle, they are saved for its next request without starting a new response. Starting a response for every write can create a loop: a head records the response in a file, which starts another response, which the head records again. A head that needs a response can choose `steer` instead, as described above.
 
-Successful `write` and `edit` calls announce the head, operation, and path and ask the driver to reread relevant files. The notice is independent of `after-change`; it does not update older read results or cover writes performed through bash. An error or cancellation can occur after a tool has changed disk, so a missing success notice is not a rollback guarantee.
+A successful `write` or `edit` sends the head name, change and file path. The main assistant must reread relevant files before relying on older contents. This notice is separate from `after-change`. It does not update earlier reads or cover changes made through bash. A tool can change a file before failing or being stopped, so no success notice does not mean nothing changed.
 
-Correctable judge failures—attempted tool calls and malformed nonempty completed answers—also get a labeled context notice. They tell future observations which contract to follow, without asking the driver to replay a rejected tool request or acknowledge the notice. Empty answers, truncation, and provider failures remain diagnostics, not guesses about observer intent.
+Pi sends automatic notices to the model as user messages. The label identifies Hydra as the source, but gives them no extra authority. They do not replace the head's last finding.
 
-A protocol-error notice is bounded to one per head and error kind on the selected session branch. Pending and consumed notices are distinct; only actual context messages restore consumed state. Repeated failures remain recorded. Runtime notices do not count as lens deliveries. Custom messages still serialize into user-role input; the runtime label identifies their source, not a separate model authority level.
+### Failed checks
+
+A head with tools receives Pi's normal tool errors and can try again within its check. This includes requests for tools it is not allowed to use.
+
+A head without tools gets no retry or further model call. Tool requests never run, even if they come with valid-looking JSON. One invalid finding makes Hydra reject the entire answer. Invalid or empty answers, unfinished or cut-short responses, provider errors and responses the provider reports as stopped are failed checks. An answer containing only thinking is still empty. Hydra records these failures as `noop`, not as a deliberate choice to say nothing. If Hydra cancels the check or switches conversation branches before it finishes, it drops the result instead.
+
+Only two failures produce an automatic notice for later checks: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
+
+Each head gets at most one error notice for each error type on the selected conversation branch. Only a message that arrived counts as delivered; a failed or dropped delivery can be retried. Every failure is still logged.
 
 ## State and observability
 
 hydra has no external database. It stores three custom entry types in Pi's session log:
 
 - `hydra-config` — explicitly saved active-head changes (autostart alone is not persisted);
-- `hydra-call` — observation usage, action, timing, tools, and what the head answered (text, thinking, stop reason, parse error and classified judge failures);
+- `hydra-call` — usage, action, timing, tools, the head's answer and any error;
 - `hydra-delivery` — successful delivery receipts.
 
-Runtime notices are persisted as custom messages, which participate in model context; the entries above do not. Branch navigation rebuilds state from the selected session branch. `/hydra-stats` and the footer use the same persisted calls. `/hydra-debug` dumps captured and merged payload pairs for manual parity verification.
+Automatic notices are saved as messages the model can read; the entries above are not. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
 
 ## Cache hit ratio
 
@@ -175,7 +161,7 @@ There is no build step; Pi loads the TypeScript through jiti.
 | `scheduler.ts` | Conflating per-head scheduler |
 | `stats.ts` | Observation log and session-entry parsing |
 | `protocol.ts` | Hydra tool wire contract |
-| `judge.ts` | Judge response classification and bounded runtime-report receipts |
+| `judge.ts` | Check answers from heads without tools and track their error notices |
 | `delivery.ts` | Delivery ledger and routing |
 | `utils.ts` | Shared types and pure prompt, parsing, guard, and payload logic |
 

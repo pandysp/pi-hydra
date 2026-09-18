@@ -57,13 +57,16 @@ The first developer-envelope treatment cut extra observer turns from 67 to 3 whi
 
 ## Completion channels
 
-Judge-only heads use one enumerated findings object on both providers. Failed completions are recorded as noops without a repair call. Classification checks provider failure/abort, truncation, attempted tool calls, empty text, then JSON validity; nonterminal responses are not accepted. A normally completed response containing both JSON and a tool request is rejected; the tool is never executed. Output cut short remains diagnostic-only, even if it includes a tool-call block. Empty text is not treated as a valid quiet answer.
+Heads without tools return the same [findings JSON](heads.md#decisions-when-findings-land) on both providers. See [Delivery](architecture.md#delivery) and [Failed checks](architecture.md#failed-checks) for what happens to their answers.
 
-Normally completed blocked-tool requests and malformed nonempty answers can produce bounded [runtime notices](architecture.md#runtime-notices) for future observations. No tool arguments or arbitrary response text are copied into the driver context. Valid findings still use at most two batches: prints to the user, and steers/interrupts to the agent.
+Heads with tools finish differently:
 
-A non-self-removing acting OpenAI head is expected to call the typed `hydra` completion action once; Hydra enforces that a terminal action is alone in its tool-call turn. Successful self-removal is terminal without a separate completion call. Acting Anthropic heads are instructed to return compact JSON after their work; native typed completion measured materially slower and more expensive there. Work and head management remain real tools on both providers.
+- **OpenAI Codex:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
+- **Anthropic:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. Finishing through a tool call measured slower and more expensive here.
 
-The measurements below describe the July 2026 contracts, before the September prompt-clarity revision. They do not measure the quality of the current wording.
+On both providers, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
+
+The measurements below used the July 2026 instructions, before the September wording changes. They do not measure the quality of the current wording.
 
 Across 78 randomized OpenAI acting pairs on Luna, Terra, and Sol, the then-final generic design scored 77/78 (98.7%) versus 63/78 (80.8%), used 201 versus 227 calls, cost $0.7499 versus $0.8330, and reduced mean latency from 7.99 s to 7.10 s. By family: docs 29/30 versus 21/30, tuner 18/18 versus 12/18, foreman 30/30 versus 30/30. A separate frozen foreman screen makes the combined result 45/45 versus 44/45.
 

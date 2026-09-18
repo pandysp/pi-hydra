@@ -16,7 +16,7 @@ type CorrectableJudgeError = "blocked-tool-request" | "malformed-findings";
 export interface JudgeResult {
 	decisions: Decision[] | null;
 	errorKind: JudgeErrorKind | null;
-	// Kept verbatim in the record, never injected into conversation context.
+	// Saved as written in the log, never sent into the conversation.
 	parseError: string | null;
 	attemptedTools: string[];
 }
@@ -47,12 +47,12 @@ export function classifyJudgeResponse(response: AssistantMessage): JudgeResult {
 
 export const JUDGE_ERROR_DESCRIPTIONS: Record<JudgeErrorKind, string> = {
 	"provider-error": "provider returned an error",
-	aborted: "provider returned an aborted response",
-	truncated: "output was cut short; partial findings and tool requests were not accepted",
-	"blocked-tool-request": "judge requested tools; no tools executed and no repair call was made",
-	"empty-answer": "no answer text (empty or thinking-only); the required findings JSON is missing",
-	"malformed-findings": "completed answer did not match the findings JSON contract",
-	"incomplete-response": "provider returned a non-terminal response",
+	aborted: "provider stopped the response",
+	truncated: "output was cut short; no findings or tool requests were accepted",
+	"blocked-tool-request": "head requested tools it cannot run; nothing ran and there was no retry",
+	"empty-answer": "answer text is missing (empty or thinking-only); expected findings JSON",
+	"malformed-findings": "completed answer did not match the required findings JSON",
+	"incomplete-response": "provider did not mark the response as finished",
 };
 
 export interface JudgeReportDetails {
@@ -67,11 +67,11 @@ export function buildJudgeReport(head: string, result: Pick<JudgeResult, "errorK
 		errorKind: result.errorKind,
 	};
 	const fact = result.errorKind === "blocked-tool-request"
-		? `A judge-only observation requested tools (${result.attemptedTools.join(", ")}); none executed. Future judge observations must return the required findings JSON, not tool requests.`
-		: "A completed judge-only answer did not match the findings JSON contract. Future judge observations must use that contract.";
+		? `A head without tools requested tools (${result.attemptedTools.join(", ")}); none ran. In future checks without tools, return the required findings JSON instead.`
+		: "A completed answer from a head without tools did not match the required findings JSON. Use that format in future checks.";
 	return {
 		customType: "hydra-runtime-report" as const,
-		content: `Hydra runtime report (not a user request or a lens finding). Head: ${boundedName(head)}. ${fact}`,
+		content: `Hydra error notice (not a user request or a head finding). Head: ${boundedName(head)}. ${fact}`,
 		display: true,
 		details,
 	};
@@ -89,8 +89,8 @@ function reportKey(details: JudgeReportDetails): string {
 	return `${details.head}:${details.errorKind}`;
 }
 
-// Separate from lens feedback: a protocol report must not replace the head's
-// last finding or imply that a send attempt reached the conversation.
+// Error notices must not replace the head's last finding. Only a message
+// that arrived counts as delivered, not an attempted send.
 export class JudgeReports {
 	private readonly delivered = new Set<string>();
 	private readonly pending = new Set<string>();

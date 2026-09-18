@@ -8,7 +8,7 @@ function response(content: AssistantMessage["content"], stopReason: AssistantMes
 const json = { type: "text" as const, text: '{"findings":[]}' };
 const call = { type: "toolCall" as const, name: "write", id: "id", arguments: { content: "PRIVATE" } };
 
-describe("judge response classification", () => {
+describe("answers from heads without tools", () => {
 	it.each([
 		["error", "provider-error"], ["aborted", "aborted"], ["length", "truncated"],
 		["toolUse", "blocked-tool-request"], ["stop", "blocked-tool-request"],
@@ -39,8 +39,8 @@ describe("judge response classification", () => {
 		const result = classifyJudgeResponse(response([{ type: "text", text: '{"findings":[{"action":"PRIVATE instructions"}]}' }]));
 		expect(result.parseError).toContain("PRIVATE instructions");
 		const report = buildJudgeReport("quality", result)!;
-		expect(report.content).toContain("Hydra runtime report (not a user request or a lens finding)");
-		expect(report.content).toContain("Future judge observations must use that contract.");
+		expect(report.content).toContain("Hydra error notice (not a user request or a head finding)");
+		expect(report.content).toContain("Use that format in future checks.");
 		expect(report.content).not.toMatch(/acknowledg|driver action/);
 		expect(JSON.stringify(report)).not.toContain("PRIVATE");
 	});
@@ -65,9 +65,9 @@ describe("judge response classification", () => {
 	});
 });
 
-describe("judge report receipts", () => {
+describe("error notice delivery records", () => {
 	const report = () => buildJudgeReport("quality", classifyJudgeResponse(response([call], "toolUse")))!;
-	it("only restores actual runtime custom messages, not call or attempted-send records", () => {
+	it("only restores actual custom messages, not call or attempted-send records", () => {
 		const reports = new JudgeReports();
 		const { details } = report();
 		reports.restore([{ type: "custom", customType: "hydra-runtime-report", details }]);

@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "c338a25c05b18535bd776b77fe7b90e79699429465955f9a03603dd038cfea77",
+        "codeHash": "336292190169b019d4ec6e7ce66b186a7887a4a5fccc1ec0c38b4831f1a75f9e",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "d3efd84a958a9a04bd3480c0173916f0f7c7a26b281e2a2f22c17c0131d081d8"
+        "docHash": "ba34e6b56141afa36569b3dcbb3a1575ebfe81a18f7a1e7cdd8d871bf63ae7ab"
       }
     },
     {
@@ -84,8 +84,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "629f6723b8c11f05942631e874a434925dadd78766265d89b0b5d4124942999d",
-        "docHash": "22727c0c4c467b77e69942a3127ce5b8794f26208d0ca37bee980b5c0c8daad0"
+        "codeHash": "e24167a95853fcbf79ef2f2043fff28ad2d5514a2cf6fe56d7e78bb6797d156b",
+        "docHash": "419757c94b7b3353df60cfceac5b9ae16b33162d455b6a78a5f423d143f1a140"
       }
     },
     {
@@ -140,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "09204b2bca71ce775ad5501b40f7c0ba33cb9721f5470d65bccb4cc31a25c2ec",
-        "docHash": "a0d785363c7c5f40c082980d0a585b29bb773bac604527b25cb528ac4fe92944"
+        "codeHash": "f72e4c048c72aa542c4cf91f049a305b13ba6fbbaa05e6bd80b136d83adae83d",
+        "docHash": "84ae9a28ea2242a9cff4c7d6baece2d6edcdaae9c4811b2b174c976517f25061"
       }
     },
     {
@@ -183,7 +183,7 @@
         {
           "path": "index.ts",
           "start": "function restoreFromBranch(",
-          "end": "// One observation's outcome"
+          "end": "// The result of one check."
         }
       ],
       "doc": {
@@ -191,8 +191,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "bc57f77d1f183e10cc5789ab6743678ebeeb890a705795dccf082e734b803eab",
-        "docHash": "d4dcdf245d00cc249fb1fe62d0f63ceb7941f34dfe0d866359bfd1f035f38efa"
+        "codeHash": "0f95b406b910d9604ca3ae899de677db3aaade92c448693a0e818b01d46d2b59",
+        "docHash": "f6957e41bbf8561bd63641dd14850ba2478bd69542ebc2ffabd9d8ba9cf806f5"
       }
     }
   ]

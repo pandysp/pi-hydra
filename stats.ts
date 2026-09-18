@@ -41,14 +41,14 @@ export interface HydraCall {
 	// Text blocks of the final response. Judging heads keep up to 2000 chars
 	// (a findings list is short and worth keeping whole), acting heads 200.
 	rawResponse?: string;
-	// Completion diagnostics distinguish protocol failures, truncation and
-	// empty/thinking-only answers even when rawResponse looks the same.
+	// These fields distinguish wrong-format, cut-short and empty answers,
+	// including thinking-only output, even when rawResponse looks the same.
 	stopReason?: string;
 	reasoningTokens?: number;
 	thinking?: string;
 	parseError?: string;
 	judgeErrorKind?: JudgeErrorKind;
-	/** Bounded names only, never tool arguments. Judges do not execute them. */
+	/** Short tool names only, never arguments. These tools did not run. */
 	attemptedTools?: string[];
 	// Acting heads only: model turns in the tool loop and the tools executed.
 	iterations?: number;

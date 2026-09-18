@@ -63,7 +63,7 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 		const request = new Request(input, init);
 		const payload = await request.json();
-		const observing = JSON.stringify(payload.messages).includes("Side watcher");
+		const observing = JSON.stringify(payload.messages).includes("You are reviewing the main assistant's work");
 		if (observing) {
 			observerPayloads.push(payload);
 			await observerHold;
@@ -121,7 +121,7 @@ async function consumer(busy: boolean, acting = false, firstObserverResponse?: A
 }
 
 describe("Pi consumer context and session", () => {
-	it.each([{ acting: false, name: "judge report" }, { acting: true, name: "write notice" }])("a busy $name reaches the next checkpoint, not an idle follow-up", async ({ acting }) => {
+	it.each([{ acting: false, name: "error notice" }, { acting: true, name: "write notice" }])("a busy $name reaches the next model request, not an idle follow-up", async ({ acting }) => {
 		const h = await consumer(true, acting);
 		const running = h.session.prompt("Work through checkpoints.");
 		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
@@ -136,7 +136,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.observerPayloads[0].tools).toEqual(h.driverPayloads[1].tools);
 		expect(h.observerPayloads[0].tools.some((tool: { name: string }) => tool.name === "write")).toBe(true);
 		expect(h.observerPayloads[0].tool_choice).toEqual(h.driverPayloads[1].tool_choice);
-		const phrase = acting ? "reread this file" : "Hydra runtime report";
+		const phrase = acting ? "reread this file" : "Hydra error notice";
 		const nextRequest = h.driverPayloads[2];
 		const delivered = nextRequest.messages.filter((message: any) => JSON.stringify(message.content).includes(phrase));
 		expect(delivered).toHaveLength(1);
@@ -151,7 +151,7 @@ describe("Pi consumer context and session", () => {
 		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(phrase);
 	});
 
-	it.each([{ acting: false, name: "judge report" }, { acting: true, name: "write notice" }])("a late $name leaves a fully idle driver idle and reaches its next user-prompted request", async ({ acting }) => {
+	it.each([{ acting: false, name: "error notice" }, { acting: true, name: "write notice" }])("a late $name leaves a fully idle main assistant idle and reaches its next user-prompted request", async ({ acting }) => {
 		const h = await consumer(false, acting);
 		if (!acting) h.repeatFailure();
 		const gate = deferred();
@@ -165,18 +165,18 @@ describe("Pi consumer context and session", () => {
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
 		await vi.waitFor(() => expect(h.entries(type)).toHaveLength(1));
 		await h.session.waitForIdle();
-		// A runtime fact is recorded, not turned into new work.
+		// An automatic notice is recorded, not turned into new work.
 		expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(1);
 		expect(h.session.isIdle).toBe(true);
 		await h.session.prompt("Next task.");
 		expect(h.driverPayloads).toHaveLength(2);
-		const phrase = acting ? "reread this file" : "Hydra runtime report";
+		const phrase = acting ? "reread this file" : "Hydra error notice";
 		const delivered = h.driverPayloads[1].messages.filter((message: any) => JSON.stringify(message.content).includes(phrase));
 		expect(delivered).toHaveLength(1);
 		expect(delivered[0].role).toBe("user");
 		if (!acting) expect(JSON.stringify(h.driverPayloads[1])).not.toContain("PRIVATE-ARGUMENT");
-		// The second run ends with its own observation: a repeated judge failure
-		// is deduplicated and the acting head writes nothing more.
+		// The second run ends with its own check: a repeated failure from the head
+		// without tools is not sent again, and the head with tools writes nothing more.
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
 		await h.session.waitForIdle();
 		expect(h.entries(type)).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("deliberate observer steering resumes a fully idle driver without a user message", async () => {
+	it("deliberate observer steering resumes a fully idle main assistant without a user message", async () => {
 		const h = await consumer(false, false, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"DELIBERATE-STEER"}]}' }]);
 		const gate = deferred();
 		h.holdObserver(gate.promise);
@@ -205,7 +205,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it.each([{ acting: false, name: "judge report" }, { acting: true, name: "write notice" }])("a $name finishing during shutdown is recorded without a driver turn", async ({ acting }) => {
+	it.each([{ acting: false, name: "error notice" }, { acting: true, name: "write notice" }])("a $name finishing during shutdown is recorded without a main assistant turn", async ({ acting }) => {
 		const h = await consumer(false, acting);
 		const gate = deferred();
 		h.holdObserver(gate.promise);
@@ -221,7 +221,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("does not carry a runtime notice across branch navigation after abort", async () => {
+	it("does not carry an automatic notice across branch navigation after abort", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
@@ -232,7 +232,7 @@ describe("Pi consumer context and session", () => {
 		const firstUser = h.sm.getBranch().find(e => e.type === "message" && e.message.role === "user")!;
 		await h.session.navigateTree(firstUser.id);
 		await h.session.prompt("New branch.");
-		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain("Hydra runtime report");
+		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain("Hydra error notice");
 		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
 		expect(h.errors).toEqual([]);
 	});
@@ -247,7 +247,7 @@ describe("Pi consumer context and session", () => {
 		h.hold.resolve();
 		await Promise.all([running, aborted]);
 		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("runtime report(s) never reached"));
+		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
 		const abandoned = h.sm.getLeafId()!;
 		const firstUser = h.sm.getBranch().find(e => e.type === "message" && e.message.role === "user")!;
 		await h.session.navigateTree(firstUser.id);
@@ -265,6 +265,6 @@ describe("Pi consumer context and session", () => {
 		await vi.waitFor(() => expect(h.errors).toContainEqual(expect.objectContaining({ event: "send_message", error: "asynchronous host failure" })));
 		await h.session.extensionRunner.emit({ type: "agent_settled" });
 		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("runtime report(s) never reached"));
+		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
 	});
 });

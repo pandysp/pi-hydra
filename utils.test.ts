@@ -290,9 +290,9 @@ describe("buildAnthropicObservationPrompt", () => {
 				pending: [],
 			},
 		});
-		expect(prompt).toContain("active heads are foreman, quality");
-		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
-		expect(prompt).toContain("removing your own head completes the observation");
+		expect(prompt).toContain("Active heads when this check started: foreman, quality");
+		expect(prompt).toContain("manage_heads change automatically shows the user a note");
+		expect(prompt).toContain("removing your own head ends this check");
 		expect(prompt).not.toContain("queue");
 	});
 });
@@ -311,15 +311,15 @@ describe("buildObservationEnvelope", () => {
 				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
 			},
 		});
-		expect(envelope).toContain('complete with delivery "print"');
-		expect(envelope).toContain("manage_heads change prints its own receipt automatically");
-		expect(envelope).toContain("active heads are quality, security");
+		expect(envelope).toContain('finish with delivery "print"');
+		expect(envelope).toContain("manage_heads change automatically shows the user a note");
+		expect(envelope).toContain("Active heads when this check started: quality, security");
 		expect(envelope).not.toContain("queue");
 	});
 
 	it("does not expose active state without explicit hydra capability", () => {
-		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
-		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
+		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
 	});
 });
 
@@ -336,13 +336,13 @@ describe("enumerated steer-only judge completion", () => {
 			expect(text).toContain(
 				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
 			);
-			expect(text).toContain("findings array if none");
-			expect(text).toContain("Tool requests will not execute");
+			expect(text).toContain("empty findings array if there are none");
+			expect(text).toContain("You cannot use tools");
 			expect(text.toLowerCase()).not.toContain("queue");
 		}
-		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).toContain("previous user message contains all instructions for the security head");
 		expect(envelope).not.toContain("Fix security issues.");
-		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain("HEAD INSTRUCTIONS: Fix security issues.");
 		expect(prompt).toContain('"recipient":"agent"');
 	});
 
@@ -436,9 +436,9 @@ describe("shared observer guidance", () => {
 		pending: [{ head: "quality", delivery: "steer" as const, message: "Pending correction" }],
 	};
 	const paths = {
-		"Anthropic judge": () => buildEnumeratedJudgeObservationPrompt("quality", "LENS BODY", context),
+		"Anthropic judge": () => buildEnumeratedJudgeObservationPrompt("quality", "HEAD BODY", context),
 		"Codex judge": () => buildEnumeratedJudgeObservationEnvelope("quality", context),
-		"Anthropic acting": () => buildAnthropicObservationPrompt("quality", "LENS BODY", ["read", "write"], { deliveryContext: context }),
+		"Anthropic acting": () => buildAnthropicObservationPrompt("quality", "HEAD BODY", ["read", "write"], { deliveryContext: context }),
 		"Codex acting": () => buildObservationEnvelope("quality", ["read", "write"], { deliveryContext: context }),
 	};
 	for (const [name, build] of Object.entries(paths)) {
@@ -455,9 +455,9 @@ describe("shared observer guidance", () => {
 	it("acting paths distinguish a write notice from refreshed contents", () => {
 		for (const build of [paths["Anthropic acting"], paths["Codex acting"]]) {
 			const prompt = build();
-			expect(prompt).toContain("runtime announces successful write/edit paths");
+			expect(prompt).toContain("Hydra tells the main assistant which files you successfully write or edit");
 			expect(prompt).toContain("reread relevant files");
-			expect(prompt).toContain("bash mutations are not tracked");
+			expect(prompt).toContain("does not track file changes made through bash");
 		}
 	});
 });

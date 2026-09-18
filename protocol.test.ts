@@ -140,11 +140,10 @@ describe("hydra tool protocol", () => {
 
 	it("defines delivery by who must act and when", () => {
 		const description = hydraToolDescription("/heads");
-		expect(description).toContain('"print" is a user-only note and never reaches the driver');
-		expect(description).toContain("do not use it for feedback that requires driver action");
-		expect(description).toContain('"steer" is the normal non-aborting driver channel, including work that can wait');
-		expect(description).toContain("next checkpoint");
-		expect(description).toContain("emergency that must abort the run");
+		expect(description).toContain('"print" shows a note only to the user; the main assistant will not see it');
+		expect(description).toContain('Use "steer" when the main assistant needs the feedback, even if it can wait');
+		expect(description).toContain("before its next model request");
+		expect(description).toContain("emergency that must stop the run");
 		expect(description).not.toContain("queue");
 	});
 });
