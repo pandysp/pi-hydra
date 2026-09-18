@@ -9,13 +9,30 @@ git clone https://github.com/pandysp/pi-hydra
 mkdir -p ~/.pi/agent/extensions
 ln -sfn "$(pwd)/pi-hydra" ~/.pi/agent/extensions/hydra
 cd pi-hydra
-npm update @earendil-works/pi-agent-core @earendil-works/pi-ai \
-  @earendil-works/pi-coding-agent @earendil-works/pi-tui
+npm ci
 ```
 
-This installs the development tooling and refreshes all four Pi packages to the
-latest stable release, just as [CI](.github/workflows/ci.yml) does. Older Pi
-versions are not tested.
+This installs the exact versions in `package-lock.json`, just as the PR check in
+[CI](.github/workflows/ci.yml) does. All four Pi development packages are pinned
+together. A separate `latest-pi` job tests their `latest` releases daily and on
+manual dispatch, so a new Pi release cannot change what an existing PR tests.
+Both jobs run the same checks; neither ignores failures. These are a development
+baseline and a current-release check, not a promise to support older Pi versions.
+
+To reproduce the latest-Pi check, or deliberately update the development baseline:
+
+```bash
+npm ci
+npm install --save-dev --save-exact @earendil-works/pi-agent-core@latest \
+  @earendil-works/pi-ai@latest @earendil-works/pi-coding-agent@latest \
+  @earendil-works/pi-tui@latest
+npm ls --depth=0
+npm run check
+npm test
+```
+
+This updates `package.json` and `package-lock.json`. Commit both only when updating
+the baseline; use a disposable checkout for a compatibility-only check.
 
 If you installed hydra via the README quickstart, run `pi remove git:github.com/pandysp/pi-hydra` first; the git package and the symlink are separate load paths, and keeping both loads hydra twice.
 
