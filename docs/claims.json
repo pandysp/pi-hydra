@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "2806ed5c4fe07fccf02cd67b7aa5f9f69940197e98551255eb617ebdae729d48",
+        "codeHash": "c46c1bd1e9ab541b44557d837d4daad1e2418691790a060315bc0c66b4c7d0d5",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "b5e9ccc80f59c55f60268f19f7f6ccfebe27fb23e5c66eec26dbdae33276c97c"
+        "docHash": "ba34e6b56141afa36569b3dcbb3a1575ebfe81a18f7a1e7cdd8d871bf63ae7ab"
       }
     },
     {
@@ -67,6 +67,16 @@
           "path": "index.ts",
           "start": "function observationHandoffFor(",
           "end": "// The exact request the driver last sent"
+        },
+        {
+          "path": "utils.ts",
+          "start": "const STEER_ONLY_DECISION_SHAPE",
+          "end": "export interface EnumeratedDecisionResult"
+        },
+        {
+          "path": "utils.ts",
+          "start": "function actingDeliveryContext(",
+          "end": "export interface HeadCatalog"
         }
       ],
       "doc": {
@@ -74,8 +84,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "96a250926e5df05369f3849c2dcd528310c4b430c4c2a458c43844af7ccfe4fb",
-        "docHash": "78d6ab75500a567df183cc03ab2e0a46f66eccdb36172b357a628b29d70356e6"
+        "codeHash": "69b5c7415cbc4ffbaf36c64bc64a030793566cd1fc7e6f82eaef48657fa77cb0",
+        "docHash": "c13bcf2a425b2f5201b542daa69d710fda30ff3d6e29a28bc92d0608e7f38a28"
       }
     },
     {
@@ -108,6 +118,21 @@
           "path": "delivery.ts",
           "start": "export function routeFeedback(",
           "end": null
+        },
+        {
+          "path": "index.ts",
+          "start": "afterToolCall: async (event) => {",
+          "end": "async (event) => {"
+        },
+        {
+          "path": "index.ts",
+          "start": "function reportJudgeFailure(",
+          "end": "// One observation per active head"
+        },
+        {
+          "path": "judge.ts",
+          "start": "export type JudgeErrorKind",
+          "end": null
         }
       ],
       "doc": {
@@ -115,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "0e225e707839559ae322aa0354f8c20a6abf61e9ec8849cb4f327d132738c1e9",
-        "docHash": "338a4bf1820c65b8200966d985f1b5cd09c92c824f4b878380823c4b69791301"
+        "codeHash": "89c3ee224d2bbe1419d6a1745c3821aa8ca4cdb48c5b6d9299e2d168113c895b",
+        "docHash": "76f53ce7f9dfcebf160d2493a61c415bc9c45b14c908caa8d79ff98f675534bd"
       }
     },
     {
@@ -147,13 +172,18 @@
       "code": [
         {
           "path": "stats.ts",
+          "start": "export interface HydraCall",
+          "end": "// What counts as healthy"
+        },
+        {
+          "path": "stats.ts",
           "start": "export function parseBranchEntries(",
           "end": null
         },
         {
           "path": "index.ts",
           "start": "function restoreFromBranch(",
-          "end": "// One observation's outcome"
+          "end": "// The result of one check."
         }
       ],
       "doc": {
@@ -161,8 +191,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "78e191888369414aefdec5dccde366853a0425a944bda571cd3536e603598b35",
-        "docHash": "f9c3972127f2728b1620aa4be377870d112cc9291c94e110fc5564eee92ba497"
+        "codeHash": "567ca248871936c8ff4b2dff83a4a0a952c7a08878bc5aceb65d4e680e5275bd",
+        "docHash": "f6957e41bbf8561bd63641dd14850ba2478bd69542ebc2ffabd9d8ba9cf806f5"
       }
     }
   ]

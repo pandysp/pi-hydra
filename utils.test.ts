@@ -7,7 +7,9 @@ import {
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
-	buildObservationPrompt,
+	FOLLOW_UP_GUIDANCE,
+	OBSERVER_DELIVERY_GUIDANCE,
+	OBSERVER_GUIDANCE,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	decisionFromLoopStopReason,
@@ -279,49 +281,7 @@ describe("usesSplitObservationHandoff", () => {
 	});
 });
 
-describe("buildObservationPrompt", () => {
-	it("bans tools for a judge-only head", () => {
-		const prompt = buildObservationPrompt("quality", "Judge.", []);
-		expect(prompt).toContain("no work tools");
-		expect(prompt).not.toContain("tool access");
-		expect(prompt).toContain('action "complete_observation"');
-		expect(prompt).not.toContain("one JSON object");
-	});
-
-	it("spells out a narrowed allowance", () => {
-		const prompt = buildObservationPrompt("docs", "Keep notes.", ["read", "write"]);
-		expect(prompt).toContain("only these tools: read, write");
-		expect(prompt).not.toContain("queue");
-	});
-
-	it("permits everything when tools are omitted", () => {
-		expect(buildObservationPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
-	});
-
-	it("explains a typed print-after-change contract", () => {
-		const prompt = buildObservationPrompt("foreman", "Re-crew.", ["hydra"], { afterChange: "print" });
-		expect(prompt).toContain('complete with delivery "print"');
-		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
-		expect(prompt).not.toContain("Noop when your work product is the files you wrote");
-	});
-
-	it("includes capability state only for an explicitly Hydra-capable head", () => {
-		expect(buildObservationPrompt("crew", "Re-crew.", ["hydra"], { activeHeads: ["quality", "security"] })).toContain(
-			"active heads are quality, security",
-		);
-		expect(buildObservationPrompt("docs", "Write docs.", ["read", "write"], { activeHeads: ["quality"] })).not.toContain(
-			"Hydra snapshot",
-		);
-	});
-});
-
 describe("buildAnthropicObservationPrompt", () => {
-	it("rejects a judge-only head: the enumerated contract owns that path", () => {
-		expect(() => buildAnthropicObservationPrompt("quality", "Judge.", [])).toThrow(
-			"enumerated observation contract",
-		);
-	});
-
 	it("retains acting tools and programmatic management receipts", () => {
 		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
 			activeHeads: ["foreman", "quality"],
@@ -330,33 +290,14 @@ describe("buildAnthropicObservationPrompt", () => {
 				pending: [],
 			},
 		});
-		expect(prompt).toContain("active heads are foreman, quality");
-		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
-		expect(prompt).toContain("removing your own head completes the observation");
+		expect(prompt).toContain("Active heads when this check started: foreman, quality");
+		expect(prompt).toContain("manage_heads change automatically shows the user a note");
+		expect(prompt).toContain("removing your own head ends this check");
 		expect(prompt).not.toContain("queue");
 	});
 });
 
 describe("buildObservationEnvelope", () => {
-	it("keeps the lens out of the elevated judge envelope", () => {
-		const envelope = buildObservationEnvelope("quality", []);
-		expect(envelope).toContain("preceding user message is the complete quality lens");
-		expect(envelope).toContain("lens alone defines scope");
-		expect(envelope).toContain("do not broaden it");
-		expect(envelope).toContain("no work tools");
-		expect(envelope).toContain('action "complete_observation"');
-		expect(envelope).not.toContain("one JSON object");
-		expect(envelope).not.toContain("LENS:");
-		expect(envelope).not.toContain("<system-reminder>");
-	});
-
-	it("states each judge delivery meaning once", () => {
-		const envelope = buildObservationEnvelope("quality", []);
-		for (const delivery of ["print", "queue", "steer", "interrupt"]) {
-			expect(envelope.match(new RegExp(`${delivery} is`, "g"))).toHaveLength(1);
-		}
-	});
-
 	it("preserves a narrowed acting-head allowance", () => {
 		expect(buildObservationEnvelope("docs", ["read", "write"])).toContain("only these tools: read, write");
 	});
@@ -370,15 +311,33 @@ describe("buildObservationEnvelope", () => {
 				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
 			},
 		});
-		expect(envelope).toContain('complete with delivery "print"');
-		expect(envelope).toContain("manage_heads change prints its own receipt automatically");
-		expect(envelope).toContain("active heads are quality, security");
+		expect(envelope).toContain('finish with delivery "print"');
+		expect(envelope).toContain("manage_heads change automatically shows the user a note");
+		expect(envelope).toContain("Active heads when this check started: quality, security");
 		expect(envelope).not.toContain("queue");
 	});
 
 	it("does not expose active state without explicit hydra capability", () => {
-		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
-		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
+		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
+	});
+});
+
+describe("after-change instructions", () => {
+	it.each([undefined, "noop", "print"] as const)("preserves %s for both completion formats", (afterChange) => {
+		const anthropic = buildAnthropicObservationPrompt("docs", "Keep notes.", ["write"], { afterChange });
+		const codex = buildObservationEnvelope("docs", ["write"], { afterChange });
+		for (const [prompt, field, silent] of [[anthropic, "action", "noop"], [codex, "delivery", "none"]]) {
+			if (afterChange === undefined) {
+				expect(prompt).not.toContain("After a successful write or edit");
+				continue;
+			}
+			const action = afterChange === "noop" ? silent : "print";
+			expect(prompt.match(/After a successful write or edit/g)).toHaveLength(1);
+			expect(prompt).toContain(`finish with ${field} "${action}"`);
+			expect(prompt).toContain("Hydra enforces this");
+			expect(prompt).toContain(afterChange === "print" ? "a short note about the change" : "the changed file is the result");
+		}
 	});
 });
 
@@ -395,30 +354,14 @@ describe("enumerated steer-only judge completion", () => {
 			expect(text).toContain(
 				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
 			);
-			expect(text).toContain("List every finding the lens surfaces");
-			expect(text).toContain("Do not rank them or pick one");
-			expect(text).toContain("Steering is the normal and only way to reach the agent and folds in at its next checkpoint");
+			expect(text).toContain("empty findings array if there are none");
+			expect(text).toContain("You cannot use tools");
 			expect(text.toLowerCase()).not.toContain("queue");
 		}
-		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).toContain("previous user message contains all instructions for the security head");
 		expect(envelope).not.toContain("Fix security issues.");
-		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain("HEAD INSTRUCTIONS: Fix security issues.");
 		expect(prompt).toContain('"recipient":"agent"');
-	});
-
-	it("tells every head it is not the main agent", () => {
-		const identity = "You are not the main agent; it keeps working on its own. Do not continue its task or answer for it.";
-		for (const text of [
-			buildEnumeratedJudgeObservationEnvelope("security", context),
-			buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context),
-			buildObservationPrompt("quality", "Judge.", []),
-			buildObservationPrompt("docs", "Keep notes.", ["read", "write"]),
-			buildAnthropicObservationPrompt("docs", "Keep notes.", ["read", "write"]),
-			buildObservationEnvelope("quality", []),
-			buildObservationEnvelope("docs", ["read", "write"]),
-		]) {
-			expect(text).toContain(identity);
-		}
 	});
 
 	it("parses an empty findings list as noop", () => {
@@ -487,6 +430,42 @@ describe("enumerated steer-only judge completion", () => {
 			decisions: null,
 			error: "finding 1 requires a non-empty message",
 		});
+	});
+});
+
+describe("shared observer guidance", () => {
+	const context = {
+		lastByThisHead: { delivery: "print" as const, message: "User-only note" },
+		pending: [{ head: "quality", delivery: "steer" as const, message: "Pending correction" }],
+	};
+	const paths = {
+		"Anthropic judge": () => buildEnumeratedJudgeObservationPrompt("quality", "HEAD BODY", context),
+		"Codex judge": () => buildEnumeratedJudgeObservationEnvelope("quality", context),
+		"Anthropic acting": () => buildAnthropicObservationPrompt("quality", "HEAD BODY", ["read", "write"], { deliveryContext: context }),
+		"Codex acting": () => buildObservationEnvelope("quality", ["read", "write"], { deliveryContext: context }),
+	};
+	for (const [name, build] of Object.entries(paths)) {
+		it(`${name} uses the shared contract`, () => {
+			const prompt = build();
+			const identity = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
+			expect(OBSERVER_GUIDANCE.startsWith(`You are reviewing the main assistant's work. ${identity}`)).toBe(true);
+			expect(prompt.replace(/^<system-reminder>/, "").startsWith(OBSERVER_GUIDANCE)).toBe(true);
+			expect(prompt.split(identity)).toHaveLength(2);
+			for (const block of [OBSERVER_GUIDANCE, FOLLOW_UP_GUIDANCE, OBSERVER_DELIVERY_GUIDANCE]) {
+				expect(prompt.split(block)).toHaveLength(2);
+			}
+			expect(prompt).toContain('"recipient":"user"');
+			expect(prompt).not.toMatch(/\bqueue\b|List every finding|empty list is normal/);
+			expect(prompt).toMatchSnapshot();
+		});
+	}
+	it("acting paths distinguish a write notice from refreshed contents", () => {
+		for (const build of [paths["Anthropic acting"], paths["Codex acting"]]) {
+			const prompt = build();
+			expect(prompt).toContain("Hydra tells the main assistant which files you successfully write or edit");
+			expect(prompt).toContain("reread relevant files");
+			expect(prompt).toContain("does not track file changes made through bash");
+		}
 	});
 });
 

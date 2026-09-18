@@ -57,11 +57,18 @@ The first developer-envelope treatment cut extra observer turns from 67 to 3 whi
 
 ## Completion channels
 
-Judge-only heads use one enumerated findings object on both providers. Malformed output fails open to noop without a repair call. Hydra preserves all valid messages in at most two batches: prints to the user, and steers/interrupts to the agent.
+Heads without tools return the same [findings JSON](heads.md#decisions-when-findings-land) on both providers. See [Delivery](architecture.md#delivery) and [Failed checks](architecture.md#failed-checks) for what happens to their answers.
 
-A non-self-removing acting OpenAI head is expected to call the typed `hydra` completion action once; Hydra enforces that a terminal action is alone in its tool-call turn. Successful self-removal is terminal without a separate completion call. Acting Anthropic heads are instructed to return compact JSON after their work; native typed completion measured materially slower and more expensive there. Work and head management remain real tools on both providers.
+Heads with tools finish differently:
 
-Across 78 randomized OpenAI acting pairs on Luna, Terra, and Sol, the final generic design scored 77/78 (98.7%) versus 63/78 (80.8%), used 201 versus 227 calls, cost $0.7499 versus $0.8330, and reduced mean latency from 7.99 s to 7.10 s. By family: docs 29/30 versus 21/30, tuner 18/18 versus 12/18, foreman 30/30 versus 30/30. A separate frozen foreman screen makes the combined result 45/45 versus 44/45.
+- **OpenAI Codex:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
+- **Anthropic:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. Finishing through a tool call measured slower and more expensive here.
+
+On both providers, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
+
+The measurements below used the July 2026 instructions, before the September wording changes. They do not measure the quality of the current wording.
+
+Across 78 randomized OpenAI acting pairs on Luna, Terra, and Sol, the then-final generic design scored 77/78 (98.7%) versus 63/78 (80.8%), used 201 versus 227 calls, cost $0.7499 versus $0.8330, and reduced mean latency from 7.99 s to 7.10 s. By family: docs 29/30 versus 21/30, tuner 18/18 versus 12/18, foreman 30/30 versus 30/30. A separate frozen foreman screen makes the combined result 45/45 versus 44/45.
 
 The same contracts on Anthropic scored 38/42 versus 31/42 across Sonnet, Opus, and Fable, with seven treatment-only wins, no control-only wins, and four shared misses. Treatment used 112 versus 120 calls, cost $0.7285 versus $0.7782, and reduced mean/p95 latency from 7.37/12.01 s to 7.05/11.67 s. Parse validity was 41/42 versus 42/42.
 
@@ -107,7 +114,7 @@ Across retained live Anthropic sessions using five-minute cache retention, one a
 
 Healthy shared-mode Codex observations measured roughly 84%–87% cache hit. A July 2026 live E2E on GPT-5.6 Luna ranged from 87.4% on the first piggyback to 84.1% on the final run-end observation; individual calls cost about $0.0015–$0.0021 and driver cache hit stayed near 87% with no errors.
 
-In the registered production-shaped wave of August 3, 2026, six driver runs compared the shipped enumerate-all-findings contract (ENUM) with a single-finding baseline (MAIN). Across cache-comparable observations, MAIN cost $0.0253 per observation and 52.1% of driver cost (103 observations); ENUM cost $0.0356 and 77.0% (108 observations). Including all charged cache misses and calls after failed driver turns raised those ratios to 66.2% and 93.3%. These establish cost only; the quality benchmark was still in progress. See [capstone producer results](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
+In the registered production-shaped wave of August 3, 2026, six driver runs compared the then-shipped enumerate-all-findings contract (ENUM) with a single-finding baseline (MAIN). Across cache-comparable observations, MAIN cost $0.0253 per observation and 52.1% of driver cost (103 observations); ENUM cost $0.0356 and 77.0% (108 observations). Including all charged cache misses and calls after failed driver turns raised those ratios to 66.2% and 93.3%. These establish cost only; the quality benchmark was still in progress. See [capstone producer results](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
 
 ### Interpreting the numbers
 
