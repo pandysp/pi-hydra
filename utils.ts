@@ -115,57 +115,6 @@ export function applyAfterChangeDelivery(
 	};
 }
 
-export interface ObservationLoopGuard {
-	iterations: number;
-}
-
-export type ObservationLoopStopReason = "share-loss" | "completed" | "iteration-limit" | "deactivated" | null;
-
-export function decisionFromLoopStopReason(stopReason: ObservationLoopStopReason): Decision | null {
-	if (stopReason === null || stopReason === "completed") {
-		return null;
-	}
-	return {
-		action: "noop",
-		reason:
-			stopReason === "share-loss"
-				? "codex cache sharing lost mid-observation"
-				: stopReason === "deactivated"
-					? "head deactivated mid-observation"
-					: "observation iteration limit reached",
-		message: "",
-	};
-}
-
-/**
- * Decides whether an acting head's loop keeps going after one model turn.
- *
- * Codex acting heads finish by calling a tool; Anthropic acting heads return
- * JSON. Either completion stops the loop without another model turn.
- * Losing cache sharing beats everything else, because that is a safety stop
- * rather than a tidiness one. The turn limit only matters while the head still
- * has not decided anything.
- */
-export function advanceObservationLoopGuard(
-	state: ObservationLoopGuard,
-	conditions: { shareLost: boolean; completed: boolean; headActive: boolean; maxIterations: number },
-): { state: ObservationLoopGuard; stopReason: ObservationLoopStopReason } {
-	const next = { ...state, iterations: state.iterations + 1 };
-	if (conditions.shareLost) {
-		return { state: next, stopReason: "share-loss" };
-	}
-	if (conditions.completed) {
-		return { state: next, stopReason: "completed" };
-	}
-	if (next.iterations >= conditions.maxIterations) {
-		return { state: next, stopReason: "iteration-limit" };
-	}
-	if (!conditions.headActive) {
-		return { state: next, stopReason: "deactivated" };
-	}
-	return { state: next, stopReason: null };
-}
-
 function asDecision(value: unknown): Decision | null {
 	if (typeof value !== "object" || value === null) {
 		return null;
