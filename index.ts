@@ -822,7 +822,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			messages = await runAgentLoop(
 				[prompt],
 				{
-					systemPrompt: "",
 					messages: job.assistant ? [job.assistant] : [],
 					tools: observationTools(job.ctx, job.tools, job, toolState),
 				},
@@ -890,7 +889,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					// own session also stops the moment sharing is given up,
 					// so a transport change mid-loop cannot leave a head
 					// writing into the driver's session for another 25 turns.
-					shouldStopAfterTurn: () => {
+					finishTurn: () => {
 						let shareLost = false;
 						if (sharedSession) {
 							if (!unsafeForceShare) {
@@ -909,7 +908,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						if (advanced.stopReason === "share-loss") {
 							stoppedForShareLoss = true;
 						}
-						return advanced.stopReason !== null;
+						return advanced.stopReason !== null ? { action: "end" as const } : undefined;
 					},
 					afterToolCall: async (event) => {
 						// A successful file change still happened if cancellation follows.

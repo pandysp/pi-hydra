@@ -37,7 +37,7 @@ function answer(content: AssistantMessage["content"] = [], stopReason: Assistant
 	};
 }
 const text = (value: string) => ({ type: "text" as const, text: value });
-const tool = (name: string, args: Record<string, unknown>): ToolCall => ({ type: "toolCall", id: `call-${name}`, name, arguments: args });
+const tool = (name: string, args: ToolCall["arguments"]): ToolCall => ({ type: "toolCall", id: `call-${name}`, name, arguments: args });
 const noop = () => answer([text('{"findings":[]}')]);
 
 type CustomSend = Parameters<ExtensionAPI["sendMessage"]>[0];
@@ -309,6 +309,36 @@ describe("one error notice per head and error type", () => {
 		await h.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.calls()).toHaveLength(0);
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+describe("observation loop stops", () => {
+	it.each(["anthropic-messages", "openai-codex-responses"] as const)("%s stops once the head completes and records its turns", async (api) => {
+		const h = await harness({ api, tools: "read" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.observe(
+			answer([tool("read", { path: "work.txt" })], "toolUse"),
+			api === "anthropic-messages"
+				? answer([text('{"action":"noop","reason":"checked","message":""}')])
+				: answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"),
+		);
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(2);
+		expect(h.calls()[0]).toMatchObject({ action: "noop", iterations: 2 });
+	});
+
+	it("stops a head turned off part-way through its check", async () => {
+		const h = await harness({ tools: "read" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>(resolve => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
+		await h.emit({ type: "agent_start" });
+		respond(answer([tool("read", { path: "work.txt" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.calls()[0].action).toBe("noop");
 	});
 });
 
