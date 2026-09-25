@@ -58,6 +58,8 @@ Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces
 - If your change touches replay or marker logic, run the procedures in [`docs/providers.md`](docs/providers.md#verification-procedures) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
 - `npm run check:links` validates local Markdown files and GitHub-compatible heading fragments, including the committed inventory of inbound links discovered outside this repository.
 - `npm run check:docs` binds public claims to both narrow code authority regions and canonical documentation sections. If either changes intentionally, review both sides and update only the affected claim explicitly: `npm run update:doc-claims -- --reviewed --claim=<id>`.
+- Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed hook fails without an error.
+- If your change affects what heads send to the main assistant, also run a live session with a real model in a throwaway folder, in a session you can stop. Read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or the assistant mistaking a head's message for the user's words.
 - Keep pure logic in its matching root module and test it there.
 - Match the style of the file you are editing.
 
