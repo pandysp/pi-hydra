@@ -39,7 +39,7 @@ describe("answers from heads without tools", () => {
 		const result = classifyJudgeResponse(response([{ type: "text", text: '{"findings":[{"action":"PRIVATE instructions"}]}' }]));
 		expect(result.parseError).toContain("PRIVATE instructions");
 		const report = buildJudgeReport(result)!;
-		expect(report).toContain("Hydra error notice (not a user request or a head finding)");
+		expect(report).toMatch(/^A head without tools|^A completed answer/);
 		expect(report).toContain("Use that format in future checks.");
 		expect(report).not.toMatch(/acknowledg|driver action/);
 		expect(report).not.toContain("PRIVATE");

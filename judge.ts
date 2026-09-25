@@ -59,10 +59,10 @@ export const JUDGE_ERROR_DESCRIPTIONS: Record<JudgeErrorKind, string> = {
 // are sent to the main assistant, where the head sees them on its next check.
 export function buildJudgeReport(result: Pick<JudgeResult, "errorKind" | "attemptedTools">): string | null {
 	if (result.errorKind === "blocked-tool-request") {
-		return `Hydra error notice (not a user request or a head finding). A head without tools requested tools (${result.attemptedTools.join(", ")}); none ran. In future checks without tools, return the required findings JSON instead.`;
+		return `A head without tools requested tools (${result.attemptedTools.join(", ")}); none ran. In future checks without tools, return the required findings JSON instead.`;
 	}
 	if (result.errorKind === "malformed-findings") {
-		return "Hydra error notice (not a user request or a head finding). A completed answer from a head without tools did not match the required findings JSON. Use that format in future checks.";
+		return "A completed answer from a head without tools did not match the required findings JSON. Use that format in future checks.";
 	}
 	return null;
 }

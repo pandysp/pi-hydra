@@ -231,7 +231,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
-			steer: (head, message) => routeDecision(ctx, { action: "steer", reason: "head file missing or invalid", message }, head, false),
+			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message),
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
 			onActiveSetChanged: () => updateFooter(ctx),
@@ -1033,7 +1033,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const key = `${job.head}:${result.errorKind}`;
 		if (!report || reportedErrors.has(key)) return;
 		reportedErrors.add(key);
-		routeDecision(job.ctx, { action: "steer", reason: "hydra error notice", message: report }, job.head, false);
+		steerForHead(job.ctx, job.head, "hydra error notice", report);
+	}
+
+	// Hydra's own messages go out as the head's steer. The label tells them
+	// apart from the head's findings.
+	function steerForHead(ctx: ExtensionContext, head: string, reason: string, fact: string) {
+		routeDecision(ctx, { action: "steer", reason, message: `automatic notice: ${fact}` }, head, false);
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
@@ -1346,7 +1352,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// removing itself ends the head's turn, so Hydra steers the receipt.
 		// Driver-originated calls skip this path because their tool result is
 		// already visible.
-		routeDecision(ctx, { action: "steer", reason: "head set changed", message: receipt }, job.head, false);
+		steerForHead(ctx, job.head, "head set changed", receipt);
 		const selfRemoved = params.operation === "remove" && params.head.trim() === job.head;
 		state.selfRemoved ||= selfRemoved;
 		return { ...result, terminate: selfRemoved };

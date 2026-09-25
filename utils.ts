@@ -433,7 +433,7 @@ function enumeratedDecisionProtocol(head: string): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
 
-Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${OBSERVER_DELIVERY_GUIDANCE} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [${head}].`;
+Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${OBSERVER_DELIVERY_GUIDANCE} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
 }
 
 /** The answering rules plus what has already been delivered, sent separately. */
@@ -556,7 +556,7 @@ HEAD INSTRUCTIONS: ${instruction}
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}].</system-reminder>`;
+Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}].</system-reminder>`;
 }
 
 /**
@@ -570,7 +570,7 @@ export function buildObservationEnvelope(
 ): string {
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${FILE_CHANGE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
+${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {

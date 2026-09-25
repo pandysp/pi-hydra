@@ -162,11 +162,11 @@ export function routeFeedback(
 
 	const delivery = demoteStaleInterrupt(decision.action, staleSnapshot) as DeliveryAction;
 	const record: DeliveryRecord = { head, delivery, message: decision.message };
-	const formatted = `[${head}] ${decision.message}`;
+	const formatted = `[pi-hydra ${head}] ${decision.message}`;
 
 	if (delivery === "print") {
 		try {
-			gateway.notify(`hydra ${formatted}`, "info");
+			gateway.notify(formatted, "info");
 			persistSuccess(ledger, gateway, record);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);

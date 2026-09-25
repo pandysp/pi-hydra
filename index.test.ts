@@ -112,14 +112,14 @@ describe("heads without tools through the extension", () => {
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
 		const [report, options] = vi.mocked(h.pi.sendUserMessage).mock.calls[0];
-		expect(report).toMatch(/^\[critic\] Hydra error notice/);
+		expect(report).toMatch(/^\[pi-hydra critic\] automatic notice: A head without tools/);
 		expect(options).toBeUndefined(); // idle: starts a turn, like any head steer
 		expect(report).not.toContain("MUST NOT DELIVER");
 		await h.observe(noop());
 		await h.waitCalls(2);
 		// The head sees what was sent on its behalf in its next check.
 		const payload = JSON.stringify(h.payloads[1]);
-		expect(payload).toContain("Hydra error notice");
+		expect(payload).toContain("automatic notice: A head without tools");
 		expect(payload).not.toContain("SECRET-ARGUMENT");
 	});
 
@@ -151,9 +151,9 @@ describe("heads without tools through the extension", () => {
 			{ action: "steer", message: "DRIVER ACTION", reason: "driver" },
 		] }))]));
 		await h.waitCalls(2);
-		expect(h.notify).toHaveBeenCalledWith("hydra [critic] USER ONLY", "info");
+		expect(h.notify).toHaveBeenCalledWith("[pi-hydra critic] USER ONLY", "info");
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] DRIVER ACTION", undefined);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] DRIVER ACTION", undefined);
 	});
 });
 
@@ -170,7 +170,7 @@ describe("one error notice per head and error type", () => {
 		await h.waitCalls(3);
 		const sent = vi.mocked(h.pi.sendUserMessage).mock.calls;
 		expect(sent).toHaveLength(2);
-		expect(sent[0]).toEqual([expect.stringMatching(/^\[critic\] Hydra error notice .*requested tools \(write\)/), { deliverAs: "steer" }]);
+		expect(sent[0]).toEqual([expect.stringMatching(/^\[pi-hydra critic\] automatic notice: .*requested tools \(write\)/), { deliverAs: "steer" }]);
 		expect(sent[1][0]).toContain("did not match the required findings JSON");
 		expect(JSON.stringify(sent)).not.toContain("not executed");
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
@@ -211,7 +211,7 @@ describe("one error notice per head and error type", () => {
 		await shutdown;
 		expect(h.calls()).toHaveLength(1);
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[critic\] Hydra error notice/) }), { deliverAs: "followUp", triggerTurn: false });
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /) }), { deliverAs: "followUp", triggerTurn: false });
 	});
 
 	it("does not inject a response arriving after cancellation", async () => {
@@ -240,7 +240,7 @@ describe("messages Hydra sends on a head's behalf", () => {
 		);
 		await h.waitCalls(1);
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^\\[critic\\] .*${head}.*WHY-IT-FITS`)), { deliverAs: "steer" });
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^\\[pi-hydra critic\\] automatic notice: .*${head}.*WHY-IT-FITS`)), { deliverAs: "steer" });
 		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("WHY-IT-FITS"), expect.anything());
 	});
 
@@ -328,6 +328,6 @@ describe("file changes by a head", () => {
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("after");
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] I rewrote work.txt", undefined);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] I rewrote work.txt", undefined);
 	});
 });

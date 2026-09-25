@@ -126,7 +126,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 	};
 }
 
-const NOTICE = "Hydra error notice";
+const NOTICE = "automatic notice: A head without tools";
 const saved = (h: { sm: SessionManager }, phrase: string) =>
 	h.sm.getBranch().filter(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes(phrase));
 const seenIn = (payload: any, phrase: string) =>
@@ -138,7 +138,7 @@ describe("Pi consumer context and session", () => {
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
 		await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(/^\[critic\] Hydra error notice/), { deliverAs: "steer" });
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /), { deliverAs: "steer" });
 		expect(h.session.isStreaming).toBe(true);
 		expect(h.driverPayloads).toHaveLength(2);
 		h.hold.resolve();
@@ -212,7 +212,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.session.isIdle).toBe(true);
 		gate.resolve();
 		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] DELIBERATE-STEER", undefined);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] DELIBERATE-STEER", undefined);
 		expect(seenIn(h.driverPayloads[1], "DELIBERATE-STEER")).toHaveLength(1);
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
 		await h.session.waitForIdle();
@@ -279,7 +279,7 @@ describe("Pi consumer context and session", () => {
 		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
 		await h.session.prompt("Next task.");
 		await h.session.waitForIdle();
-		const gone = "file is missing or invalid";
+		const gone = "automatic notice: this head's file is missing or invalid";
 		expect(h.driverPayloads.slice(1).some(p => seenIn(p, gone).length === 1)).toBe(true);
 		expect(saved(h, gone)).toHaveLength(1);
 		expect(h.errors).toEqual([]);
