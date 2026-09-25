@@ -122,7 +122,7 @@ WORK: Add fitting heads, remove irrelevant heads, and write then activate a new
 head when no existing head covers a current risk.
 DONE WHEN: The active heads cover every current phase and risk without
 irrelevant heads.
-DELIVER: Explain each crew change in manage_heads; it prints its own receipt.
+DELIVER: Explain each crew change in manage_heads.
 Otherwise complete with none.
 ```
 
