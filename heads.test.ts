@@ -128,7 +128,7 @@ describe("head discovery", () => {
 		h.files.delete(`${USER_DIR}/security.md`);
 		h.registry.discover(h.gateway, "/repo");
 		expect(h.registry.activeSet()).toEqual(["quality"]);
-		expect(h.steered).toEqual(["[security] Hydra: this head's file is gone, so it is no longer active."]);
+		expect(h.steered).toEqual(["[security] Hydra: this head's file is missing or invalid, so it is no longer active."]);
 		expect(h.notified).toEqual([]);
 		expect(h.footer()).toBe(footerBefore + 1);
 	});

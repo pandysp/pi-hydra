@@ -318,7 +318,11 @@ export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { 
 			const value = line.slice("tools:".length).trim().replace(/^\[/, "").replace(/\]$/, "");
 			tools = value === "" ? [] : parseHeadList(value);
 		} else if (line.startsWith("autostart:")) {
-			autostart = line.slice("autostart:".length).trim() === "true" || undefined;
+			const value = line.slice("autostart:".length).trim();
+			if (value !== "true" && value !== "false") {
+				return { error: `invalid autostart "${value}" (expected: true, false)` };
+			}
+			autostart = value === "true" || undefined;
 		} else if (line.trim() !== "") {
 			// A misspelled or retired key would otherwise change nothing
 			// without anyone noticing.

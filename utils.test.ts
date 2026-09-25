@@ -884,6 +884,14 @@ describe("parseHeadFile", () => {
 		});
 	});
 
+	it("rejects autostart values other than true and false", () => {
+		expect(parseHeadFile("---\nname: x\ndescription: d\nautostart: yes\n---\nBody.")).toEqual({
+			error: 'invalid autostart "yes" (expected: true, false)',
+		});
+		const off = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
+		expect(off).toEqual({ head: expect.objectContaining({ autostart: undefined }) });
+	});
+
 	it("rejects unknown keys, including the removed after-change", () => {
 		const allowed = "(allowed: name, description, tools, autostart)";
 		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: write\nafter-change: noop\n---\nBody.")).toEqual({

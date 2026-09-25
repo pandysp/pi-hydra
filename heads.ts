@@ -183,7 +183,7 @@ export class HeadRegistry {
 			this.activeHeads = pruned;
 			gateway.onActiveSetChanged();
 			for (const name of dropped) {
-				gateway.steer(name, "Hydra: this head's file is gone, so it is no longer active.");
+				gateway.steer(name, "Hydra: this head's file is missing or invalid, so it is no longer active.");
 			}
 		}
 	}

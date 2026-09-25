@@ -231,7 +231,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
-			steer: (head, message) => routeDecision(ctx, { action: "steer", reason: "head file gone", message }, head, false),
+			steer: (head, message) => routeDecision(ctx, { action: "steer", reason: "head file missing or invalid", message }, head, false),
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
 			onActiveSetChanged: () => updateFooter(ctx),

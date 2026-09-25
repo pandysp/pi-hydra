@@ -279,7 +279,7 @@ describe("Pi consumer context and session", () => {
 		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
 		await h.session.prompt("Next task.");
 		await h.session.waitForIdle();
-		const gone = "file is gone";
+		const gone = "file is missing or invalid";
 		expect(h.driverPayloads.slice(1).some(p => seenIn(p, gone).length === 1)).toBe(true);
 		expect(saved(h, gone)).toHaveLength(1);
 		expect(h.errors).toEqual([]);

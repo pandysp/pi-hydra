@@ -23,7 +23,7 @@ Frontmatter keys:
 | `name` | yes | the head's identity; what `/hydra-heads` and the `hydra` tool refer to. Files without a name are skipped with a warning. |
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
 | `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means every standard tool hydra can execute; `tools: []` means none (the head judges, never acts). |
-| `autostart` | no | `true` joins the active set at session start. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
+| `autostart` | no | `true` joins the active set at session start; `false` is the same as leaving it out. Any other value makes the file invalid. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
