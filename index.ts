@@ -900,7 +900,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						return advanced.stopReason !== null ? { action: "end" as const } : undefined;
 					},
 					afterToolCall: async (event) => {
-						// A successful file change still happened if cancellation follows.
+						// Records which tools the head used, for /hydra-stats.
 						if (job.branchGeneration !== branchGeneration) return undefined;
 						const hydraAction =
 							event.toolCall.name === "hydra" &&
