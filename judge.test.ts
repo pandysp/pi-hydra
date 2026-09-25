@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { buildJudgeReport, classifyJudgeResponse, JudgeReports } from "./judge";
+import { buildJudgeReport, classifyJudgeResponse } from "./judge";
 
 function response(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop") {
 	return { content, stopReason } as AssistantMessage;
@@ -15,7 +15,7 @@ describe("answers from heads without tools", () => {
 	] as const)("%s takes precedence over mixed tools and valid JSON", (stop, kind) => {
 		const result = classifyJudgeResponse(response([call, json], stop));
 		expect(result).toMatchObject({ decisions: null, errorKind: kind, parseError: null, attemptedTools: ["write"] });
-		expect(buildJudgeReport("quality", result) !== null).toBe(kind === "blocked-tool-request");
+		expect(buildJudgeReport(result) !== null).toBe(kind === "blocked-tool-request");
 	});
 
 	it("does not accept JSON as terminal when the provider still signals tool use", () => {
@@ -38,14 +38,14 @@ describe("answers from heads without tools", () => {
 	it("retains parser diagnostics without injecting them or arbitrary answer text", () => {
 		const result = classifyJudgeResponse(response([{ type: "text", text: '{"findings":[{"action":"PRIVATE instructions"}]}' }]));
 		expect(result.parseError).toContain("PRIVATE instructions");
-		const report = buildJudgeReport("quality", result)!;
-		expect(report.content).toContain("Hydra error notice (not a user request or a head finding)");
-		expect(report.content).toContain("Use that format in future checks.");
-		expect(report.content).not.toMatch(/acknowledg|driver action/);
-		expect(JSON.stringify(report)).not.toContain("PRIVATE");
+		const report = buildJudgeReport(result)!;
+		expect(report).toContain("Hydra error notice (not a user request or a head finding)");
+		expect(report).toContain("Use that format in future checks.");
+		expect(report).not.toMatch(/acknowledg|driver action/);
+		expect(report).not.toContain("PRIVATE");
 	});
 
-	it("bounds displayed names and tool count while retaining exact head identity in metadata", () => {
+	it("bounds displayed tool names and count", () => {
 		const result = classifyJudgeResponse(response([
 			{ ...call, name: "write\nPRIVATE instructions" },
 			...Array.from({ length: 30 }, (_, i) => ({ ...call, name: `tool-${i}` })),
@@ -53,40 +53,8 @@ describe("answers from heads without tools", () => {
 		], "toolUse"));
 		expect(result.attemptedTools).toHaveLength(8);
 		expect(result.attemptedTools[0]).toBe("(name omitted)");
-		const report = buildJudgeReport("head-".repeat(100), result)!;
-		expect(JSON.stringify(report)).not.toContain("PRIVATE");
-		expect(report.details.head).toBe("head-".repeat(100));
-		expect(report.content.length).toBeLessThan(1000);
-		const other = buildJudgeReport("head-".repeat(101), result)!;
-		expect(other.details.head).not.toBe(report.details.head);
-		const reports = new JudgeReports();
-		expect(reports.stage(report.details)).toBe(true);
-		expect(reports.stage(other.details)).toBe(true);
-	});
-});
-
-describe("error notice delivery records", () => {
-	const report = () => buildJudgeReport("quality", classifyJudgeResponse(response([call], "toolUse")))!;
-	it("only restores actual custom messages, not call or attempted-send records", () => {
-		const reports = new JudgeReports();
-		const { details } = report();
-		reports.restore([{ type: "custom", customType: "hydra-runtime-report", details }]);
-		expect(reports.stage(details)).toBe(true);
-		expect(reports.stage(details)).toBe(false);
-		expect(reports.settle()).toBe(1);
-		expect(reports.stage(details)).toBe(true);
-		reports.sync([{ type: "custom_message", customType: "hydra-runtime-report", details }]);
-		expect(reports.settle()).toBe(0);
-		expect(reports.stage(details)).toBe(false);
-		reports.restore([]);
-		expect(reports.stage(details)).toBe(true);
-	});
-
-	it("ignores malformed restored metadata rather than throwing during navigation", () => {
-		const reports = new JudgeReports();
-		for (const details of [undefined, null, {}, { head: 42, errorKind: "blocked-tool-request" }]) {
-			reports.consume(details);
-		}
-		expect(reports.stage(report().details)).toBe(true);
+		const report = buildJudgeReport(result)!;
+		expect(report).not.toContain("PRIVATE");
+		expect(report.length).toBeLessThan(1000);
 	});
 });

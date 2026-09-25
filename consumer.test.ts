@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore, Type } from "@earendil-works/pi-ai";
@@ -43,15 +43,16 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"]) {
+async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]") {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
-	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Fixture\ntools: []\nautostart: true\n---\nCheck the visible work.\n`);
+	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Fixture\ntools: ${headTools}\nautostart: true\n---\nCheck the visible work.\n`);
 	vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
 	vi.stubEnv("PI_OFFLINE", "1");
 	initTheme("dark", false);
-	const warnings = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+	// Keep Hydra's headless warnings out of the test output.
+	vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	const settingsManager = SettingsManager.inMemory({ transport: "websocket", compaction: { enabled: false }, retry: { enabled: false } });
 	const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(agentDir, "models-store.json"), allowModelNetwork: false });
 	const driverPayloads: any[] = [];
@@ -118,45 +119,45 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	const entries = (type: string) => sm.getBranch().filter(e => (e.type === "custom" || e.type === "custom_message") && e.customType === type);
-	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, warnings, entries,
+	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, entries,
 		repeatFailure: () => { repeatFailure = true; },
 		holdObserver: (until: Promise<void>) => { observerHold = until; },
 		holdFinalDriver: () => { pauseFinalDriver = true; return finalDriver; },
 	};
 }
 
+const NOTICE = "Hydra error notice";
+const saved = (h: { sm: SessionManager }, phrase: string) =>
+	h.sm.getBranch().filter(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes(phrase));
+const seenIn = (payload: any, phrase: string) =>
+	payload.messages.filter((message: any) => message.role === "user" && JSON.stringify(message.content).includes(phrase));
+
 describe("Pi consumer context and session", () => {
-	it("a busy error notice reaches the next model request, not an idle follow-up", async () => {
+	it("a busy error notice is a head steer: saved and read by the next model request", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
-		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
 		await h.entered.promise;
-		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(/^\[critic\] Hydra error notice/), { deliverAs: "steer" });
 		expect(h.session.isStreaming).toBe(true);
 		expect(h.driverPayloads).toHaveLength(2);
-		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
 		h.hold.resolve();
 		await running;
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.observerPayloads[0].tools).toEqual(h.driverPayloads[1].tools);
-		expect(h.observerPayloads[0].tools.some((tool: { name: string }) => tool.name === "write")).toBe(true);
 		expect(h.observerPayloads[0].tool_choice).toEqual(h.driverPayloads[1].tool_choice);
-		const phrase = "Hydra error notice";
-		const nextRequest = h.driverPayloads[2];
-		const delivered = nextRequest.messages.filter((message: any) => JSON.stringify(message.content).includes(phrase));
-		expect(delivered).toHaveLength(1);
-		expect(delivered[0].role).toBe("user");
-		expect(JSON.stringify(nextRequest)).not.toContain("PRIVATE-ARGUMENT");
-		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-		expect(h.errors).toEqual([]);
+		expect(seenIn(h.driverPayloads[2], NOTICE)).toHaveLength(1);
+		expect(JSON.stringify(h.driverPayloads[2])).not.toContain("PRIVATE-ARGUMENT");
+		// The head's next check reads the notice, so it can correct itself.
+		expect(h.observerPayloads.length).toBeGreaterThan(1);
+		expect(JSON.stringify(h.observerPayloads.slice(1))).toContain(NOTICE);
 		expect(existsSync(join(h.cwd, "observer.txt"))).toBe(false);
-		expect(JSON.stringify(h.observerPayloads.slice(1))).toContain(phrase);
 		const restored = SessionManager.open(h.sm.getSessionFile()!);
-		expect(restored.getBranch().filter(e => e.type === "custom_message")).toHaveLength(1);
-		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(phrase);
+		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(NOTICE);
+		expect(h.errors).toEqual([]);
 	});
 
-	it("a late error notice leaves a fully idle main assistant idle and reaches its next user-prompted request", async () => {
+	it("a late error notice wakes the idle main assistant once; the repeat is not sent", async () => {
 		const h = await consumer(false);
 		h.repeatFailure();
 		const gate = deferred();
@@ -164,33 +165,20 @@ describe("Pi consumer context and session", () => {
 		await h.session.prompt("Finish now.");
 		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
 		expect(h.session.isIdle).toBe(true);
-		expect(h.driverPayloads).toHaveLength(1);
 		gate.resolve();
-		const type = "hydra-runtime-report";
-		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
-		await vi.waitFor(() => expect(h.entries(type)).toHaveLength(1));
-		await h.session.waitForIdle();
-		// An automatic notice is recorded, not turned into new work.
-		expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(1);
-		expect(h.session.isIdle).toBe(true);
-		await h.session.prompt("Next task.");
-		expect(h.driverPayloads).toHaveLength(2);
-		const phrase = "Hydra error notice";
-		const delivered = h.driverPayloads[1].messages.filter((message: any) => JSON.stringify(message.content).includes(phrase));
-		expect(delivered).toHaveLength(1);
-		expect(delivered[0].role).toBe("user");
+		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
+		expect(seenIn(h.driverPayloads[1], NOTICE)).toHaveLength(1);
 		expect(JSON.stringify(h.driverPayloads[1])).not.toContain("PRIVATE-ARGUMENT");
-		// The second run ends with its own check: a repeated failure from the head
-		// without tools is not sent again, and the head with tools writes nothing more.
+		// The woken run ends with its own check, which fails the same way.
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
 		await h.session.waitForIdle();
-		expect(h.entries(type)).toHaveLength(1);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
+		expect(saved(h, NOTICE)).toHaveLength(1);
 		expect(h.driverPayloads).toHaveLength(2);
-		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 		expect(h.errors).toEqual([]);
 	});
 
-	it("an automatic error notice during the final response is read on one additional model call", async () => {
+	it("an error notice during the final response is read on one additional model call", async () => {
 		const h = await consumer(true);
 		const observer = deferred();
 		h.holdObserver(observer.promise);
@@ -201,7 +189,7 @@ describe("Pi consumer context and session", () => {
 			h.hold.resolve();
 			await vi.waitFor(() => expect(h.driverPayloads).toHaveLength(3));
 			observer.resolve();
-			await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+			await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
 			expect(h.session.isStreaming).toBe(true);
 		} finally {
 			observer.resolve();
@@ -210,8 +198,8 @@ describe("Pi consumer context and session", () => {
 		await running;
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.driverPayloads).toHaveLength(4);
-		expect(JSON.stringify(h.driverPayloads[3])).toContain("Hydra error notice");
-		expect(h.entries("hydra-runtime-report")).toHaveLength(1);
+		expect(seenIn(h.driverPayloads[3], NOTICE)).toHaveLength(1);
+		expect(saved(h, NOTICE)).toHaveLength(1);
 		expect(h.errors).toEqual([]);
 	});
 
@@ -225,9 +213,7 @@ describe("Pi consumer context and session", () => {
 		gate.resolve();
 		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
 		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] DELIBERATE-STEER", undefined);
-		const delivered = h.driverPayloads[1].messages.filter((message: any) => JSON.stringify(message.content).includes("DELIBERATE-STEER"));
-		expect(delivered).toHaveLength(1);
-		expect(delivered[0].role).toBe("user");
+		expect(seenIn(h.driverPayloads[1], "DELIBERATE-STEER")).toHaveLength(1);
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
 		await h.session.waitForIdle();
 		expect(h.driverPayloads).toHaveLength(2);
@@ -235,7 +221,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("an error notice finishing during shutdown is recorded without a main assistant turn", async () => {
+	it("an error notice finishing during shutdown is saved without a main assistant turn", async () => {
 		const h = await consumer(false);
 		const gate = deferred();
 		h.holdObserver(gate.promise);
@@ -244,61 +230,58 @@ describe("Pi consumer context and session", () => {
 		const shutdown = h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		gate.resolve();
 		await shutdown;
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer" });
-		expect(h.entries("hydra-runtime-report")).toHaveLength(1);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(JSON.stringify(h.entries("hydra-feedback"))).toContain(NOTICE);
 		expect(h.driverPayloads).toHaveLength(1);
 		expect(h.session.isIdle).toBe(true);
 		expect(h.errors).toEqual([]);
 	});
 
-	it("does not carry an automatic notice across branch navigation after abort", async () => {
+	it("does not carry a queued error notice into another branch after abort", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
-		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
 		const aborted = h.session.abort();
 		h.hold.resolve();
 		await Promise.all([running, aborted]);
 		const firstUser = h.sm.getBranch().find(e => e.type === "message" && e.message.role === "user")!;
 		await h.session.navigateTree(firstUser.id);
 		await h.session.prompt("New branch.");
-		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain("Hydra error notice");
-		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
+		await h.session.waitForIdle();
+		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain(NOTICE);
+		expect(saved(h, NOTICE)).toHaveLength(0);
 		expect(h.errors).toEqual([]);
 	});
 
-	it("a host-cleared busy notice can retry after abort and branch navigation", async () => {
-		const h = await consumer(true);
-		const running = h.session.prompt("Work through checkpoints.");
-		await h.entered.promise;
-		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
-		h.session.clearQueue();
-		const aborted = h.session.abort();
-		h.hold.resolve();
-		await Promise.all([running, aborted]);
-		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
-		const abandoned = h.sm.getLeafId()!;
-		const firstUser = h.sm.getBranch().find(e => e.type === "message" && e.message.role === "user")!;
-		await h.session.navigateTree(firstUser.id);
-		h.repeatFailure();
-		await h.session.prompt("New branch.");
-		await vi.waitFor(() => expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(1));
-		expect(h.sm.getBranch(abandoned).filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.errors).toEqual([]);
-	});
-
-	it("Pi reports an asynchronous error notice send failure", async () => {
+	it("Pi reports a rejected steer as an extension error", async () => {
 		const h = await consumer(false);
-		vi.spyOn(h.session, "sendCustomMessage").mockRejectedValueOnce(new Error("asynchronous host failure"));
+		vi.spyOn(h.session, "sendUserMessage").mockRejectedValueOnce(new Error("asynchronous host failure"));
 		await h.session.prompt("Finish now.");
-		await vi.waitFor(() => expect(h.errors).toContainEqual(expect.objectContaining({ event: "send_message", error: "asynchronous host failure" })));
+		await vi.waitFor(() => expect(h.errors).toContainEqual(expect.objectContaining({ error: "asynchronous host failure" })));
+	});
+
+	it("a head removing itself is saved and read by the woken main assistant", async () => {
+		const h = await consumer(false, [{ type: "toolCall", id: "leave", name: "hydra", arguments: { action: "manage_heads", operation: "remove", head: "critic", message: "WHY-IT-FITS" } }], "hydra");
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
+		expect(seenIn(h.driverPayloads[1], "WHY-IT-FITS")).toHaveLength(1);
+		await h.session.waitForIdle();
+		expect(saved(h, "WHY-IT-FITS")).toHaveLength(1);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a vanished active head is saved and read within the next run", async () => {
+		const h = await consumer(false, [{ type: "text", text: '{"findings":[]}' }]);
+		await h.session.prompt("Finish now.");
 		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
-		await h.session.extensionRunner.emit({ type: "agent_settled" });
-		expect(h.sm.getBranch().filter(e => e.type === "custom_message")).toHaveLength(0);
-		expect(h.warnings).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"));
-		h.repeatFailure();
+		await h.session.waitForIdle();
+		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
 		await h.session.prompt("Next task.");
-		await vi.waitFor(() => expect(h.entries("hydra-runtime-report")).toHaveLength(1));
+		await h.session.waitForIdle();
+		const gone = "file is gone";
+		expect(h.driverPayloads.slice(1).some(p => seenIn(p, gone).length === 1)).toBe(true);
+		expect(saved(h, gone)).toHaveLength(1);
+		expect(h.errors).toEqual([]);
 	});
 });

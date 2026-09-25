@@ -76,7 +76,7 @@ Authoring guidance for heads that act:
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
 4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
 
-When a head uses `manage_heads` to change the active heads, Hydra automatically shows the user what changed and the head's explanation. Failed calls and calls that change nothing show no note. A head whose `tools` list includes `hydra` also sees the active heads when its check starts; later tool results may show a newer list.
+When a head uses `manage_heads` to change the active heads, Hydra steers what changed and the head's explanation to the main assistant, as that head. Failed calls and calls that change nothing send nothing. A head whose `tools` list includes `hydra` also sees the active heads when its check starts; later tool results may show a newer list.
 
 ## Decisions: when findings land
 

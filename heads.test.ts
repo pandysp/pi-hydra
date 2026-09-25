@@ -24,6 +24,7 @@ function createHarness(options: HarnessOptions = {}) {
 	for (const [name, content] of Object.entries(options.project ?? {})) files.set(`${PROJECT_DIR}/${name}`, content);
 	const announced: string[] = [];
 	const notified: string[] = [];
+	const steered: string[] = [];
 	const warnedOnce: string[] = [];
 	const persisted: string[][] = [];
 	let footerRefreshes = 0;
@@ -51,6 +52,7 @@ function createHarness(options: HarnessOptions = {}) {
 		isDirectory: (path) => path === PROJECT_DIR && listDir(PROJECT_DIR).length > 0,
 		announce: (message) => announced.push(message),
 		notify: (message, level) => notified.push(`${level}: ${message}`),
+		steer: (head, message) => steered.push(`[${head}] ${message}`),
 		warnOnce: (message) => warnedOnce.push(message),
 		persistConfig: (heads) => persisted.push([...heads]),
 		onActiveSetChanged: () => {
@@ -63,6 +65,7 @@ function createHarness(options: HarnessOptions = {}) {
 		files,
 		announced,
 		notified,
+		steered,
 		warnedOnce,
 		persisted,
 		footer: () => footerRefreshes,
@@ -125,7 +128,8 @@ describe("head discovery", () => {
 		h.files.delete(`${USER_DIR}/security.md`);
 		h.registry.discover(h.gateway, "/repo");
 		expect(h.registry.activeSet()).toEqual(["quality"]);
-		expect(h.notified).toContain("warning: hydra: head file gone, deactivating: security");
+		expect(h.steered).toEqual(["[security] Hydra: this head's file is gone, so it is no longer active."]);
+		expect(h.notified).toEqual([]);
 		expect(h.footer()).toBe(footerBefore + 1);
 	});
 
@@ -238,6 +242,8 @@ describe("active set", () => {
 		h.registry.applyConfig(h.gateway, { heads: ["quality", "ghost"] });
 		expect(h.registry.activeSet()).toEqual(["quality"]);
 		expect(h.notified).toContain("warning: hydra: saved head no longer exists: ghost");
+		// Restoring happens while idle; a steer would start an unprompted turn.
+		expect(h.steered).toEqual([]);
 
 		h.registry.applyConfig(h.gateway, { heads: [] });
 		expect(h.registry.activeSet()).toEqual([]);

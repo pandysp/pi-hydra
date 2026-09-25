@@ -29,7 +29,6 @@ const text = (value: string) => ({ type: "text" as const, text: value });
 const tool = (name: string, args: ToolCall["arguments"]): ToolCall => ({ type: "toolCall", id: `call-${name}`, name, arguments: args });
 const noop = () => answer([text('{"findings":[]}')]);
 
-type CustomSend = Parameters<ExtensionAPI["sendMessage"]>[0];
 type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -47,7 +46,6 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 	const handlers = new Map<string, Handler>();
 	const responses: (AssistantMessage | Promise<AssistantMessage>)[] = [];
 	const payloads: unknown[] = [];
-	const pending: CustomSend[] = [];
 	let idle = true;
 	const api = options.api ?? "anthropic-messages";
 	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : "openai-codex", id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
@@ -68,27 +66,19 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		},
 		abort: vi.fn(),
 	} as unknown as ExtensionContext;
-	const consume = async (message: CustomSend) => {
-		sm.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
-		await emit({ type: "message_start", message: { ...message, role: "custom", timestamp: Date.now() } });
-	};
 	const pi = {
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		registerFlag: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), registerMessageRenderer: vi.fn(),
 		getFlag: () => undefined,
 		appendEntry: (type: string, data: unknown) => sm.appendCustomEntry(type, data),
-		// Model active-session delivery; consumer.test.ts covers Pi's async failures.
-		sendMessage: vi.fn((message: CustomSend) => {
-			if (idle) sm.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
-			else pending.push(message);
-		}),
+		// Delivery itself is Pi's; consumer.test.ts covers it in a real session.
+		sendMessage: vi.fn(),
 		sendUserMessage: vi.fn(),
 	} as unknown as ExtensionAPI;
 	async function emit(event: ExtensionEvent) { await handlers.get(event.type)?.(event, ctx); }
 	hydraExtension(pi);
 	await emit({ type: "session_start", reason: "startup" });
 	const calls = () => sm.getBranch().filter(e => e.type === "custom" && e.customType === "hydra-call").map(e => (e as { data: HydraCall }).data);
-	const notices = () => sm.getBranch().filter(e => e.type === "custom_message" && e.customType === "hydra-runtime-report");
 	const observe = async (...results: (AssistantMessage | Promise<AssistantMessage>)[]) => {
 		responses.push(...results);
 		const messages = convertToLlm(sm.buildSessionContext().messages);
@@ -103,7 +93,7 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		await emit({ type: "session_shutdown", reason: "quit" });
 		rmSync(cwd, { recursive: true, force: true });
 	});
-	return { cwd, sm, root, ctx, pi, payloads, pending, transport, notify, emit, consume, observe, calls, notices,
+	return { cwd, sm, root, ctx, pi, payloads, transport, notify, emit, observe, calls,
 		busy: () => { idle = false; }, idle: () => { idle = true; },
 		waitCalls: async (count: number) => { await vi.waitFor(() => expect(calls(), JSON.stringify(notify.mock.calls)).toHaveLength(count)); },
 	};
@@ -118,14 +108,17 @@ describe("heads without tools through the extension", () => {
 		expect(existsSync(target)).toBe(false);
 		expect(h.transport).toHaveBeenCalledTimes(1);
 		expect(h.calls()[0]).toMatchObject({ action: "noop", judgeErrorKind: "blocked-tool-request", attemptedTools: ["write"], stopReason: "toolUse" });
-		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-		expect(h.notices()).toHaveLength(1);
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer" });
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
+		const [report, options] = vi.mocked(h.pi.sendUserMessage).mock.calls[0];
+		expect(report).toMatch(/^\[critic\] Hydra error notice/);
+		expect(options).toBeUndefined(); // idle: starts a turn, like any head steer
+		expect(report).not.toContain("MUST NOT DELIVER");
 		await h.observe(noop());
 		await h.waitCalls(2);
-		const [report] = vi.mocked(h.pi.sendMessage).mock.calls[0];
+		// The head sees what was sent on its behalf in its next check.
 		const payload = JSON.stringify(h.payloads[1]);
-		expect(payload).toContain(JSON.stringify(report.content).slice(1, -1));
+		expect(payload).toContain("Hydra error notice");
 		expect(payload).not.toContain("SECRET-ARGUMENT");
 	});
 
@@ -142,8 +135,8 @@ describe("heads without tools through the extension", () => {
 		await h.observe(response);
 		await h.waitCalls(1);
 		expect(h.calls()[0]).toMatchObject({ action: "noop", judgeErrorKind: kind });
-		expect(h.notices()).toHaveLength(report ? 1 : 0);
-		expect(JSON.stringify(h.notices())).not.toMatch(/SECRET-PROSE|SECRET-THINKING/);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(report ? 1 : 0);
+		expect(JSON.stringify(vi.mocked(h.pi.sendUserMessage).mock.calls)).not.toMatch(/SECRET-PROSE|SECRET-THINKING/);
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining(kind), expect.any(String));
 	});
 
@@ -158,105 +151,29 @@ describe("heads without tools through the extension", () => {
 		] }))]));
 		await h.waitCalls(2);
 		expect(h.notify).toHaveBeenCalledWith("hydra [critic] USER ONLY", "info");
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
 		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] DRIVER ACTION", undefined);
-		expect(h.notices()).toHaveLength(0);
 	});
 });
 
 describe("one error notice per head and error type", () => {
 	const blocked = () => answer([tool("write", { path: "ignored", content: "not executed" })], "toolUse");
-	it("sends each error notice once per head and type, even after a successful check", async () => {
+	it("steers each error notice once per head and error type", async () => {
 		const h = await harness();
 		h.busy();
 		await h.observe(blocked());
 		await h.waitCalls(1);
 		await h.observe(blocked());
 		await h.waitCalls(2);
-		expect(h.pending).toHaveLength(1);
-		await h.consume(h.pending.shift()!);
-		await h.observe(noop());
-		await h.waitCalls(3);
-		await h.observe(blocked());
-		await h.waitCalls(4);
-		expect(h.pending).toHaveLength(0);
 		await h.observe(answer([text("not JSON")]));
-		await h.waitCalls(5);
-		expect(h.pending).toHaveLength(1);
-		expect(h.notify.mock.calls.filter(([message]) => message.includes("blocked-tool-request"))).toHaveLength(3);
-		expect(JSON.stringify(h.payloads[4])).toContain('\\"lastByThisHead\\":null');
-	});
-
-	it("coalesces checks without queuing a second notice before the first arrives", async () => {
-		const h = await harness();
-		h.busy();
-		let finish!: (response: AssistantMessage) => void;
-		await h.observe(new Promise(resolve => { finish = resolve; }));
-		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
-		// The main assistant advances while the first head check is still running.
-		await h.observe(blocked());
-		expect(h.transport).toHaveBeenCalledTimes(1);
-		finish(blocked());
-		await h.waitCalls(2);
-		// Both checks finished, but the main assistant has not drained its queue.
-		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(h.pending).toHaveLength(1);
-		expect(h.notices()).toHaveLength(0);
-		await h.consume(h.pending.shift()!);
-		await h.emit({ type: "agent_settled" });
-		expect(h.notices()).toHaveLength(1);
-		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"), "warning");
-	});
-
-	it("allows a notice that never arrived to be sent on a later check", async () => {
-		const h = await harness();
-		h.busy();
-		await h.observe(blocked());
-		await h.waitCalls(1);
-		h.pending.splice(0); // Host abort cleared its queue, not a successful delivery.
-		await h.emit({ type: "agent_settled" });
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("error notice(s) did not reach"), "warning");
-		h.idle();
-		await h.observe(blocked());
-		await h.waitCalls(2);
-		expect(h.notices()).toHaveLength(1);
-	});
-
-	it("surfaces an expired extension API as an observation error, not a retryable send failure", async () => {
-		const h = await harness();
-		// Pi's API guard throws for expired extensions before its async sender runs.
-		vi.mocked(h.pi.sendMessage).mockImplementation(() => { throw new Error("Extension context is stale"); });
-		await h.observe(blocked());
-		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith("hydra: observe error: Extension context is stale", "error"));
-		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(h.notices()).toHaveLength(0);
-	});
-
-	it("restores only actual messages on the selected branch, not attempted sends or call records", async () => {
-		const h = await harness();
-		h.busy();
-		await h.observe(blocked());
-		await h.waitCalls(1);
-		h.pending.splice(0);
-		await h.emit({ type: "session_start", reason: "reload" });
-		h.idle();
-		await h.observe(blocked());
-		await h.waitCalls(2);
-		expect(h.notices()).toHaveLength(1);
-		const withNotice = h.sm.getLeafId()!;
-		await h.emit({ type: "session_start", reason: "reload" });
-		await h.observe(blocked());
 		await h.waitCalls(3);
-		expect(h.notices()).toHaveLength(1);
-		h.sm.branch(h.root);
-		await h.emit({ type: "session_tree", oldLeafId: withNotice, newLeafId: h.root });
-		await h.observe(blocked());
-		await h.waitCalls(1);
-		expect(h.notices()).toHaveLength(1);
-		h.sm.branch(withNotice);
-		await h.emit({ type: "session_tree", oldLeafId: h.root, newLeafId: withNotice });
-		await h.observe(blocked());
-		await h.waitCalls(3);
-		expect(h.notices()).toHaveLength(1);
+		const sent = vi.mocked(h.pi.sendUserMessage).mock.calls;
+		expect(sent).toHaveLength(2);
+		expect(sent[0]).toEqual([expect.stringMatching(/^\[critic\] Hydra error notice .*requested tools \(write\)/), { deliverAs: "steer" }]);
+		expect(sent[1][0]).toContain("did not match the required findings JSON");
+		expect(JSON.stringify(sent)).not.toContain("not executed");
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(h.notify.mock.calls.filter(([message]) => message.includes("blocked-tool-request"))).toHaveLength(2);
 	});
 
 	it("does not inject stale-branch results", async () => {
@@ -270,10 +187,10 @@ describe("one error notice per head and error type", () => {
 		await h.observe(noop());
 		await h.waitCalls(1);
 		expect(h.calls()[0].judgeErrorKind).toBeUndefined();
-		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("records an error notice finishing inside the shutdown grace without starting a main assistant turn", async () => {
+	it("saves an error notice finishing inside the shutdown grace without starting a main assistant turn", async () => {
 		const h = await harness();
 		let finish!: (response: AssistantMessage) => void;
 		await h.observe(new Promise(resolve => { finish = resolve; }));
@@ -282,8 +199,8 @@ describe("one error notice per head and error type", () => {
 		finish(blocked());
 		await shutdown;
 		expect(h.calls()).toHaveLength(1);
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-runtime-report" }), { deliverAs: "steer" });
-		expect(h.notices()).toHaveLength(1);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[critic\] Hydra error notice/) }), { deliverAs: "followUp", triggerTurn: false });
 	});
 
 	it("does not inject a response arriving after cancellation", async () => {
@@ -297,6 +214,52 @@ describe("one error notice per head and error type", () => {
 		await h.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.calls()).toHaveLength(0);
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+	});
+});
+
+describe("messages Hydra sends on a head's behalf", () => {
+	it.each(["remove", "add"] as const)("steers a head's %s of the active set with its explanation", async (operation) => {
+		const h = await harness({ api: "openai-codex-responses", tools: "hydra" });
+		writeFileSync(join(h.cwd, ".pi", "hydra", "helper.md"), "---\nname: helper\ndescription: Helper\ntools: []\n---\nHelp.\n");
+		const head = operation === "remove" ? "critic" : "helper";
+		h.busy();
+		await h.observe(
+			answer([tool("hydra", { action: "manage_heads", operation, head, message: "WHY-IT-FITS" })], "toolUse"),
+			...(operation === "add" ? [answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse")] : []),
+		);
+		await h.waitCalls(1);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^\\[critic\\] .*${head}.*WHY-IT-FITS`)), { deliverAs: "steer" });
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("WHY-IT-FITS"), expect.anything());
+	});
+
+	it("sends nothing extra when the main assistant changes the heads itself", async () => {
+		const h = await harness();
+		const [definition] = vi.mocked(h.pi.registerTool).mock.calls[0] as unknown as [{ execute: (...args: unknown[]) => Promise<{ content: { text: string }[] }> }];
+		const result = await definition.execute("call", { action: "manage_heads", operation: "remove", head: "critic", message: "WHY-IT-FITS" }, undefined, undefined, h.ctx);
+		expect(result.content[0].text).toContain("WHY-IT-FITS");
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("warns loudly when a steer cannot be sent", async () => {
+		const h = await harness();
+		vi.mocked(h.pi.sendUserMessage).mockImplementation(() => { throw new Error("Extension context is stale"); });
+		await h.observe(answer([tool("write", { path: "ignored", content: "x" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.notify).toHaveBeenCalledWith("hydra: steer delivery failed: Extension context is stale", "warning");
+	});
+
+	it("warns on the error output in a headless run when a steer never arrived", async () => {
+		const h = await harness();
+		(h.ctx as { hasUI: boolean }).hasUI = false;
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		h.busy();
+		await h.observe(answer([text(JSON.stringify({ findings: [{ action: "steer", message: "NEVER ARRIVES", reason: "r" }] }))]));
+		await h.waitCalls(1);
+		await h.emit({ type: "agent_settled" });
+		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("never reached the driver"));
+		stderr.mockRestore();
 	});
 });
 

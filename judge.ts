@@ -55,79 +55,14 @@ export const JUDGE_ERROR_DESCRIPTIONS: Record<JudgeErrorKind, string> = {
 	"incomplete-response": "provider did not mark the response as finished",
 };
 
-export interface JudgeReportDetails {
-	head: string;
-	errorKind: CorrectableJudgeError;
-}
-
-export function buildJudgeReport(head: string, result: Pick<JudgeResult, "errorKind" | "attemptedTools">) {
-	if (result.errorKind !== "blocked-tool-request" && result.errorKind !== "malformed-findings") return null;
-	const details: JudgeReportDetails = {
-		head,
-		errorKind: result.errorKind,
-	};
-	const fact = result.errorKind === "blocked-tool-request"
-		? `A head without tools requested tools (${result.attemptedTools.join(", ")}); none ran. In future checks without tools, return the required findings JSON instead.`
-		: "A completed answer from a head without tools did not match the required findings JSON. Use that format in future checks.";
-	return {
-		customType: "hydra-runtime-report" as const,
-		content: `Hydra error notice (not a user request or a head finding). Head: ${boundedName(head)}. ${fact}`,
-		display: true,
-		details,
-	};
-}
-
-function reportDetails(value: unknown): JudgeReportDetails | null {
-	if (typeof value !== "object" || value === null) return null;
-	const details = value as Partial<JudgeReportDetails>;
-	return typeof details.head === "string" && details.head.length > 0 &&
-		(details.errorKind === "blocked-tool-request" || details.errorKind === "malformed-findings")
-		? details as JudgeReportDetails : null;
-}
-
-function reportKey(details: JudgeReportDetails): string {
-	return `${details.head}:${details.errorKind}`;
-}
-
-// One notice per head and error kind on the current branch. Only a message
-// that arrived counts as delivered, not an attempted send: cancelling in Pi
-// can clear queued messages. `pending` also stops a second notice
-// while the first is still queued, which happens when a slow head fails
-// twice before the main assistant's current response ends.
-export class JudgeReports {
-	private readonly delivered = new Set<string>();
-	private readonly pending = new Set<string>();
-
-	stage(details: JudgeReportDetails): boolean {
-		const key = reportKey(details);
-		if (this.delivered.has(key) || this.pending.has(key)) return false;
-		this.pending.add(key);
-		return true;
+// Only these two errors can be corrected by the head itself, so only they
+// are sent to the main assistant, where the head sees them on its next check.
+export function buildJudgeReport(result: Pick<JudgeResult, "errorKind" | "attemptedTools">): string | null {
+	if (result.errorKind === "blocked-tool-request") {
+		return `Hydra error notice (not a user request or a head finding). A head without tools requested tools (${result.attemptedTools.join(", ")}); none ran. In future checks without tools, return the required findings JSON instead.`;
 	}
-
-	consume(value: unknown): void {
-		const details = reportDetails(value);
-		if (!details) return;
-		const key = reportKey(details);
-		this.pending.delete(key);
-		this.delivered.add(key);
+	if (result.errorKind === "malformed-findings") {
+		return "Hydra error notice (not a user request or a head finding). A completed answer from a head without tools did not match the required findings JSON. Use that format in future checks.";
 	}
-
-	sync(entries: Iterable<{ type: string; customType?: string; details?: unknown }>): void {
-		for (const entry of entries) {
-			if (entry.type === "custom_message" && entry.customType === "hydra-runtime-report") this.consume(entry.details);
-		}
-	}
-
-	restore(entries: Iterable<{ type: string; customType?: string; details?: unknown }>): void {
-		this.delivered.clear();
-		this.pending.clear();
-		this.sync(entries);
-	}
-
-	settle(): number {
-		const orphaned = this.pending.size;
-		this.pending.clear();
-		return orphaned;
-	}
+	return null;
 }

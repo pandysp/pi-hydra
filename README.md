@@ -98,7 +98,7 @@ hydra can execute Pi's standard read, bash, edit, write, grep, find, and ls tool
 
 Heads choose who needs each finding: you, the main assistant, or neither. See [Choosing an action](docs/heads.md#decisions-when-findings-land) for the choices and [Delivery](docs/architecture.md#delivery) for when messages arrive.
 
-Hydra also sends [automatic notices](docs/architecture.md#runtime-notices) about file changes and some failed checks. These are separate from the head's findings.
+Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) only when the head cannot: a failed check, a change to the active heads, or a head whose file disappeared. Heads report their own file changes.
 
 [Issue #20](https://github.com/pandysp/pi-hydra/issues/20) explores how to show notes to users who only read the final answer.
 

@@ -253,7 +253,7 @@ describe("buildAnthropicObservationPrompt", () => {
 			},
 		});
 		expect(prompt).toContain("Active heads when this check started: foreman, quality");
-		expect(prompt).toContain("manage_heads change automatically shows the user a note");
+		expect(prompt).toContain("manage_heads change automatically tells the main assistant");
 		expect(prompt).toContain("removing your own head ends this check");
 		expect(prompt).not.toContain("queue");
 	});
@@ -272,7 +272,7 @@ describe("buildObservationEnvelope", () => {
 				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
 			},
 		});
-		expect(envelope).toContain("manage_heads change automatically shows the user a note");
+		expect(envelope).toContain("manage_heads change automatically tells the main assistant");
 		expect(envelope).toContain("Active heads when this check started: quality, security");
 		expect(envelope).not.toContain("queue");
 	});

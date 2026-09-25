@@ -45,7 +45,7 @@ import {
 } from "./protocol";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
 import { HeadScheduler } from "./scheduler";
-import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS, JudgeReports } from "./judge";
+import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS } from "./judge";
 import type { JudgeResult } from "./judge";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
 import type { HydraCall, ObserveKind } from "./stats";
@@ -231,6 +231,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
+			steer: (head, message) => routeDecision(ctx, { action: "steer", reason: "head file gone", message }, head, false),
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
 			onActiveSetChanged: () => updateFooter(ctx),
@@ -367,7 +368,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// branch on restore. Live queue state never crosses branch navigation.
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
-	const judgeReports = new JudgeReports();
+	// One error notice per head and error type for the life of the process;
+	// a failure that repeats every check must not flood the conversation.
+	const reportedErrors = new Set<string>();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
@@ -401,7 +404,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
-		judgeReports.restore(ctx.sessionManager.getBranch());
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}
@@ -1023,20 +1025,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		];
 	}
 
+	// The head cannot report its own failed check, so Hydra steers for it.
 	function reportJudgeFailure(job: Observation, result: Pick<JudgeResult, "errorKind" | "attemptedTools">) {
-		const report = buildJudgeReport(job.head, result);
-		if (!report) return;
-		if (!judgeReports.stage(report.details)) return;
-		// Pi reports async send errors; settle warns and releases undelivered
-		// notices for retry. Let lifecycle errors propagate to the caller.
-		pi.sendMessage(report, { deliverAs: "steer" });
+		const report = buildJudgeReport(result);
+		const key = `${job.head}:${result.errorKind}`;
+		if (!report || reportedErrors.has(key)) return;
+		reportedErrors.add(key);
+		routeDecision(job.ctx, { action: "steer", reason: "hydra error notice", message: report }, job.head, false);
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
 		return {
 			isIdle: () => ctx.isIdle(),
 			abort: () => ctx.abort(),
-			notify: (message, level) => ctx.ui.notify(message, level),
+			notify: (message, level) => (level === "info" ? ctx.ui.notify(message, level) : notifyUser(ctx, message, level)),
 			sendUserMessage: (content, options) => pi.sendUserMessage(content, options),
 			sendMessage: (message, options) => pi.sendMessage(message, options),
 			persist: (entry) => pi.appendEntry<PersistedDelivery>("hydra-delivery", entry),
@@ -1152,9 +1154,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// The first request of a run is skipped, because the observation at the
 	// end of the previous run has already looked at everything before it.
 	pi.on("message_start", (event, ctx) => {
-		if (event.message.role === "custom" && event.message.customType === "hydra-runtime-report") {
-			judgeReports.consume(event.message.details);
-		}
 		if (event.message.role === "user") {
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
@@ -1193,14 +1192,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
-		judgeReports.sync(ctx.sessionManager.getBranch());
-		const undeliveredReports = judgeReports.settle();
-		if (undeliveredReports > 0) {
-			notifyUser(ctx, `hydra: ${undeliveredReports} error notice(s) did not reach the main assistant; can retry on a later check`, "warning");
-		}
 		const orphaned = deliveryLedger.settle();
 		if (orphaned.length > 0) {
-			ctx.ui.notify(
+			notifyUser(
+				ctx,
 				`hydra: ${orphaned.length} feedback ${orphaned.length === 1 ? "delivery" : "deliveries"} never reached the driver and was removed from pending context`,
 				"warning",
 			);
@@ -1345,11 +1340,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return result;
 		}
 
-		// Observer tool results are hidden from both user and driver. A real
-		// set change therefore gets one immediate, mandatory print receipt.
+		// Observer tool results are hidden from both user and driver, and
+		// removing itself ends the head's turn, so Hydra steers the receipt.
 		// Driver-originated calls skip this path because their tool result is
 		// already visible.
-		ctx.ui.notify(`hydra [${job.head}] ${receipt}`, "info");
+		routeDecision(ctx, { action: "steer", reason: "head set changed", message: receipt }, job.head, false);
 		const selfRemoved = params.operation === "remove" && params.head.trim() === job.head;
 		state.selfRemoved ||= selfRemoved;
 		return { ...result, terminate: selfRemoved };

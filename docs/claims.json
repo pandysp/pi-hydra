@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "336292190169b019d4ec6e7ce66b186a7887a4a5fccc1ec0c38b4831f1a75f9e",
+        "codeHash": "d6b6531c6bfc6c23254c46cabea62879a49e5b8326a90abd7555d8e9060ea106",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "eebf9bd7070a60789c3574aa1347a5ec0a6f100470a86056237178523b354966"
+        "docHash": "b978c9077503c5fda0cdde38cc7809fc5ee55899a5387749cd3f5cb4e0c0e406"
       }
     },
     {
@@ -84,7 +84,7 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "0706a26b5d97e258ddc81dade710a2215dc60acbf051dd4a001fe99c1b1e0d5a",
+        "codeHash": "80644351823f464b75533a6626c770bd392af4fc5616b2bebb43944d7f5ebe1e",
         "docHash": "c13bcf2a425b2f5201b542daa69d710fda30ff3d6e29a28bc92d0608e7f38a28"
       }
     },
@@ -140,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "72ac833c702ea44dbbc729451690f0c8094cbfa4ba90ab230de4e8f9c3cf400b",
-        "docHash": "80385de7e47f6157d6a0df63ffa127ac97a20fbd71393b1ed5ab41383f81c5e0"
+        "codeHash": "e8b6561a0c8c131b0c4d49c0c244ffb7bcb4d9ddcf8fd826454d0660f635ed97",
+        "docHash": "c9199155a3a6ab1604f1cf9995d5cb4390a73967aad113c2925f3e78830adfec"
       }
     },
     {
@@ -163,8 +163,8 @@
         "fragment": "heads-are-files"
       },
       "baseline": {
-        "codeHash": "3d243de90942b5e964ecf7fed6457235eb4e257bcb30094903486dbc507f3f70",
-        "docHash": "12a15a36e3c3552bfdb947f92c05447f79ab8e232d3242246f2c6b38f71080f7"
+        "codeHash": "7d85e8b25f808ec3ca2fd375f9bf4a902c157adf9b3d43834d929f15ba172592",
+        "docHash": "0af1cf79ba8a279465b537f2af082997935602fe5434bb88336d49c5fb7822f4"
       }
     },
     {
@@ -191,8 +191,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "0f95b406b910d9604ca3ae899de677db3aaade92c448693a0e818b01d46d2b59",
-        "docHash": "f6957e41bbf8561bd63641dd14850ba2478bd69542ebc2ffabd9d8ba9cf806f5"
+        "codeHash": "89449db1e170fe2f57092e9cca9cd95ad497fd4de866d18b6d05da3df9848df6",
+        "docHash": "2b2788dd5b3703ab8d7e7d66a42277bc28e4f9de486f1e1609ab4bdca69d0c1e"
       }
     }
   ]

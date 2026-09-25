@@ -372,7 +372,7 @@ const ENUMERATED_DECISION_SHAPE =
 	'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}';
 
 const MANAGEMENT_NOTE =
-	"A successful manage_heads change automatically shows the user a note. Do not repeat that note in your final message.";
+	"A successful manage_heads change automatically tells the main assistant, with your explanation. Do not repeat it in your final message.";
 
 function toolAllowance(tools: string[] | undefined): string {
 	return tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;

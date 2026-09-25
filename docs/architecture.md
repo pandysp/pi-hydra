@@ -60,7 +60,7 @@ A head is fully defined by one Markdown file. Discovery reads:
 - `~/.pi/agent/hydra/*.md` for user heads;
 - the nearest ancestor `.pi/hydra/*.md` for project heads.
 
-Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished files are pruned rather than observed with an empty instruction.
+Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored.
 
 The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Full authoring behavior belongs in [Writing heads](heads.md).
 
@@ -99,13 +99,13 @@ Hydra groups findings from each answer into at most two messages. All `print` fi
 
 Hydra tracks which messages are waiting and which arrived. Heads are told who received each message; a user-only note does not mean the main assistant saw it.
 
-### Runtime notices
+### Messages Hydra sends for a head
 
-Hydra adds automatic notices about some head errors. These are not findings from a head. While the main assistant is working, it receives them before its next model request. If it was already finishing, a notice can add another model response. When idle, they are saved for its next request without starting a new response. A head that needs a response can choose `steer` instead, as described above.
+Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant. A head reports its own file changes; Hydra does not announce writes, and a head changing a file through bash was never tracked.
 
-Hydra does not announce a head's file changes. Acting heads are asked to mention a file they changed in the main assistant's working folder in their steer, unless their own instructions say otherwise.
+A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 
-Pi sends automatic notices to the model as user messages, not higher-priority system instructions. The label identifies Hydra as the source; it does not mean the user asked for something. Notices do not replace the head's last finding. Like other conversation messages, they can be summarized by Pi's compaction; Hydra does not keep their exact text in every future request.
+Pi 0.87.1 checks for waiting messages once more before a run ends, which closed the gap where a steer arriving at that moment was lost. A steer arriving after that final check can still be stranded. Hydra then warns the user when the run settles, also in headless runs; how often this happens is not known.
 
 ### Failed checks
 
@@ -113,9 +113,9 @@ A head with tools receives Pi's normal tool errors and can try again within its 
 
 A head without tools gets no retry or further model call. Tool requests never run, even if they come with valid-looking JSON. One invalid finding makes Hydra reject the entire answer. Invalid or empty answers, unfinished or cut-short responses, provider errors and responses the provider reports as stopped are failed checks. An answer containing only thinking is still empty. Hydra records these failures as `noop`, not as a deliberate choice to say nothing. If Hydra cancels the check or switches conversation branches before it finishes, it drops the result instead.
 
-Only two failures produce an automatic notice for later checks: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
+Only two failures produce an error notice, sent as the head's steer so its next check sees it: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
 
-Each head gets at most one error notice for each error type on the selected conversation branch. Only a message that arrived counts as delivered. A pending notice blocks duplicates while it waits; when a run settles, Hydra warns about any undelivered error notices and allows a later check to retry them. Pi reports asynchronous send errors through its extension error channel. Every failed head check is still logged.
+Each head gets at most one error notice for each error type while Pi runs, so a failure that repeats every check does not flood the conversation. Every failed head check is still logged. A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
 
 ## State and observability
 
@@ -125,7 +125,7 @@ hydra has no external database. It stores three custom entry types in Pi's sessi
 - `hydra-call` — usage, action, timing, tools, the head's answer and any error;
 - `hydra-delivery` — successful delivery receipts.
 
-Automatic notices are saved as messages the model can read; the entries above are not. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
+Messages Hydra sends for a head are saved like that head's steers; the entries above are not model-visible. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
 
 ## Cache hit ratio
 
