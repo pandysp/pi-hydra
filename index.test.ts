@@ -8,13 +8,13 @@ import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@earendil-w
 import hydraExtension from "./index";
 import type { HydraCall } from "./stats";
 
-const boundary = vi.hoisted(() => ({ agentDir: "" }));
+const boundary = vi.hoisted(() => ({ agentDir: "", transport: "websocket" }));
 vi.mock("@earendil-works/pi-coding-agent", async (original) => {
 	const pi = await original<typeof import("@earendil-works/pi-coding-agent")>();
 	return {
 		...pi,
 		getAgentDir: () => boundary.agentDir,
-		SettingsManager: { ...pi.SettingsManager, create: () => pi.SettingsManager.inMemory({ transport: "websocket" }) },
+		SettingsManager: { ...pi.SettingsManager, create: () => pi.SettingsManager.inMemory({ transport: boundary.transport as "websocket" }) },
 	};
 });
 
@@ -33,6 +33,7 @@ type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
 	for (const cleanup of cleanups.splice(0)) await cleanup();
+	boundary.transport = "websocket";
 	vi.unstubAllEnvs();
 });
 
@@ -286,6 +287,19 @@ describe("observation loop stops", () => {
 		await h.waitCalls(1);
 		expect(h.transport).toHaveBeenCalledTimes(2);
 		expect(h.calls()[0]).toMatchObject({ action: "noop", iterations: 2 });
+	});
+
+	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: "read" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>(resolve => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		boundary.transport = "auto";
+		respond(answer([tool("read", { path: "work.txt" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("codex cache sharing lost mid-loop"), "warning");
 	});
 
 	it("stops a head turned off part-way through its check", async () => {
