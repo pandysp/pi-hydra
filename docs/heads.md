@@ -24,7 +24,6 @@ Frontmatter keys:
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
 | `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means every standard tool hydra can execute; `tools: []` means none (the head judges, never acts). |
 | `autostart` | no | `true` joins the active set at session start. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
-| `after-change` | no | `noop` or `print`, for heads with `write` or `edit` (or omitted `tools`). After a successful write/edit, hydra requires the matching completion delivery. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
@@ -73,11 +72,9 @@ A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. It
 Authoring guidance for heads that act:
 
 1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
-2. **Choose what happens after a file change.** After a successful `write` or `edit`, `after-change: noop` sends no finding; `after-change: print` requires a user-only note. Hydra enforces this choice, but it does not make the head act. Without the setting, the head chooses how to report.
-3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection and Hydra's file notices. Use bash only to read files unless you accept those risks. See [automatic notices](architecture.md#runtime-notices) for what Hydra can report.
+2. **Report your own file changes.** Hydra does not announce a head's writes. Every acting head is told to mention a file it changed inside the main assistant's working folder in its steer, unless its own instructions say otherwise. Say so in `DELIVER` when a head should stay silent, for example because it only writes logs elsewhere.
+3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
 4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
-
-Do not repeat Hydra's automatic file notice in the head's final message. See [notice rules](architecture.md#runtime-notices) for when and how it is sent.
 
 When a head uses `manage_heads` to change the active heads, Hydra automatically shows the user what changed and the head's explanation. Failed calls and calls that change nothing show no note. A head whose `tools` list includes `hydra` also sees the active heads when its check starts; later tool results may show a newer list.
 
@@ -136,7 +133,6 @@ The **tuner** reads your reactions and maintains the head files: a head whose fi
 name: tuner
 description: Judges the other heads' findings and tunes their files
 tools: read, write, edit, ls
-after-change: print
 ---
 PURPOSE: Maintain the other head files in ~/.pi/agent/hydra/ from the user's
 reactions to their findings.
@@ -148,7 +144,7 @@ DELIVER: Print the edit you made; complete with none when the act condition is
 not met.
 ```
 
-The examples use the [management and after-change settings](#tools-acting-heads) described above; file changes follow the [automatic notice rules](architecture.md#runtime-notices). A foreman can activate the tuner when needed.
+The examples use the [management rules](#tools-acting-heads) described above. A foreman can activate the tuner when needed.
 
 ## Example heads (minimal overlap)
 
@@ -213,7 +209,7 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Devil's Advocate**: challenge the entire approach. "Why this way and not another?" Zero overlap with code-level review. Do NOT comment on code-level bugs or style; think meta.
 - **Threat-modeler**: attacks the design the way an adversary would, before the code exists.
 
-**Evaluator heads** save assessments for later study instead of sending findings to the main assistant. Their file writes still produce [automatic notices](architecture.md#runtime-notices):
+**Evaluator heads** save assessments for later study instead of sending findings to the main assistant. Their instructions say to complete with none, so their log writes are not reported:
 
 - **Behavior-annotator**: scores each run against a rubric and appends the scores to an eval log. This is how you run live evals without full-price trajectory replay.
 - **Failure-collector**: records dead ends, retries, and error loops for later analysis of where the agent wastes time.

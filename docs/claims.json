@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "c46c1bd1e9ab541b44557d837d4daad1e2418691790a060315bc0c66b4c7d0d5",
+        "codeHash": "336292190169b019d4ec6e7ce66b186a7887a4a5fccc1ec0c38b4831f1a75f9e",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "ba34e6b56141afa36569b3dcbb3a1575ebfe81a18f7a1e7cdd8d871bf63ae7ab"
+        "docHash": "eebf9bd7070a60789c3574aa1347a5ec0a6f100470a86056237178523b354966"
       }
     },
     {
@@ -84,7 +84,7 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "69b5c7415cbc4ffbaf36c64bc64a030793566cd1fc7e6f82eaef48657fa77cb0",
+        "codeHash": "0706a26b5d97e258ddc81dade710a2215dc60acbf051dd4a001fe99c1b1e0d5a",
         "docHash": "c13bcf2a425b2f5201b542daa69d710fda30ff3d6e29a28bc92d0608e7f38a28"
       }
     },
@@ -140,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "89c3ee224d2bbe1419d6a1745c3821aa8ca4cdb48c5b6d9299e2d168113c895b",
-        "docHash": "76f53ce7f9dfcebf160d2493a61c415bc9c45b14c908caa8d79ff98f675534bd"
+        "codeHash": "72ac833c702ea44dbbc729451690f0c8094cbfa4ba90ab230de4e8f9c3cf400b",
+        "docHash": "80385de7e47f6157d6a0df63ffa127ac97a20fbd71393b1ed5ab41383f81c5e0"
       }
     },
     {
@@ -191,7 +191,7 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "567ca248871936c8ff4b2dff83a4a0a952c7a08878bc5aceb65d4e680e5275bd",
+        "codeHash": "0f95b406b910d9604ca3ae899de677db3aaade92c448693a0e818b01d46d2b59",
         "docHash": "f6957e41bbf8561bd63641dd14850ba2478bd69542ebc2ffabd9d8ba9cf806f5"
       }
     }

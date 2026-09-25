@@ -12,8 +12,6 @@ export const OBSERVATION_DELIVERIES = ["none", "print", "queue", "steer", "inter
 export type ObservationDelivery = (typeof OBSERVATION_DELIVERIES)[number];
 export const HEAD_OPERATIONS = ["add", "remove"] as const;
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
-export const AFTER_CHANGE_ACTIONS = ["noop", "print"] as const;
-export type AfterChangeAction = (typeof AFTER_CHANGE_ACTIONS)[number];
 
 export type DeliveryAction = Exclude<Action, "noop">;
 
@@ -89,30 +87,6 @@ export function formatHeadManagementReceipt(operation: HeadOperation, head: stri
 		throw new Error("manage_heads requires a non-empty message explaining the change");
 	}
 	return `${operation === "add" ? "Added" : "Removed"} ${name} — ${explanation}`;
-}
-
-/**
- * A head file can declare what should happen after it changes something. This
- * only settles where the result is delivered. It deliberately cannot judge
- * whether the change was a good idea, and cannot turn a failed change into a
- * successful one; it runs only once a change has actually been seen.
- */
-export function applyAfterChangeDelivery(
-	decision: Decision,
-	afterChange: AfterChangeAction | undefined,
-	stateChanged: boolean,
-): Decision {
-	if (!stateChanged || afterChange === undefined || decision.action === afterChange) {
-		return decision;
-	}
-	if (afterChange === "noop") {
-		return { ...decision, action: "noop", message: "" };
-	}
-	return {
-		...decision,
-		action: "print",
-		message: decision.message || decision.reason || "State changed.",
-	};
 }
 
 export interface ObservationLoopGuard {
@@ -290,8 +264,6 @@ export interface HeadDefinition {
 	tools?: string[];
 	/** Switches itself on at session start, unless a flag or saved set says otherwise. */
 	autostart?: boolean;
-	/** What the head's finding does after it successfully writes or edits a file. */
-	afterChange?: AfterChangeAction;
 	prompt: string;
 }
 
@@ -329,7 +301,6 @@ export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { 
 	let description: string | undefined;
 	let tools: string[] | undefined;
 	let autostart: boolean | undefined;
-	let afterChange: AfterChangeAction | undefined;
 	for (const line of frontmatter[1].split("\n")) {
 		if (/^\s*- /.test(line)) {
 			// Written as a bullet list, the line above would read as empty and
@@ -348,12 +319,10 @@ export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { 
 			tools = value === "" ? [] : parseHeadList(value);
 		} else if (line.startsWith("autostart:")) {
 			autostart = line.slice("autostart:".length).trim() === "true" || undefined;
-		} else if (line.startsWith("after-change:")) {
-			const value = line.slice("after-change:".length).trim();
-			if (!(AFTER_CHANGE_ACTIONS as readonly string[]).includes(value)) {
-				return { error: `invalid after-change "${value}" (expected: ${AFTER_CHANGE_ACTIONS.join(", ")})` };
-			}
-			afterChange = value as AfterChangeAction;
+		} else if (line.trim() !== "") {
+			// A misspelled or retired key would otherwise change nothing
+			// without anyone noticing.
+			return { error: `unknown key "${line.split(":")[0].trim()}" (allowed: name, description, tools, autostart)` };
 		}
 	}
 	if (!name) {
@@ -365,21 +334,11 @@ export function parseHeadFile(rawContent: string): { head: HeadDefinition } | { 
 	if (!description) {
 		return { error: "missing description:" };
 	}
-	if (afterChange !== undefined && tools?.length === 0) {
-		return { error: "after-change requires an acting head (tools must not be [])" };
-	}
-	if (
-		afterChange !== undefined &&
-		tools !== undefined &&
-		!tools.some((tool) => tool === "write" || tool === "edit")
-	) {
-		return { error: "after-change requires write, edit, or omitted tools" };
-	}
 	const prompt = content.slice(frontmatter[0].length).trim();
 	if (prompt.length === 0) {
 		return { error: "missing instruction body" };
 	}
-	return { head: { name, description, tools, autostart, afterChange, prompt } };
+	return { head: { name, description, tools, autostart, prompt } };
 }
 
 /** Whether a head's tools allowance lets it act: undefined means all tools. */
@@ -401,8 +360,6 @@ export function usesSplitObservationHandoff(api: string | undefined): boolean {
 }
 
 export interface ObservationProtocolOptions {
-	/** What the finding does after the head successfully changes something. */
-	afterChange?: AfterChangeAction;
 	/** Which heads are on. Only shown to a head allowed to change that. */
 	activeHeads?: readonly string[];
 	/** What has already been delivered, so a head does not repeat it. */
@@ -417,15 +374,6 @@ const ENUMERATED_DECISION_SHAPE =
 const MANAGEMENT_NOTE =
 	"A successful manage_heads change automatically shows the user a note. Do not repeat that note in your final message.";
 
-function afterChangeProtocol(afterChange: AfterChangeAction | undefined, field: "action" | "delivery"): string {
-	if (afterChange === undefined) return "";
-	const action = afterChange === "noop" && field === "delivery" ? "none" : afterChange;
-	const explanation = afterChange === "print"
-		? " and a short note about the change; Hydra enforces this."
-		: "; Hydra enforces this because the changed file is the result.";
-	return `After a successful write or edit, finish with ${field} "${action}"${explanation} `;
-}
-
 function toolAllowance(tools: string[] | undefined): string {
 	return tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
 }
@@ -436,8 +384,8 @@ export const OBSERVER_DELIVERY_GUIDANCE =
 export const OBSERVER_GUIDANCE =
 	"You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
 
-const WRITE_NOTICE_GUIDANCE =
-	"Hydra tells the main assistant which files you successfully write or edit, before its next model request. This happens separately from your final message; do not repeat the notice. Earlier file reads are not updated: the main assistant should reread relevant files before relying on older contents. A tool can change files even if it later fails or is stopped. Hydra does not track file changes made through bash.";
+const FILE_CHANGE_GUIDANCE =
+	"If you changed a file inside the main assistant's working folder, tell it in your steer message, unless your own instructions say otherwise. Hydra does not tell it for you.";
 
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
 	if (activeHeads === undefined || !tools?.includes("hydra")) {
@@ -597,15 +545,14 @@ export function buildAnthropicObservationPrompt(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	const postChange = afterChangeProtocol(options.afterChange, "action");
-	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${FILE_CHANGE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 HEAD INSTRUCTIONS: ${instruction}
 
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-${postChange}${postChange ? "Otherwise use" : "Use"} noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}].</system-reminder>`;
+Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}].</system-reminder>`;
 }
 
 /**
@@ -617,9 +564,9 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${WRITE_NOTICE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${FILE_CHANGE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${afterChangeProtocol(options.afterChange, "delivery")}${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
+${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {

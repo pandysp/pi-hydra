@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
 	advanceObservationLoopGuard,
-	applyAfterChangeDelivery,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
@@ -129,43 +128,6 @@ describe("formatHeadManagementReceipt", () => {
 	it("rejects empty names and explanations", () => {
 		expect(() => formatHeadManagementReceipt("add", " ", "needed")).toThrow("non-empty head");
 		expect(() => formatHeadManagementReceipt("remove", "quality", " ")).toThrow("non-empty message");
-	});
-});
-
-describe("applyAfterChangeDelivery", () => {
-	const decision = { action: "steer" as const, reason: "updated policy", message: "tell the driver" };
-
-	it("does nothing without a tracked change or a delivery contract", () => {
-		expect(applyAfterChangeDelivery(decision, "print", false)).toBe(decision);
-		expect(applyAfterChangeDelivery(decision, undefined, true)).toBe(decision);
-	});
-
-	it("makes a changed file the complete work product for after-change noop", () => {
-		expect(applyAfterChangeDelivery(decision, "noop", true)).toEqual({
-			action: "noop",
-			reason: "updated policy",
-			message: "",
-		});
-	});
-
-	it("prints after a change and can recover the note from the decision reason", () => {
-		expect(applyAfterChangeDelivery({ action: "noop", reason: "added accessibility", message: "" }, "print", true)).toEqual({
-			action: "print",
-			reason: "added accessibility",
-			message: "added accessibility",
-		});
-	});
-
-	it("preserves a matching print decision", () => {
-		const print = { action: "print" as const, reason: "crew changed", message: "Added security." };
-		expect(applyAfterChangeDelivery(print, "print", true)).toBe(print);
-	});
-
-	it("forces every parsed post-change delivery through a print contract", () => {
-		for (const action of ["noop", "queue", "steer", "interrupt"] as const) {
-			const decision = { action, reason: "changed", message: action === "noop" ? "" : "finding" };
-			expect(applyAfterChangeDelivery(decision, "print", true).action).toBe("print");
-		}
 	});
 });
 
@@ -304,14 +266,12 @@ describe("buildObservationEnvelope", () => {
 
 	it("includes typed delivery and capability state without naming a special head", () => {
 		const envelope = buildObservationEnvelope("crew", ["hydra", "read"], {
-			afterChange: "print",
 			activeHeads: ["quality", "security"],
 			deliveryContext: {
 				lastByThisHead: null,
 				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
 			},
 		});
-		expect(envelope).toContain('finish with delivery "print"');
 		expect(envelope).toContain("manage_heads change automatically shows the user a note");
 		expect(envelope).toContain("Active heads when this check started: quality, security");
 		expect(envelope).not.toContain("queue");
@@ -323,20 +283,16 @@ describe("buildObservationEnvelope", () => {
 	});
 });
 
-describe("after-change instructions", () => {
-	it.each([undefined, "noop", "print"] as const)("preserves %s for both completion formats", (afterChange) => {
-		const anthropic = buildAnthropicObservationPrompt("docs", "Keep notes.", ["write"], { afterChange });
-		const codex = buildObservationEnvelope("docs", ["write"], { afterChange });
-		for (const [prompt, field, silent] of [[anthropic, "action", "noop"], [codex, "delivery", "none"]]) {
-			if (afterChange === undefined) {
-				expect(prompt).not.toContain("After a successful write or edit");
-				continue;
-			}
-			const action = afterChange === "noop" ? silent : "print";
-			expect(prompt.match(/After a successful write or edit/g)).toHaveLength(1);
-			expect(prompt).toContain(`finish with ${field} "${action}"`);
-			expect(prompt).toContain("Hydra enforces this");
-			expect(prompt).toContain(afterChange === "print" ? "a short note about the change" : "the changed file is the result");
+describe("file-change reporting", () => {
+	const instruction = "If you changed a file inside the main assistant's working folder, tell it in your steer message, unless your own instructions say otherwise. Hydra does not tell it for you.";
+	it("asks acting heads to report their own file changes", () => {
+		for (const prompt of [
+			buildAnthropicObservationPrompt("docs", "Keep notes.", ["write"]),
+			buildObservationEnvelope("docs", ["write"]),
+			buildObservationEnvelope("docs", undefined),
+		]) {
+			expect(prompt.split(instruction)).toHaveLength(2);
+			expect(prompt).not.toMatch(/After a successful write or edit|Hydra enforces this|Hydra tells the main assistant which files/);
 		}
 	});
 });
@@ -459,12 +415,9 @@ describe("shared observer guidance", () => {
 			expect(prompt).toMatchSnapshot();
 		});
 	}
-	it("acting paths distinguish a write notice from refreshed contents", () => {
-		for (const build of [paths["Anthropic acting"], paths["Codex acting"]]) {
-			const prompt = build();
-			expect(prompt).toContain("Hydra tells the main assistant which files you successfully write or edit");
-			expect(prompt).toContain("reread relevant files");
-			expect(prompt).toContain("does not track file changes made through bash");
+	it("only acting paths ask heads to report file changes", () => {
+		for (const [name, build] of Object.entries(paths)) {
+			expect(build().includes("tell it in your steer message"), name).toBe(name.endsWith("acting"));
 		}
 	});
 });
@@ -867,14 +820,13 @@ describe("mergeOpenAIObservationPayload", () => {
 
 describe("parseHeadFile", () => {
 	it("parses a full head file", () => {
-		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\nafter-change: noop\n---\nKeep docs current.";
+		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\n---\nKeep docs current.";
 		expect(parseHeadFile(content)).toEqual({
 			head: {
 				name: "docs",
 				description: "Keeps docs current",
 				tools: ["read", "write"],
 				autostart: true,
-				afterChange: "noop",
 				prompt: "Keep docs current.",
 			},
 		});
@@ -896,7 +848,7 @@ describe("parseHeadFile", () => {
 	it("leaves autostart undefined unless literally true", () => {
 		const parsed = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
 		expect(parsed).toEqual({
-			head: { name: "x", description: "d", tools: undefined, autostart: undefined, afterChange: undefined, prompt: "Body." },
+			head: { name: "x", description: "d", tools: undefined, autostart: undefined, prompt: "Body." },
 		});
 	});
 
@@ -915,7 +867,7 @@ describe("parseHeadFile", () => {
 	it("tolerates CRLF line endings and a BOM", () => {
 		const crlf = "---\r\nname: x\r\ndescription: d\r\ntools: read\r\n---\r\nBody.\r\n";
 		expect(parseHeadFile(`\uFEFF${crlf}`)).toEqual({
-			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, afterChange: undefined, prompt: "Body." },
+			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, prompt: "Body." },
 		});
 	});
 
@@ -927,24 +879,18 @@ describe("parseHeadFile", () => {
 				description: "d",
 				tools: ["read", "write"],
 				autostart: undefined,
-				afterChange: undefined,
 				prompt: "Body.",
 			},
 		});
 	});
 
-	it("rejects invalid delivery metadata and delivery on a judge-only head", () => {
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: queue\n---\nBody.")).toEqual({
-			error: 'invalid after-change "queue" (expected: noop, print)',
+	it("rejects unknown keys, including the removed after-change", () => {
+		const allowed = "(allowed: name, description, tools, autostart)";
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: write\nafter-change: noop\n---\nBody.")).toEqual({
+			error: `unknown key "after-change" ${allowed}`,
 		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: []\nafter-change: noop\n---\nBody.")).toEqual({
-			error: "after-change requires an acting head (tools must not be [])",
-		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: print\n---\nBody.")).toEqual({
-			error: "after-change requires write, edit, or omitted tools",
-		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: hydra\nafter-change: print\n---\nBody.")).toEqual({
-			error: "after-change requires write, edit, or omitted tools",
+		expect(parseHeadFile("---\nname: x\ndescription: d\nmodel: opus\n---\nBody.")).toEqual({
+			error: `unknown key "model" ${allowed}`,
 		});
 	});
 

@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
 import type { streamSimple } from "@earendil-works/pi-ai/compat";
 import { convertToLlm, SessionManager } from "@earendil-works/pi-coding-agent";
@@ -9,23 +8,13 @@ import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@earendil-w
 import hydraExtension from "./index";
 import type { HydraCall } from "./stats";
 
-const boundary = vi.hoisted(() => ({ agentDir: "", afterFileTool: undefined as undefined | (() => Promise<void>) }));
+const boundary = vi.hoisted(() => ({ agentDir: "" }));
 vi.mock("@earendil-works/pi-coding-agent", async (original) => {
 	const pi = await original<typeof import("@earendil-works/pi-coding-agent")>();
-	const wrap = (factory: (cwd: string) => AgentTool) => (cwd: string) => {
-		const tool = factory(cwd);
-		return { ...tool, execute: async (...args: Parameters<typeof tool.execute>) => {
-			const result = await tool.execute(...args);
-			await boundary.afterFileTool?.();
-			return result;
-		} };
-	};
 	return {
 		...pi,
 		getAgentDir: () => boundary.agentDir,
 		SettingsManager: { ...pi.SettingsManager, create: () => pi.SettingsManager.inMemory({ transport: "websocket" }) },
-		createWriteTool: wrap(pi.createWriteTool),
-		createEditTool: wrap(pi.createEditTool),
 	};
 });
 
@@ -45,15 +34,14 @@ type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
 	for (const cleanup of cleanups.splice(0)) await cleanup();
-	boundary.afterFileTool = undefined;
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { tools?: string; afterChange?: string; api?: "anthropic-messages" | "openai-codex-responses" } = {}) {
+async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" } = {}) {
 	const cwd = mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
-	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n${options.afterChange ? `after-change: ${options.afterChange}\n` : ""}---\nFollow these test instructions.\n`);
+	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n---\nFollow these test instructions.\n`);
 	const sm = SessionManager.inMemory(cwd);
 	const root = sm.appendCustomEntry("hydra-config", { heads: ["critic"] });
 	const handlers = new Map<string, Handler>();
@@ -342,145 +330,17 @@ describe("observation loop stops", () => {
 	});
 });
 
-describe("file notices through real tools", () => {
-	it.each([false, true])("a successful read neither announces a file change nor resets a prior write (%s)", async (wrote) => {
-		const h = await harness({ tools: "read, write", afterChange: "noop" });
-		writeFileSync(join(h.cwd, "work.txt"), "before");
+describe("file changes by a head", () => {
+	it("sends nothing automatically; the head reports its own change", async () => {
+		const h = await harness({ tools: "write" });
 		await h.observe(
-			...(wrote ? [answer([tool("write", { path: "work.txt", content: "after" })], "toolUse")] : []),
-			answer([tool("read", { path: "work.txt" })], "toolUse"),
-			answer([text('{"action":"steer","reason":"checked","message":"Completion note"}')]),
-		);
-		await h.waitCalls(1);
-		expect(h.payloads.at(-1)).toHaveProperty("messages", expect.arrayContaining([
-			expect.objectContaining({ role: "toolResult", toolName: "read", isError: false }),
-		]));
-		expect(h.pi.sendMessage).toHaveBeenCalledTimes(wrote ? 1 : 0);
-		expect(h.calls()[0].action).toBe(wrote ? "noop" : "steer");
-	});
-
-	it.each(["noop", "print"])("announces successful write/edit before completion independently of after-change %s", async (afterChange) => {
-		const h = await harness({ tools: "write, edit", afterChange });
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "before" })], "toolUse"),
-			answer([tool("edit", { path: "work.txt", edits: [{ oldText: "before", newText: "after" }] })], "toolUse"),
-			answer([text('{"action":"steer","reason":"changed","message":"Completion note"}')]),
+			answer([tool("write", { path: "work.txt", content: "after" })], "toolUse"),
+			answer([text('{"action":"steer","reason":"changed","message":"I rewrote work.txt"}')]),
 		);
 		await h.waitCalls(1);
 		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("after");
-		expect(h.pi.sendMessage).toHaveBeenCalledTimes(2);
-		for (const [message, options] of vi.mocked(h.pi.sendMessage).mock.calls) {
-			expect(options).toEqual({ deliverAs: "steer" });
-			expect(message.content).toContain("reread");
-		}
-		expect(h.calls()[0].action).toBe(afterChange);
-		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it.each(["noop", "print"])("Codex enforces after-change %s without delaying the independent write notice", async (afterChange) => {
-		const h = await harness({ api: "openai-codex-responses", tools: "write", afterChange });
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
-			answer([tool("hydra", { action: "complete_observation", delivery: "steer", message: "wrong delivery" })], "toolUse"),
-			answer([tool("hydra", { action: "complete_observation", delivery: afterChange === "noop" ? "none" : "print", message: afterChange === "noop" ? "" : "Changed file" })], "toolUse"),
-		);
-		await h.waitCalls(1);
-		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
-		expect(h.calls()[0]).toMatchObject({ action: afterChange, iterations: 3, toolsUsed: ["write"] });
-		expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("reread this file") }), { deliverAs: "steer" });
-		expect(JSON.stringify(h.payloads[2])).toContain('"isError":true');
-		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("announces a known successful write even if shutdown follows, recorded without a main assistant turn", async () => {
-		const h = await harness({ tools: "write" });
-		vi.stubEnv("HYDRA_SHUTDOWN_GRACE_MS", "0");
-		boundary.afterFileTool = () => h.emit({ type: "session_shutdown", reason: "quit" });
-		await h.observe(answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"));
-		await vi.waitFor(() => expect(h.pi.sendMessage).toHaveBeenCalledTimes(1));
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "hydra-feedback" }), { deliverAs: "steer" });
-		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
-		expect(h.calls()).toHaveLength(0);
-	});
-
-	it("keeps old-branch write facts out of the new branch", async () => {
-		const h = await harness({ tools: "write" });
-		boundary.afterFileTool = async () => {
-			h.sm.branch(h.root);
-			await h.emit({ type: "session_tree", oldLeafId: h.root, newLeafId: h.root });
-		};
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
-			answer([text('{"action":"noop","reason":"done","message":""}')]),
-		);
-		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(2));
-		await h.emit({ type: "session_shutdown", reason: "quit" });
-		expect(readFileSync(join(h.cwd, "work.txt"), "utf8")).toBe("written");
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
-		expect(h.calls()).toHaveLength(0);
-	});
-
-	it("tracks separate notices for repeated writes to the same file", async () => {
-		const h = await harness({ tools: "write", afterChange: "noop" });
-		h.busy();
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "first" })], "toolUse"),
-			answer([tool("write", { path: "work.txt", content: "second" })], "toolUse"),
-			answer([text('{"action":"noop","reason":"changed","message":""}')]),
-		);
-		await h.waitCalls(1);
-		expect(h.pending).toHaveLength(2);
-		// Only the second notice arrives; identical text must not hide the first.
-		await h.consume(h.pending.pop()!);
-		h.pending.splice(0);
-		await h.emit({ type: "agent_settled" });
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("1 file-change notice(s) did not reach"), "warning");
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("[critic] wrote work.txt"), "warning");
-		h.notify.mockClear();
-		await h.emit({ type: "agent_settled" });
-		expect(h.notify).not.toHaveBeenCalled();
-	});
-
-	it.each([true, false])("does not warn for arrived file notices (busy: %s)", async (busy) => {
-		const h = await harness({ tools: "write", afterChange: "noop" });
-		if (busy) h.busy();
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
-			answer([text('{"action":"noop","reason":"changed","message":""}')]),
-		);
-		await h.waitCalls(1);
-		if (busy) await h.consume(h.pending.shift()!);
-		await h.emit({ type: "agent_settled" });
-		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("file-change notice(s) did not reach"), "warning");
-	});
-
-	it("does not carry pending file notices into another branch", async () => {
-		const h = await harness({ tools: "write", afterChange: "noop" });
-		h.busy();
-		await h.observe(
-			answer([tool("write", { path: "work.txt", content: "written" })], "toolUse"),
-			answer([text('{"action":"noop","reason":"changed","message":""}')]),
-		);
-		await h.waitCalls(1);
-		const previous = h.sm.getLeafId()!;
-		h.sm.branch(h.root);
-		await h.emit({ type: "session_tree", oldLeafId: previous, newLeafId: h.root });
-		await h.emit({ type: "agent_settled" });
-		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("file-change notice(s) did not reach"), "warning");
-	});
-
-	it("does not announce success for failing write or edit tools", async () => {
-		const h = await harness({ tools: "write, edit" });
-		mkdirSync(join(h.cwd, "directory"));
-		await h.observe(
-			answer([tool("write", { content: "missing path" })], "toolUse"),
-			answer([tool("edit", { edits: [{ oldText: "before", newText: "after" }] })], "toolUse"),
-			answer([tool("write", { path: "directory", content: "bad" })], "toolUse"),
-			answer([tool("edit", { path: "missing", edits: [{ oldText: "before", newText: "after" }] })], "toolUse"),
-			answer([text('{"action":"noop","reason":"failed","message":""}')]),
-		);
-		await h.waitCalls(1);
-		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[critic] I rewrote work.txt", undefined);
 	});
 });

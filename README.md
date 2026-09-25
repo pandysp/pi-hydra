@@ -73,12 +73,12 @@ For headless runs, use `--hydra-heads quality,security`.
 name: docs-keeper
 description: Keeps docs/notes.md current with decisions
 tools: read, write, edit
-after-change: noop
 ---
 PURPOSE: Keep project decisions in docs/notes.md.
 ACT WHEN: The conversation contains a decision or requirement not yet recorded.
 WORK: Add one short entry and edit nothing else.
-DELIVER: Complete with none; the result is the file change.
+DELIVER: Steer one line naming the entry you added; complete with none when
+nothing new was decided.
 ```
 
 Heads live in two places:

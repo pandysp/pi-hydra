@@ -101,9 +101,9 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Runtime notices
 
-Hydra adds automatic notices about changed files and some head errors. These are not findings from a head. While the main assistant is working, it receives them before its next model request. If it was already finishing, a notice can add another model response. When idle, they are saved for its next request without starting a new response. Starting a response for every write can create a loop: a head records the response in a file, which starts another response, which the head records again. A head that needs a response can choose `steer` instead, as described above.
+Hydra adds automatic notices about some head errors. These are not findings from a head. While the main assistant is working, it receives them before its next model request. If it was already finishing, a notice can add another model response. When idle, they are saved for its next request without starting a new response. A head that needs a response can choose `steer` instead, as described above.
 
-A successful `write` or `edit` sends the head name, change and file path. The main assistant must reread relevant files before relying on older contents. This notice is separate from `after-change`. It does not update earlier reads or cover changes made through bash. A tool can change a file before failing or being stopped, so no success notice does not mean nothing changed. If cancellation clears a queued file-change notice, Hydra warns with the affected head and path when the run settles. The file change is not undone; Hydra does not repeat the write or automatically resend its notice.
+Hydra does not announce a head's file changes. Acting heads are asked to mention a file they changed in the main assistant's working folder in their steer, unless their own instructions say otherwise.
 
 Pi sends automatic notices to the model as user messages, not higher-priority system instructions. The label identifies Hydra as the source; it does not mean the user asked for something. Notices do not replace the head's last finding. Like other conversation messages, they can be summarized by Pi's compaction; Hydra does not keep their exact text in every future request.
 
@@ -115,7 +115,7 @@ A head without tools gets no retry or further model call. Tool requests never ru
 
 Only two failures produce an automatic notice for later checks: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
 
-Each head gets at most one error notice for each error type on the selected conversation branch. Only a message that arrived counts as delivered. A pending notice blocks duplicates while it waits; when a run settles, Hydra warns about any undelivered error notices and allows a later check to retry them. Pi reports asynchronous send errors through its extension error channel, including failures to send file-change notices. Every failed head check is still logged.
+Each head gets at most one error notice for each error type on the selected conversation branch. Only a message that arrived counts as delivered. A pending notice blocks duplicates while it waits; when a run settles, Hydra warns about any undelivered error notices and allows a later check to retry them. Pi reports asynchronous send errors through its extension error channel. Every failed head check is still logged.
 
 ## State and observability
 

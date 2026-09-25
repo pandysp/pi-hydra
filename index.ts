@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { cleanupSessionResources } from "@earendil-works/pi-ai";
-import type { Api, AssistantMessage, Message, Model, ProviderHeaders, ToolCall } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, ProviderHeaders } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	createBashTool,
@@ -27,7 +27,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type {
 	Action,
-	AfterChangeAction,
 	Decision,
 	HydraConfig,
 	ObservationLoopStopReason,
@@ -52,7 +51,6 @@ import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
 import type { HydraCall, ObserveKind } from "./stats";
 import {
 	advanceObservationLoopGuard,
-	applyAfterChangeDelivery,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
@@ -160,7 +158,6 @@ interface ObservationSeed {
 	turnIndex: number;
 	head: string;
 	instruction: string; // frozen at scheduling time; delivery facts are not
-	afterChange?: AfterChangeAction;
 	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
 	kind: ObserveKind;
 	branchGeneration: number;
@@ -182,7 +179,6 @@ interface FeedbackDetails {
 	head: string;
 	action: Action;
 	reason: string;
-	noticeId?: string;
 	// Pre-rename entries persisted `lens`; the renderer falls back to it.
 	lens?: string;
 }
@@ -274,7 +270,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		name: string,
 		tools: string[] | undefined,
 		instruction: string,
-		afterChange: AfterChangeAction | undefined,
 	): Pick<Observation, "prompt" | "envelope" | "completionMode"> {
 		if (name in DIAGNOSTIC_PROMPTS) {
 			return {
@@ -283,7 +278,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
-		const protocol = { afterChange, activeHeads: [...registry.activeSet()], deliveryContext };
+		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext };
 		if (!headActs(tools)) {
 			return usesSplitObservationHandoff(ctx.model?.api)
 				? {
@@ -331,7 +326,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			// time.
 			const job: Observation = {
 				...seed,
-				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.afterChange),
+				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction),
 			};
 			await observe(job, signal);
 		},
@@ -373,7 +368,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
 	const judgeReports = new JudgeReports();
-	const pendingWriteNotices = new Map<string, string>();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
@@ -408,7 +402,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
 		judgeReports.restore(ctx.sessionManager.getBranch());
-		pendingWriteNotices.clear();
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}
@@ -424,7 +417,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		iterations: number;
 		toolsUsed: string[];
 		selfRemoved: boolean;
-		fileStateChanged: boolean;
 		loopStopReason: ObservationLoopStopReason;
 		failureHint?: string;
 	}
@@ -432,7 +424,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	interface ObservationToolState {
 		completion: Decision | null;
 		selfRemoved: boolean;
-		fileStateChanged: boolean;
 	}
 
 	function clip(text: string, max: number): string {
@@ -594,7 +585,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			toolsUsed,
 			decisions: outcomeDecisions,
 			selfRemoved,
-			fileStateChanged,
 			loopStopReason,
 			parseError,
 			errorKind,
@@ -630,9 +620,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if ((!decisions || decisions.length === 0) && job.completionMode === "json") {
 			const parsed = parseDecision(text);
 			decisions = parsed ? [parsed] : null;
-		}
-		if (decisions && decisions.length > 0 && job.completionMode === "json") {
-			decisions = [applyAfterChangeDelivery(decisions[0], job.afterChange, fileStateChanged)];
 		}
 		if (!decisions || decisions.length === 0) {
 			const stopped = decisionFromLoopStopReason(loopStopReason);
@@ -768,7 +755,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				toolsUsed: [],
 				...classified,
 				selfRemoved: false,
-				fileStateChanged: false,
 				loopStopReason: null,
 				failureHint: classified.errorKind === "provider-error" ? observationFailureHint(transport, response.errorMessage ?? "") : undefined,
 			};
@@ -809,7 +795,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const toolState: ObservationToolState = {
 			completion: null,
 			selfRemoved: false,
-			fileStateChanged: false,
 		};
 		let loopStopReason: ObservationLoopStopReason = null;
 		// Whether this observation is running inside the driver's own session.
@@ -922,10 +907,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						if (hydraAction !== "complete_observation") {
 							toolsUsed.push(event.toolCall.name);
 						}
-						if (!event.isError && (event.toolCall.name === "write" || event.toolCall.name === "edit")) {
-							toolState.fileStateChanged = true;
-							announceWrite(job, event.toolCall);
-						}
 						return undefined;
 					},
 				},
@@ -986,7 +967,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			errorKind: null,
 			attemptedTools: [],
 			selfRemoved: toolState.selfRemoved,
-			fileStateChanged: toolState.fileStateChanged,
 			loopStopReason,
 		};
 	}
@@ -1052,43 +1032,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		pi.sendMessage(report, { deliverAs: "steer" });
 	}
 
-	// Notices carry paths, not updated contents. Failed or stopped tools can
-	// still change files. Changes made through bash are not tracked here.
-	function announceWrite(job: Observation, toolCall: ToolCall) {
-		const path = toolCall.arguments.path;
-		// Repeated writes to the same path need separate delivery receipts.
-		const noticeId = uuidv7();
-		const change = `[${job.head}] ${toolCall.name === "write" ? "wrote" : "edited"} ${path}`;
-		const details: FeedbackDetails = { head: job.head, action: "steer", reason: "head file write", noticeId };
-		pendingWriteNotices.set(noticeId, change);
-		pi.sendMessage(
-			{
-				customType: "hydra-feedback",
-				content: `${change}; reread this file before relying on older contents.`,
-				display: true,
-				details,
-			},
-			{ deliverAs: "steer" },
-		);
-	}
-
-	function consumeWriteNotice(details: unknown) {
-		if (typeof details !== "object" || details === null) return;
-		const noticeId = (details as Partial<FeedbackDetails>).noticeId;
-		if (typeof noticeId === "string") pendingWriteNotices.delete(noticeId);
-	}
-
-	function settleWriteNotices(ctx: ExtensionContext) {
-		// Idle sends are saved without an extension message_start event in Pi.
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type === "custom_message" && entry.customType === "hydra-feedback") consumeWriteNotice(entry.details);
-		}
-		if (pendingWriteNotices.size === 0) return;
-		const missing = [...pendingWriteNotices.values()];
-		pendingWriteNotices.clear();
-		notifyUser(ctx, `hydra: ${missing.length} file-change notice(s) did not reach the main assistant. Files are already changed; reread them before continuing:\n${missing.join("\n")}`, "warning");
-	}
-
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
 		return {
 			isIdle: () => ctx.isIdle(),
@@ -1125,7 +1068,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				turnIndex: currentTurnIndex,
 				head: name,
 				instruction: head?.prompt ?? "",
-				afterChange: head?.afterChange,
 				tools,
 				kind,
 				branchGeneration,
@@ -1221,7 +1163,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				deliveryLedger.discardIdleUserDeliveries();
 			}
 		} else if (event.message.role === "custom" && event.message.customType === "hydra-feedback") {
-			consumeWriteNotice(event.message.details);
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
 				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), {
@@ -1252,7 +1193,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
-		settleWriteNotices(ctx);
 		judgeReports.sync(ctx.sessionManager.getBranch());
 		const undeliveredReports = judgeReports.settle();
 		if (undeliveredReports > 0) {
@@ -1387,12 +1327,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				throw new Error("complete_observation was already accepted for this observation");
 			}
 			const decision = decisionFromCompletion(params.delivery, params.message);
-			if (state.fileStateChanged && job.afterChange === "print" && decision.action !== "print") {
-				throw new Error('This head requires delivery "print" with a message after a successful write or edit');
-			}
-			if (state.fileStateChanged && job.afterChange === "noop" && decision.action !== "noop") {
-				throw new Error('This head requires delivery "none" with message "" after a successful write or edit');
-			}
 			state.completion = decision;
 			return {
 				content: [{ type: "text" as const, text: "Observation completed." }],
