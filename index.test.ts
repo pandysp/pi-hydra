@@ -176,6 +176,16 @@ describe("one error notice per head and error type", () => {
 		expect(h.notify.mock.calls.filter(([message]) => message.includes("blocked-tool-request"))).toHaveLength(2);
 	});
 
+	it("sends an error notice again after switching to another branch", async () => {
+		const h = await harness();
+		await h.observe(blocked());
+		await h.waitCalls(1);
+		h.sm.branch(h.root);
+		await h.emit({ type: "session_tree", oldLeafId: h.sm.getLeafId(), newLeafId: h.root });
+		await h.observe(blocked());
+		await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(2));
+	});
+
 	it("does not inject stale-branch results", async () => {
 		const h = await harness();
 		let finish!: (response: AssistantMessage) => void;

@@ -368,8 +368,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// branch on restore. Live queue state never crosses branch navigation.
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
-	// One error notice per head and error type for the life of the process;
-	// a failure that repeats every check must not flood the conversation.
+	// One error notice per head and error type on the current branch; a
+	// failure that repeats every check must not flood the conversation.
 	const reportedErrors = new Set<string>();
 	let branchGeneration = 0;
 	const warnedProviders = new Set<string>();
@@ -404,6 +404,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
+		// Another branch's conversation may not contain the notice.
+		reportedErrors.clear();
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}

@@ -115,7 +115,7 @@ A head without tools gets no retry or further model call. Tool requests never ru
 
 Only two failures produce an error notice, sent as the head's steer so its next check sees it: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
 
-Each head gets at most one error notice for each error type while Pi runs, so a failure that repeats every check does not flood the conversation. Every failed head check is still logged. A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
+Each head gets at most one error notice for each error type until the conversation switches branches, so a failure that repeats every check does not flood the conversation. Every failed head check is still logged. A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
 
 ## State and observability
 
