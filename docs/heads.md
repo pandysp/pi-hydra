@@ -65,7 +65,7 @@ Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a 
 
 By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` limits what a head can run. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
+`tools:` limits what a head can run. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
 
 A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. The reverse also holds: a tool the head may use but the main assistant lacks (`grep`, `find` and `ls` are off by default in Pi) has no definition there, so the head knows it only by name. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
 
