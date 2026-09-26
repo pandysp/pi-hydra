@@ -847,12 +847,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					sessionId,
 					transport: model.api === "openai-codex-responses" ? "websocket" : undefined,
 					onPayload,
-					// Our tail messages are plain LLM messages already; drop
-					// anything else defensively (contract: must not throw).
+					// The loop only holds plain LLM messages, so this drops
+					// nothing but Pi's system note with the head's tool list.
+					// Anthropic needs that note: with a subscription login Pi
+					// sends Claude Code tool names ("Edit") and reads the note
+					// to map replies back. Codex needs no mapping, and there the
+					// note would add a tool list to the head's request.
 					convertToLlm: (agentMessages) =>
 						agentMessages.filter(
 							(message): message is Message =>
-								message.role === "user" || message.role === "assistant" || message.role === "toolResult",
+								(message.role === "system" && model.api === "anthropic-messages") ||
+								message.role === "user" ||
+								message.role === "assistant" ||
+								message.role === "toolResult",
 						),
 					// Finishing has to be the only thing the head does in that
 					// turn. Otherwise it could declare a result in the same

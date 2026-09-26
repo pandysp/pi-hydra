@@ -287,6 +287,10 @@ describe("observation loop stops", () => {
 		await h.waitCalls(1);
 		expect(h.transport).toHaveBeenCalledTimes(2);
 		expect(h.calls()[0]).toMatchObject({ action: "noop", iterations: 2 });
+		// Pi's note with the head's tools reaches only Anthropic, which needs
+		// it to map subscription tool names back. Codex requests stay as they were.
+		const noted = JSON.stringify(h.payloads.at(-1)).includes('"toolsAdded"');
+		expect(noted).toBe(api === "anthropic-messages");
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {

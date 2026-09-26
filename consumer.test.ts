@@ -43,7 +43,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]") {
+async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key") {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -80,7 +80,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 		return response([{ type: "text", text: "Driver done." }]);
 	});
 	modelRuntime.registerProvider("anthropic", {
-		api: "anthropic-messages", apiKey: "fixture-key", baseUrl: "https://fixture.invalid",
+		api: "anthropic-messages", apiKey, baseUrl: "https://fixture.invalid",
 		streamSimple: (model, context, options) => streamSimple(model, context, { ...options, fetch: fetchFixture }),
 		models: [{ id: "fixture", name: "Fixture", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000, maxTokens: 4096 }],
 	});
@@ -201,6 +201,16 @@ describe("Pi consumer context and session", () => {
 		expect(seenIn(h.driverPayloads[3], NOTICE)).toHaveLength(1);
 		expect(saved(h, NOTICE)).toHaveLength(1);
 		expect(h.errors).toEqual([]);
+	});
+
+	it("a head with tools can use them under a subscription login, where Pi renames tools", async () => {
+		// Pi sends Claude Code tool names ("Write") for OAuth keys and maps replies
+		// back using the tool list it declares in a system message.
+		const h = await consumer(false, [{ type: "toolCall", id: "cc-write", name: "Write", arguments: { path: "made-by-head.txt", content: "HEAD" } }], "write", "sk-ant-oat01-fixture");
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		await h.session.waitForIdle();
+		expect(existsSync(join(h.cwd, "made-by-head.txt"))).toBe(true);
 	});
 
 	it("deliberate observer steering resumes a fully idle main assistant without a user message", async () => {
