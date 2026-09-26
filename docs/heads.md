@@ -67,7 +67,7 @@ By default a head may use the agent's standard tools (read, bash, edit, write, g
 
 `tools:` limits what a head can run. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
 
-A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
+A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. The reverse also holds: a tool the head may use but the main assistant lacks (`grep`, `find` and `ls` are off by default in Pi) has no definition there, so the head knows it only by name. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
 
 Authoring guidance for heads that act:
 

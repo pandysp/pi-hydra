@@ -1,7 +1,9 @@
 /**
  * Pure helpers for hydra observations.
- * Extracted for testability; no pi or I/O dependencies.
+ * Extracted for testability; no pi runtime or I/O dependencies.
  */
+
+import type { Message } from "@earendil-works/pi-ai";
 
 // Where a head's finding ends up. noop: nowhere. print: shown to the user
 // only. queue: waits for the run to end. steer: reaches the agent between
@@ -387,6 +389,26 @@ export const OBSERVER_DELIVERY_GUIDANCE =
 
 export const OBSERVER_GUIDANCE =
 	"You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
+
+// The messages a head's loop sends to the model. The loop only holds plain
+// model messages plus Pi's system note with the head's tool list. Anthropic
+// needs that note: with a subscription login Pi sends Claude Code tool names
+// ("Edit") and reads the note to map replies back. On Codex it would add a
+// tool list to the head's request, so it is dropped there. Anything else is
+// new from Pi: it is dropped too, since Pi forbids throwing here, but reported,
+// because dropping the note silently once broke every Anthropic head.
+export function headLoopMessages<T extends { role: string }>(
+	messages: readonly T[],
+	keepSystemNote: boolean,
+	onUnexpected: (role: string) => void,
+): Message[] {
+	return messages.filter((message): message is T & Message => {
+		if (message.role === "user" || message.role === "assistant" || message.role === "toolResult") return true;
+		if (message.role === "system") return keepSystemNote;
+		onUnexpected(message.role);
+		return false;
+	});
+}
 
 // Marks the head's own instructions. Without it, a Codex head, which gets
 // them as a separate message, took them for the user's latest request.

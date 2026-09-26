@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
+	headLoopMessages,
 	advanceObservationLoopGuard,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
@@ -1095,5 +1096,17 @@ describe("isValidHeadName", () => {
 
 	it("reserves none for the clear-the-set command form", () => {
 		expect(isValidHeadName("none")).toBe(false);
+	});
+});
+
+describe("headLoopMessages", () => {
+	const user = { role: "user", content: "task", timestamp: 0 } as const;
+	const note = { role: "system", content: "", timestamp: 0 } as const;
+	const custom = { role: "custom", customType: "x", content: "ui only", display: true, timestamp: 0 } as never;
+	it("keeps Pi's system note only when asked, and reports anything unknown instead of hiding it", () => {
+		const dropped: string[] = [];
+		expect(headLoopMessages([user, note, custom], true, (role) => dropped.push(role))).toEqual([user, note]);
+		expect(headLoopMessages([user, note], false, (role) => dropped.push(role))).toEqual([user]);
+		expect(dropped).toEqual(["custom"]);
 	});
 });

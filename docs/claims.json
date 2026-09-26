@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "0f13aed7e8b6aba7b5542e912527927500fd6aa08f91bd3bbc32aa8536643b72"
+        "docHash": "688a0d07d5dbf82c5d87a5ead36f79f20108c8f3f4c3b54467a644f59df8e40d"
       }
     },
     {
@@ -84,7 +84,7 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "2324f6368f5d104cce2fedf50f27d6ab1dd73032f361947bd630ae5df195dc73",
+        "codeHash": "1cce4e8e0d6893b8511f8f7e60206ab169310d672789fef6a6321ad8ff80e68d",
         "docHash": "d6b41547d4ba3dcf80025a01a44ba83b4855706f0955190b20226bafec14e395"
       }
     },
