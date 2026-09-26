@@ -33,7 +33,7 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "2806ed5c4fe07fccf02cd67b7aa5f9f69940197e98551255eb617ebdae729d48",
+        "codeHash": "d6b6531c6bfc6c23254c46cabea62879a49e5b8326a90abd7555d8e9060ea106",
         "docHash": "04b157f3f0a9fa9ae01ff177a7cacbb6375894ab0f4504ab074a2499489e4999"
       }
     },
@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "b5e9ccc80f59c55f60268f19f7f6ccfebe27fb23e5c66eec26dbdae33276c97c"
+        "docHash": "688a0d07d5dbf82c5d87a5ead36f79f20108c8f3f4c3b54467a644f59df8e40d"
       }
     },
     {
@@ -67,6 +67,16 @@
           "path": "index.ts",
           "start": "function observationHandoffFor(",
           "end": "// The exact request the driver last sent"
+        },
+        {
+          "path": "utils.ts",
+          "start": "const STEER_ONLY_DECISION_SHAPE",
+          "end": "export interface EnumeratedDecisionResult"
+        },
+        {
+          "path": "utils.ts",
+          "start": "function actingDeliveryContext(",
+          "end": "export interface HeadCatalog"
         }
       ],
       "doc": {
@@ -74,8 +84,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "96a250926e5df05369f3849c2dcd528310c4b430c4c2a458c43844af7ccfe4fb",
-        "docHash": "78d6ab75500a567df183cc03ab2e0a46f66eccdb36172b357a628b29d70356e6"
+        "codeHash": "1cce4e8e0d6893b8511f8f7e60206ab169310d672789fef6a6321ad8ff80e68d",
+        "docHash": "d6b41547d4ba3dcf80025a01a44ba83b4855706f0955190b20226bafec14e395"
       }
     },
     {
@@ -108,6 +118,21 @@
           "path": "delivery.ts",
           "start": "export function routeFeedback(",
           "end": null
+        },
+        {
+          "path": "index.ts",
+          "start": "afterToolCall: async (event) => {",
+          "end": "async (event) => {"
+        },
+        {
+          "path": "index.ts",
+          "start": "function reportJudgeFailure(",
+          "end": "// One observation per active head"
+        },
+        {
+          "path": "judge.ts",
+          "start": "export type JudgeErrorKind",
+          "end": null
         }
       ],
       "doc": {
@@ -115,8 +140,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "0e225e707839559ae322aa0354f8c20a6abf61e9ec8849cb4f327d132738c1e9",
-        "docHash": "338a4bf1820c65b8200966d985f1b5cd09c92c824f4b878380823c4b69791301"
+        "codeHash": "471cf552e4e527e57d0fbbb757e7bcdb175816197a838eb2d2b53edf2a243ac4",
+        "docHash": "ec032bacf291840e66af0821e0a03c534e172e90828b6731d2d7abef18ac84e2"
       }
     },
     {
@@ -138,13 +163,18 @@
         "fragment": "heads-are-files"
       },
       "baseline": {
-        "codeHash": "3d243de90942b5e964ecf7fed6457235eb4e257bcb30094903486dbc507f3f70",
-        "docHash": "12a15a36e3c3552bfdb947f92c05447f79ab8e232d3242246f2c6b38f71080f7"
+        "codeHash": "f4f6cff3052368fc96c4fecc95c1bc1972cc8198e5f84e51ba363116ffdadf60",
+        "docHash": "3015e06f93af8ad78e5d97c2af4c2fe2654c4407a48e465c1222395ec952744d"
       }
     },
     {
       "id": "persisted-state",
       "code": [
+        {
+          "path": "stats.ts",
+          "start": "export interface HydraCall",
+          "end": "// What counts as healthy"
+        },
         {
           "path": "stats.ts",
           "start": "export function parseBranchEntries(",
@@ -153,7 +183,7 @@
         {
           "path": "index.ts",
           "start": "function restoreFromBranch(",
-          "end": "// One observation's outcome"
+          "end": "// The result of one check."
         }
       ],
       "doc": {
@@ -161,8 +191,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "78e191888369414aefdec5dccde366853a0425a944bda571cd3536e603598b35",
-        "docHash": "f9c3972127f2728b1620aa4be377870d112cc9291c94e110fc5564eee92ba497"
+        "codeHash": "e10747b5ec8a5f07a86067d1a8e5e155362401a9cbbfdea1e1bbb5eb45ea92e4",
+        "docHash": "2b2788dd5b3703ab8d7e7d66a42277bc28e4f9de486f1e1609ab4bdca69d0c1e"
       }
     }
   ]

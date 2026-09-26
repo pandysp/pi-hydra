@@ -53,17 +53,17 @@ describe("delivery ledger and router", () => {
 		ledger.succeed({ head: "security", delivery: "print", message: "latest" });
 		ledger.stage(
 			{ head: "quality", delivery: "queue", message: "queued" },
-			{ role: "custom", customType: "hydra-feedback", content: "[quality] queued" },
+			{ role: "custom", customType: "hydra-feedback", content: "[pi-hydra quality] queued" },
 			"queued",
 		);
 		ledger.stage(
 			{ head: "security", delivery: "steer", message: "same-head pending" },
-			{ role: "user", content: "[security] same-head pending" },
+			{ role: "user", content: "[pi-hydra security] same-head pending" },
 			"queued",
 		);
 		ledger.stage(
 			{ head: "security", delivery: "interrupt", message: "stop" },
-			{ role: "user", content: "[security] stop" },
+			{ role: "user", content: "[pi-hydra security] stop" },
 			"queued",
 		);
 		expect(ledger.contextFor("security")).toEqual({
@@ -83,7 +83,7 @@ describe("delivery ledger and router", () => {
 		expect(ledger.contextFor("security").pending).toEqual([
 			{ head: "security", delivery: "steer", message: "fix it" },
 		]);
-		consumeDeliveredMessage(ledger, runtime.gateway, { role: "user", content: "[security] fix it" });
+		consumeDeliveredMessage(ledger, runtime.gateway, { role: "user", content: "[pi-hydra security] fix it" });
 		expect(ledger.contextFor("security")).toEqual({
 			lastByThisHead: { delivery: "steer", message: "fix it" },
 			pending: [],
@@ -109,13 +109,13 @@ describe("delivery ledger and router", () => {
 		expect(deliveries).toEqual(["print", "steer"]);
 		expect(runtime.notices).toEqual([
 			{
-				message: "hydra [security] Rotate the credential.",
+				message: "[pi-hydra security] Rotate the credential.",
 				level: "info",
 			},
 		]);
 		expect(runtime.sentUsers).toEqual([
 			{
-				content: "[security] Run the migration.",
+				content: "[pi-hydra security] Run the migration.",
 				deliverAs: "steer",
 			},
 		]);
@@ -144,13 +144,13 @@ describe("delivery ledger and router", () => {
 		expect(runtime.aborted()).toBe(true);
 		expect(runtime.notices).toEqual([
 			{
-				message: "hydra [security] Rotate the credential.",
+				message: "[pi-hydra security] Rotate the credential.",
 				level: "info",
 			},
 		]);
 		expect(runtime.sentUsers).toEqual([
 			{
-				content: "[security] Run the migration. | Stop the destructive command.",
+				content: "[pi-hydra security] Run the migration. | Stop the destructive command.",
 				deliverAs: "followUp",
 			},
 		]);
@@ -167,7 +167,7 @@ describe("delivery ledger and router", () => {
 		consumeDeliveredMessage(ledger, runtime.gateway, {
 			role: "custom",
 			customType: "hydra-feedback",
-			content: "[quality] check later",
+			content: "[pi-hydra quality] check later",
 		});
 		expect(ledger.contextFor("quality")).toEqual({
 			lastByThisHead: { delivery: "queue", message: "check later" },
@@ -194,7 +194,7 @@ describe("delivery ledger and router", () => {
 
 		ledger.stage(
 			{ head: "quality", delivery: "queue", message: "orphan" },
-			{ role: "custom", customType: "hydra-feedback", content: "[quality] orphan" },
+			{ role: "custom", customType: "hydra-feedback", content: "[pi-hydra quality] orphan" },
 			"queued",
 		);
 		expect(ledger.settle()).toEqual([{ head: "quality", delivery: "queue", message: "orphan" }]);
@@ -241,7 +241,7 @@ describe("delivery ledger and router", () => {
 		const runtime = harness(false);
 		ledger.succeed({ head: "security", delivery: "steer", message: "same finding" });
 		routeFeedback(ledger, runtime.gateway, decision("steer", "same finding"), "security", false);
-		expect(runtime.sentUsers).toEqual([{ content: "[security] same finding", deliverAs: "steer" }]);
+		expect(runtime.sentUsers).toEqual([{ content: "[pi-hydra security] same finding", deliverAs: "steer" }]);
 	});
 
 	it("keeps a successful delivery factual even when persisting its receipt fails", () => {
@@ -262,7 +262,7 @@ describe("delivery ledger and router", () => {
 		const ledger = new DeliveryLedger();
 		ledger.stage(
 			{ head: "security", delivery: "steer", message: "pending" },
-			{ role: "user", content: "[security] pending" },
+			{ role: "user", content: "[pi-hydra security] pending" },
 			"queued",
 		);
 		ledger.restore([

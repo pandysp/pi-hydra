@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
+	headLoopMessages,
 	advanceObservationLoopGuard,
-	applyAfterChangeDelivery,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
 	buildAnthropicObservationPrompt,
-	buildObservationPrompt,
+	FOLLOW_UP_GUIDANCE,
+	OBSERVER_DELIVERY_GUIDANCE,
+	REPORTING_GUIDANCE,
+	OBSERVER_GUIDANCE,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	decisionFromLoopStopReason,
@@ -130,43 +133,6 @@ describe("formatHeadManagementReceipt", () => {
 	});
 });
 
-describe("applyAfterChangeDelivery", () => {
-	const decision = { action: "steer" as const, reason: "updated policy", message: "tell the driver" };
-
-	it("does nothing without a tracked change or a delivery contract", () => {
-		expect(applyAfterChangeDelivery(decision, "print", false)).toBe(decision);
-		expect(applyAfterChangeDelivery(decision, undefined, true)).toBe(decision);
-	});
-
-	it("makes a changed file the complete work product for after-change noop", () => {
-		expect(applyAfterChangeDelivery(decision, "noop", true)).toEqual({
-			action: "noop",
-			reason: "updated policy",
-			message: "",
-		});
-	});
-
-	it("prints after a change and can recover the note from the decision reason", () => {
-		expect(applyAfterChangeDelivery({ action: "noop", reason: "added accessibility", message: "" }, "print", true)).toEqual({
-			action: "print",
-			reason: "added accessibility",
-			message: "added accessibility",
-		});
-	});
-
-	it("preserves a matching print decision", () => {
-		const print = { action: "print" as const, reason: "crew changed", message: "Added security." };
-		expect(applyAfterChangeDelivery(print, "print", true)).toBe(print);
-	});
-
-	it("forces every parsed post-change delivery through a print contract", () => {
-		for (const action of ["noop", "queue", "steer", "interrupt"] as const) {
-			const decision = { action, reason: "changed", message: action === "noop" ? "" : "finding" };
-			expect(applyAfterChangeDelivery(decision, "print", true).action).toBe("print");
-		}
-	});
-});
-
 describe("advanceObservationLoopGuard", () => {
 	const initial = { iterations: 0 };
 
@@ -279,49 +245,7 @@ describe("usesSplitObservationHandoff", () => {
 	});
 });
 
-describe("buildObservationPrompt", () => {
-	it("bans tools for a judge-only head", () => {
-		const prompt = buildObservationPrompt("quality", "Judge.", []);
-		expect(prompt).toContain("no work tools");
-		expect(prompt).not.toContain("tool access");
-		expect(prompt).toContain('action "complete_observation"');
-		expect(prompt).not.toContain("one JSON object");
-	});
-
-	it("spells out a narrowed allowance", () => {
-		const prompt = buildObservationPrompt("docs", "Keep notes.", ["read", "write"]);
-		expect(prompt).toContain("only these tools: read, write");
-		expect(prompt).not.toContain("queue");
-	});
-
-	it("permits everything when tools are omitted", () => {
-		expect(buildObservationPrompt("docs", "Keep notes.", undefined)).toContain("the available tools");
-	});
-
-	it("explains a typed print-after-change contract", () => {
-		const prompt = buildObservationPrompt("foreman", "Re-crew.", ["hydra"], { afterChange: "print" });
-		expect(prompt).toContain('complete with delivery "print"');
-		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
-		expect(prompt).not.toContain("Noop when your work product is the files you wrote");
-	});
-
-	it("includes capability state only for an explicitly Hydra-capable head", () => {
-		expect(buildObservationPrompt("crew", "Re-crew.", ["hydra"], { activeHeads: ["quality", "security"] })).toContain(
-			"active heads are quality, security",
-		);
-		expect(buildObservationPrompt("docs", "Write docs.", ["read", "write"], { activeHeads: ["quality"] })).not.toContain(
-			"Hydra snapshot",
-		);
-	});
-});
-
 describe("buildAnthropicObservationPrompt", () => {
-	it("rejects a judge-only head: the enumerated contract owns that path", () => {
-		expect(() => buildAnthropicObservationPrompt("quality", "Judge.", [])).toThrow(
-			"enumerated observation contract",
-		);
-	});
-
 	it("retains acting tools and programmatic management receipts", () => {
 		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
 			activeHeads: ["foreman", "quality"],
@@ -330,55 +254,34 @@ describe("buildAnthropicObservationPrompt", () => {
 				pending: [],
 			},
 		});
-		expect(prompt).toContain("active heads are foreman, quality");
-		expect(prompt).toContain("manage_heads change prints its own receipt automatically");
-		expect(prompt).toContain("removing your own head completes the observation");
+		expect(prompt).toContain("Active heads when this check started: foreman, quality");
+		expect(prompt).toContain("manage_heads change automatically tells the main assistant");
+		expect(prompt).toContain("removing your own head ends this check");
 		expect(prompt).not.toContain("queue");
 	});
 });
 
 describe("buildObservationEnvelope", () => {
-	it("keeps the lens out of the elevated judge envelope", () => {
-		const envelope = buildObservationEnvelope("quality", []);
-		expect(envelope).toContain("preceding user message is the complete quality lens");
-		expect(envelope).toContain("lens alone defines scope");
-		expect(envelope).toContain("do not broaden it");
-		expect(envelope).toContain("no work tools");
-		expect(envelope).toContain('action "complete_observation"');
-		expect(envelope).not.toContain("one JSON object");
-		expect(envelope).not.toContain("LENS:");
-		expect(envelope).not.toContain("<system-reminder>");
-	});
-
-	it("states each judge delivery meaning once", () => {
-		const envelope = buildObservationEnvelope("quality", []);
-		for (const delivery of ["print", "queue", "steer", "interrupt"]) {
-			expect(envelope.match(new RegExp(`${delivery} is`, "g"))).toHaveLength(1);
-		}
-	});
-
 	it("preserves a narrowed acting-head allowance", () => {
 		expect(buildObservationEnvelope("docs", ["read", "write"])).toContain("only these tools: read, write");
 	});
 
 	it("includes typed delivery and capability state without naming a special head", () => {
 		const envelope = buildObservationEnvelope("crew", ["hydra", "read"], {
-			afterChange: "print",
 			activeHeads: ["quality", "security"],
 			deliveryContext: {
 				lastByThisHead: null,
 				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
 			},
 		});
-		expect(envelope).toContain('complete with delivery "print"');
-		expect(envelope).toContain("manage_heads change prints its own receipt automatically");
-		expect(envelope).toContain("active heads are quality, security");
+		expect(envelope).toContain("manage_heads change automatically tells the main assistant");
+		expect(envelope).toContain("Active heads when this check started: quality, security");
 		expect(envelope).not.toContain("queue");
 	});
 
 	it("does not expose active state without explicit hydra capability", () => {
-		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
-		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Hydra snapshot");
+		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
+		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
 	});
 });
 
@@ -395,30 +298,14 @@ describe("enumerated steer-only judge completion", () => {
 			expect(text).toContain(
 				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
 			);
-			expect(text).toContain("List every finding the lens surfaces");
-			expect(text).toContain("Do not rank them or pick one");
-			expect(text).toContain("Steering is the normal and only way to reach the agent and folds in at its next checkpoint");
+			expect(text).toContain("empty findings array if there are none");
+			expect(text).toContain("You cannot use tools");
 			expect(text.toLowerCase()).not.toContain("queue");
 		}
-		expect(envelope).toContain("preceding user message is the complete security lens");
+		expect(envelope).toContain("previous user message contains all instructions for the security head");
 		expect(envelope).not.toContain("Fix security issues.");
-		expect(prompt).toContain("LENS: Fix security issues.");
+		expect(prompt).toContain("HEAD INSTRUCTIONS: Fix security issues.");
 		expect(prompt).toContain('"recipient":"agent"');
-	});
-
-	it("tells every head it is not the main agent", () => {
-		const identity = "You are not the main agent; it keeps working on its own. Do not continue its task or answer for it.";
-		for (const text of [
-			buildEnumeratedJudgeObservationEnvelope("security", context),
-			buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context),
-			buildObservationPrompt("quality", "Judge.", []),
-			buildObservationPrompt("docs", "Keep notes.", ["read", "write"]),
-			buildAnthropicObservationPrompt("docs", "Keep notes.", ["read", "write"]),
-			buildObservationEnvelope("quality", []),
-			buildObservationEnvelope("docs", ["read", "write"]),
-		]) {
-			expect(text).toContain(identity);
-		}
 	});
 
 	it("parses an empty findings list as noop", () => {
@@ -487,6 +374,39 @@ describe("enumerated steer-only judge completion", () => {
 			decisions: null,
 			error: "finding 1 requires a non-empty message",
 		});
+	});
+});
+
+describe("shared observer guidance", () => {
+	const context = {
+		lastByThisHead: { delivery: "print" as const, message: "User-only note" },
+		pending: [{ head: "quality", delivery: "steer" as const, message: "Pending correction" }],
+	};
+	const paths = {
+		"Anthropic judge": () => buildEnumeratedJudgeObservationPrompt("quality", "HEAD BODY", context),
+		"Codex judge": () => buildEnumeratedJudgeObservationEnvelope("quality", context),
+		"Anthropic acting": () => buildAnthropicObservationPrompt("quality", "HEAD BODY", ["read", "write"], { deliveryContext: context }),
+		"Codex acting": () => buildObservationEnvelope("quality", ["read", "write"], { deliveryContext: context }),
+	};
+	for (const [name, build] of Object.entries(paths)) {
+		it(`${name} uses the shared contract`, () => {
+			const prompt = build();
+			const identity = "You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it.";
+			expect(OBSERVER_GUIDANCE.startsWith(`You are reviewing the main assistant's work. ${identity}`)).toBe(true);
+			expect(prompt.replace(/^<system-reminder>/, "").startsWith(OBSERVER_GUIDANCE)).toBe(true);
+			expect(prompt.split(identity)).toHaveLength(2);
+			for (const block of [OBSERVER_GUIDANCE, FOLLOW_UP_GUIDANCE, OBSERVER_DELIVERY_GUIDANCE]) {
+				expect(prompt.split(block)).toHaveLength(2);
+			}
+			expect(prompt).toContain('"recipient":"user"');
+			expect(prompt).not.toMatch(/\bqueue\b|List every finding|empty list is normal/);
+			expect(prompt).toMatchSnapshot();
+		});
+	}
+	it("only acting paths tell heads what to report", () => {
+		for (const [name, build] of Object.entries(paths)) {
+			expect(build().split(REPORTING_GUIDANCE).length - 1, name).toBe(name.endsWith("acting") ? 1 : 0);
+		}
 	});
 });
 
@@ -888,14 +808,13 @@ describe("mergeOpenAIObservationPayload", () => {
 
 describe("parseHeadFile", () => {
 	it("parses a full head file", () => {
-		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\nafter-change: noop\n---\nKeep docs current.";
+		const content = "---\nname: docs\ndescription: Keeps docs current\ntools: read, write\nautostart: true\n---\nKeep docs current.";
 		expect(parseHeadFile(content)).toEqual({
 			head: {
 				name: "docs",
 				description: "Keeps docs current",
 				tools: ["read", "write"],
 				autostart: true,
-				afterChange: "noop",
 				prompt: "Keep docs current.",
 			},
 		});
@@ -917,7 +836,7 @@ describe("parseHeadFile", () => {
 	it("leaves autostart undefined unless literally true", () => {
 		const parsed = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
 		expect(parsed).toEqual({
-			head: { name: "x", description: "d", tools: undefined, autostart: undefined, afterChange: undefined, prompt: "Body." },
+			head: { name: "x", description: "d", tools: undefined, autostart: undefined, prompt: "Body." },
 		});
 	});
 
@@ -936,7 +855,7 @@ describe("parseHeadFile", () => {
 	it("tolerates CRLF line endings and a BOM", () => {
 		const crlf = "---\r\nname: x\r\ndescription: d\r\ntools: read\r\n---\r\nBody.\r\n";
 		expect(parseHeadFile(`\uFEFF${crlf}`)).toEqual({
-			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, afterChange: undefined, prompt: "Body." },
+			head: { name: "x", description: "d", tools: ["read"], autostart: undefined, prompt: "Body." },
 		});
 	});
 
@@ -948,24 +867,26 @@ describe("parseHeadFile", () => {
 				description: "d",
 				tools: ["read", "write"],
 				autostart: undefined,
-				afterChange: undefined,
 				prompt: "Body.",
 			},
 		});
 	});
 
-	it("rejects invalid delivery metadata and delivery on a judge-only head", () => {
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: queue\n---\nBody.")).toEqual({
-			error: 'invalid after-change "queue" (expected: noop, print)',
+	it("rejects autostart values other than true and false", () => {
+		expect(parseHeadFile("---\nname: x\ndescription: d\nautostart: yes\n---\nBody.")).toEqual({
+			error: 'invalid autostart "yes" (expected: true, false)',
 		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: []\nafter-change: noop\n---\nBody.")).toEqual({
-			error: "after-change requires an acting head (tools must not be [])",
+		const off = parseHeadFile("---\nname: x\ndescription: d\nautostart: false\n---\nBody.");
+		expect(off).toEqual({ head: expect.objectContaining({ autostart: undefined }) });
+	});
+
+	it("rejects unknown keys, including the removed after-change", () => {
+		const allowed = "(allowed: name, description, tools, autostart)";
+		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: write\nafter-change: noop\n---\nBody.")).toEqual({
+			error: `unknown key "after-change" ${allowed}`,
 		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: read\nafter-change: print\n---\nBody.")).toEqual({
-			error: "after-change requires write, edit, or omitted tools",
-		});
-		expect(parseHeadFile("---\nname: x\ndescription: d\ntools: hydra\nafter-change: print\n---\nBody.")).toEqual({
-			error: "after-change requires write, edit, or omitted tools",
+		expect(parseHeadFile("---\nname: x\ndescription: d\nmodel: opus\n---\nBody.")).toEqual({
+			error: `unknown key "model" ${allowed}`,
 		});
 	});
 
@@ -1175,5 +1096,17 @@ describe("isValidHeadName", () => {
 
 	it("reserves none for the clear-the-set command form", () => {
 		expect(isValidHeadName("none")).toBe(false);
+	});
+});
+
+describe("headLoopMessages", () => {
+	const user = { role: "user", content: "task", timestamp: 0 } as const;
+	const note = { role: "system", content: "", timestamp: 0 } as const;
+	const custom = { role: "custom", customType: "x", content: "ui only", display: true, timestamp: 0 } as never;
+	it("keeps Pi's system note only when asked, and reports anything unknown instead of hiding it", () => {
+		const dropped: string[] = [];
+		expect(headLoopMessages([user, note, custom], true, (role) => dropped.push(role))).toEqual([user, note]);
+		expect(headLoopMessages([user, note], false, (role) => dropped.push(role))).toEqual([user]);
+		expect(dropped).toEqual(["custom"]);
 	});
 });

@@ -31,21 +31,21 @@ The provider-specific timing and cache consequences are canonical in [Provider l
 
 ## Prompt construction
 
-There is no universal head prompt. A handoff combines two responsibilities:
+Each prompt combines the head's instructions with Hydra's rules:
 
-```text
-head Markdown body       Hydra protocol
-(specialist policy)  +   (tools, completion, delivery)
-```
+- The head file says what to check and how much to report.
+- Hydra says first that the head is not the main assistant and must not continue its task, then explains which tools are allowed, how to finish, who receives feedback, and what feedback has already been sent.
 
-`observationHandoffFor()` chooses one of four paths for product heads (hidden diagnostic heads use a fixed test prompt):
+`observationHandoffFor()` chooses the format below. Hidden test heads use a fixed prompt.
 
-| | Judge-only | Acting |
+| Provider | Where the instructions go | How the head finishes |
 |---|---|---|
-| Anthropic | Combined lens and protocol | Combined acting prompt and JSON completion |
-| OpenAI Codex | User lens plus developer envelope | User lens plus developer envelope and typed completion |
+| Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
+| OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
 
-The head file alone defines scope, intervention criteria, and suppression. Hydra's protocol defines mechanism: tool allowance, delivery context, output shape, and completion rules.
+On both providers the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
+
+The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
 ## Payload merge
 
@@ -62,7 +62,7 @@ A head is fully defined by one Markdown file. Discovery reads:
 - `~/.pi/agent/hydra/*.md` for user heads;
 - the nearest ancestor `.pi/hydra/*.md` for project heads.
 
-Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished files are pruned rather than observed with an empty instruction.
+Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored.
 
 The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Full authoring behavior belongs in [Writing heads](heads.md).
 
@@ -80,38 +80,54 @@ An in-flight observation runs to completion unless lifecycle shutdown aborts it.
 
 ## Acting heads
 
-Tool permissions come from the head file:
+Head files control [which tools a head may use](heads.md#tools-acting-heads).
 
-- omitted `tools:` grants all tools hydra can execute;
-- a list narrows execution to that subset;
-- `tools: []` creates a judge-only head.
+Heads without tools make one model call; heads with tools use Pi's `runAgentLoop`. See [Failed checks](#failed-checks) for errors and retries. Each model call keeps the copied part of the main assistant's request unchanged. Whether the provider reads it from cache depends on the provider.
 
-Judge-only heads make one call with no executable tools and may return several findings. Acting heads run through `runAgentLoop` from Pi's agent core, preserving Pi's argument validation, tool errors, execution policy, and cancellation behavior. Every loop iteration still replays the captured driver prefix; whether that replay is a cache hit remains provider-dependent.
-
-OpenAI acting heads normally finish with the typed `hydra` completion action; successful self-removal is terminal without a second call. Anthropic acting heads return a compact validated JSON decision; their actual work and head management still use tools. Provider rationale and measured comparisons live in [Completion channels](providers.md#completion-channels).
+How a head finishes depends on the provider; see [Completion channels](providers.md#completion-channels).
 
 ## Delivery
 
-Evaluation and delivery are separate:
+In an open session:
 
-- `print` renders a user-only TUI note in interactive mode and never enters the driver's context;
-- `steer` sends a real user message at the driver's next checkpoint;
-- `interrupt` aborts an active run and delivers the finding; when idle, it simply starts the next run with that message;
-- a valid quiet decision is persisted as a noop.
+- `print` shows a note in Pi's interactive interface. It shows nothing in `pi -p`, and the main assistant never sees it.
+- `steer` sends the finding as a user message before the main assistant's next model request. If it is idle, the message starts a new run.
+- `interrupt` stops active work and starts a new run with the finding. If already idle, it just starts the new run.
+- No finding means no message. Hydra saves the result as `noop`.
 
-Judge findings are grouped into at most one user-only batch and one agent-directed batch. An interrupt based on a stale snapshot is demoted to steer: one turn of delay is safer than aborting newer work from an old judgment.
+During shutdown, Hydra uses its internal `queue` route to save `steer` and `interrupt` messages instead of starting idle work. `queue` also supports older sessions, but is not offered to heads.
 
-A delivery ledger tracks pending and successful messages so heads receive factual context about what has already reached the driver. The old queue route remains internal for compatibility but is not offered in current prompts or schemas.
+Hydra groups findings from each answer into at most two messages. All `print` findings go in one user-only note. All `steer` and `interrupt` findings go in one message for the main assistant, which interrupts if any finding chose it. Every accepted finding appears once; user-only findings never reach the main assistant. An interrupt based on an old copy of the conversation becomes a steer, so it does not stop newer work.
+
+Hydra tracks which messages are waiting and which arrived. Heads are told who received each message; a user-only note does not mean the main assistant saw it.
+
+### Messages Hydra sends for a head
+
+Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant. Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+
+A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
+
+Pi 0.87.1 checks for waiting messages once more before a run ends, which closed the gap where a steer arriving at that moment was lost. A steer arriving after that final check can still be stranded. Hydra then warns the user when the run settles, also in headless runs; how often this happens is not known.
+
+### Failed checks
+
+A head with tools receives Pi's normal tool errors and can try again within its check. This includes requests for tools it is not allowed to use.
+
+A head without tools gets no retry or further model call. Tool requests never run, even if they come with valid-looking JSON. One invalid finding makes Hydra reject the entire answer. Invalid or empty answers, unfinished or cut-short responses, provider errors and responses the provider reports as stopped are failed checks. An answer containing only thinking is still empty. Hydra records these failures as `noop`, not as a deliberate choice to say nothing. If Hydra cancels the check or switches conversation branches before it finishes, it drops the result instead.
+
+Only two failures produce an error notice, sent as the head's steer so its next check sees it: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
+
+Each head gets at most one error notice for each error type until the conversation switches branches, so a failure that repeats every check does not flood the conversation. Every failed head check is still logged. A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
 
 ## State and observability
 
 hydra has no external database. It stores three custom entry types in Pi's session log:
 
 - `hydra-config` — explicitly saved active-head changes (autostart alone is not persisted);
-- `hydra-call` — observation usage, action, timing, tools, and what the head answered (text, thinking, stop reason, parse error);
+- `hydra-call` — usage, action, timing, tools, the head's answer and any error;
 - `hydra-delivery` — successful delivery receipts.
 
-Branch navigation rebuilds this state from the selected session branch. `/hydra-stats` and the footer use the same persisted calls. `/hydra-debug` dumps captured and merged payload pairs for manual parity verification.
+Messages Hydra sends for a head are saved like that head's steers; the entries above are not model-visible. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
 
 ## Cache hit ratio
 
@@ -147,6 +163,7 @@ There is no build step; Pi loads the TypeScript through jiti.
 | `scheduler.ts` | Conflating per-head scheduler |
 | `stats.ts` | Observation log and session-entry parsing |
 | `protocol.ts` | Hydra tool wire contract |
+| `judge.ts` | Check answers from heads without tools and track their error notices |
 | `delivery.ts` | Delivery ledger and routing |
 | `utils.ts` | Shared types and pure prompt, parsing, guard, and payload logic |
 

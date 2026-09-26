@@ -6,12 +6,12 @@
 
 ![A Pi session where the head picker adds a security head; while Pi builds a Flask app, that head catches debug mode and an open-redirect risk and steers the fixes into the conversation](docs/assets/demo.gif)
 
-hydra is a [pi](https://pi.dev/) extension for live oversight. Pi remains the primary driver you talk to; specialist **heads** watch its trajectory through different lenses and can stay quiet, show you a note, steer Pi at its next checkpoint, interrupt an unsafe run, or use permitted tools before deciding.
+Hydra is a [pi](https://pi.dev/) extension that checks work as it happens. You talk to the main assistant as usual. Helpers called **heads** each check something different. They can report a problem, stop unsafe work, or use allowed tools to help.
 
 ```text
                          security head
                               │
-user ─────► Pi driver ────────┼──────► code and tool work
+user ─────► Pi assistant ─────┼──────► code and tool work
               │               │
               │          quality head
               │
@@ -73,12 +73,12 @@ For headless runs, use `--hydra-heads quality,security`.
 name: docs-keeper
 description: Keeps docs/notes.md current with decisions
 tools: read, write, edit
-after-change: noop
 ---
-PURPOSE: Maintain docs/notes.md as durable project memory.
-ACT WHEN: The trajectory establishes an unrecorded decision or constraint.
-WORK: Add one concise entry and edit nothing else.
-DELIVER: Complete with none; the file is the work product.
+PURPOSE: Keep project decisions in docs/notes.md.
+ACT WHEN: The conversation contains a decision or requirement not yet recorded.
+WORK: Add one short entry and edit nothing else.
+DELIVER: Steer one line naming the entry you added; complete with none when
+nothing new was decided.
 ```
 
 Heads live in two places:
@@ -96,16 +96,11 @@ hydra can execute Pi's standard read, bash, edit, write, grep, find, and ls tool
 
 ## Decisions
 
-A judge-only head can return several independent findings in one review. hydra groups them by recipient so user-only notes never leak into the agent's context.
+Heads choose who needs each finding: you, the main assistant, or neither. See [Choosing an action](docs/heads.md#decisions-when-findings-land) for the choices and [Delivery](docs/architecture.md#delivery) for when messages arrive.
 
-| decision | effect |
-|---|---|
-| `print` | Show a note in the interactive TUI; it never enters the driver's context. |
-| `steer` | Deliver a real user message at Pi's next checkpoint. This is the normal agent-directed route. |
-| `interrupt` | Abort an active run and deliver the finding; when idle, start the next run with it. This is the emergency cord. |
-| no finding | Deliver nothing; `/hydra-stats` records a noop. |
+Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) only when the head cannot: a failed check, a change to the active heads, or an active head whose file disappeared or became invalid. Heads report their own file changes.
 
-An interrupt from a snapshot the driver has already moved past is demoted to steer rather than aborting newer work. Acting heads can inspect or change the workspace through their allowed tools before deciding. The old queue route remains internal for compatibility but is not offered to current heads.
+[Issue #20](https://github.com/pandysp/pi-hydra/issues/20) explores how to show notes to users who only read the final answer.
 
 ## Heads and subagents solve different problems
 
@@ -128,7 +123,7 @@ Use a head when you want another perspective **during** the work. Use a subagent
 | `/hydra-stats` | Show cache hit ratio, cost, and recent decisions. |
 | `/hydra-debug` | Dump driver/observation payload pairs for parity checks. |
 
-The active set is session state and survives resume and branch navigation. The agent can also add or remove a head through hydra's `manage_heads` tool; real changes print an automatic receipt.
+Pi saves the active heads with the session and restores them when you resume or switch conversation branches. The main assistant can also add or remove heads through `manage_heads`; see [Activating heads](docs/heads.md#activating-heads).
 
 ## What it costs
 

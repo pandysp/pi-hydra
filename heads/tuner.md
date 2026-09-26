@@ -2,7 +2,6 @@
 name: tuner
 description: Judges the other heads' findings and tunes their files
 tools: read, write, edit, ls
-after-change: print
 ---
 PURPOSE: Maintain the other head files in ~/.pi/agent/hydra/ from the user's
 reactions to their findings.

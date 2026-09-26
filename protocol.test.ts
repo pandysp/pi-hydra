@@ -140,8 +140,10 @@ describe("hydra tool protocol", () => {
 
 	it("defines delivery by who must act and when", () => {
 		const description = hydraToolDescription("/heads");
-		expect(description).toContain("print` only when the agent need not act");
-		expect(description).toContain("steer` is the normal and only way to reach the agent");
+		expect(description).toContain('"print" shows a note only to the user; the main assistant will not see it');
+		expect(description).toContain('Use "steer" when the main assistant needs the feedback, even if it can wait');
+		expect(description).toContain("before its next model request");
+		expect(description).toContain("emergency that must stop the run");
 		expect(description).not.toContain("queue");
 	});
 });

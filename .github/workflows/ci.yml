@@ -4,17 +4,50 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm ls --depth=0
+      - run: npm run check
+      - run: npm test
+      - name: syntax-check experiments
+        run: for f in experiments/*.mjs; do node --check "$f"; done
+
+  latest-pi:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test the latest Pi release instead of the pinned development version
+        run: >-
+          npm install --save-dev --save-exact
+          @earendil-works/pi-agent-core@latest
+          @earendil-works/pi-ai@latest
+          @earendil-works/pi-coding-agent@latest
+          @earendil-works/pi-tui@latest
+      - run: npm ls --depth=0
       - run: npm run check
       - run: npm test
       - name: syntax-check experiments

@@ -1,4 +1,5 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { OBSERVER_DELIVERY_GUIDANCE } from "./utils";
 
 /**
  * The driver and every head are shown the same tool description. They have to
@@ -13,20 +14,20 @@ import { StringEnum, Type } from "@earendil-works/pi-ai";
 export const hydraToolParameters = Type.Object(
 	{
 		action: StringEnum(["manage_heads", "complete_observation"] as const, {
-			description: "Manage active heads or return an observer's final decision",
+			description: "Add or remove active heads, or finish a head's check",
 		}),
 		operation: Type.Optional(StringEnum(["add", "remove"] as const, { description: "manage_heads only" })),
 		head: Type.Optional(Type.String({ minLength: 1, description: "manage_heads only: the head name" })),
 		delivery: Type.Optional(
 			StringEnum(["none", "print", "steer", "interrupt"] as const, {
 				description:
-					"complete_observation only: none=no feedback; print=user only; steer=normal agent delivery at its next checkpoint; interrupt=emergency abort",
+					"complete_observation only: none=nothing to report; print=user-only note; steer=message to the main assistant without stopping it; interrupt=stop the run for an emergency",
 			}),
 		),
 		message: Type.String({
 			maxLength: 1000,
 			description:
-				'For manage_heads, concisely explain the change. For complete_observation, exactly "" with none; otherwise concise feedback, ideally <=240 characters.',
+				'For manage_heads, briefly explain the change. For complete_observation, use "" with none; otherwise give short feedback, ideally under 240 characters.',
 		}),
 	},
 	{ additionalProperties: false },
@@ -106,25 +107,24 @@ export function validateHydraToolParams(value: RawHydraToolParams): HydraToolPar
 
 export function hydraToolDescription(userHeadDir: string): string {
 	return [
-		"Manage hydra or complete a head observation. `manage_heads` adds or",
-		"removes one active head idempotently; its message explains why the",
-		"change fits the trajectory. A successful observer-originated change",
-		"automatically prints that explanation. `complete_observation` is reserved",
-		"for an active head. Keep feedback concise, ideally under 240 characters.",
-		"Use `none` for no feedback;",
-		"`print` only when the",
-		"agent need not act; `steer` is the normal and only way to reach the agent",
-		"and folds in at its next checkpoint; and `interrupt` is reserved",
-		"for an emergency that must abort the run. Heads are markdown files in",
-		`${userHeadDir} (user) and .pi/hydra (project):`,
-		"frontmatter `name:` and `description:` are required; `tools:` is omitted",
-		"for all tools, `[]` for a judge-only head, or a comma-separated subset;",
-		"`autostart: true` joins fresh sessions; heads with write/edit may set",
-		"`after-change:` to `noop` or `print`; the body is the head's instruction",
-		"(one focus, clear conditions for acting, work, completion, and delivery).",
-		"To create or tune a head, write the file with your file tools, then add",
-		"it: files are re-discovered on every call. Swap heads when the work",
-		"changes phase.",
+		"Manage heads or finish a head's check. `manage_heads` adds or removes",
+		"one active head; adding an active head or removing an inactive one",
+		"changes nothing. Explain why the change helps with the current task.",
+		"When a head changes the active set, Hydra steers that explanation to",
+		"the main assistant as the head. Only an active head can use",
+		"`complete_observation`. Keep feedback short, ideally under 240",
+		"characters. Use `none` when there is nothing to report.",
+		OBSERVER_DELIVERY_GUIDANCE,
+		"Heads are Markdown files in",
+		`${userHeadDir} (user) and .pi/hydra (project).`,
+		"The file header must have `name:` and `description:`. Omit `tools:` to",
+		"allow all tools, use `[]` for no tools, or list allowed tool names",
+		"separated by commas. `autostart: true` activates the head in new",
+		"sessions. No other header keys are allowed. The body gives the head's",
+		"instructions: what to check, when to",
+		"act, what work to do, and how to finish and report. To create or change",
+		"a head, write its file, then add it. Hydra rereads the files on every",
+		"call. Change the active heads when the task needs different help.",
 	].join(" ");
 }
 

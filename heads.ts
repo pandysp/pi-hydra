@@ -41,6 +41,8 @@ export interface HeadRegistryGateway {
 	announce(message: string): void;
 	/** Warning/error with the headless stderr fallback. */
 	notify(message: string, level: "warning" | "error"): void;
+	/** Tells the main assistant on a head's behalf, as that head's steer would. */
+	steer(head: string, message: string): void;
 	/** Deduped warning; the dedup set is shared with the engine in index.ts. */
 	warnOnce(message: string): void;
 	persistConfig(heads: string[]): void;
@@ -178,9 +180,11 @@ export class HeadRegistry {
 		this.productHeads = this.productHeads.filter((name) => this.exists(name));
 		if (pruned.length !== this.activeHeads.length) {
 			const dropped = this.activeHeads.filter((name) => !this.exists(name));
-			gateway.notify(`hydra: head file gone, deactivating: ${dropped.join(", ")}`, "warning");
 			this.activeHeads = pruned;
 			gateway.onActiveSetChanged();
+			for (const name of dropped) {
+				gateway.steer(name, "this head's file is missing or invalid, so it is no longer active.");
+			}
 		}
 	}
 
