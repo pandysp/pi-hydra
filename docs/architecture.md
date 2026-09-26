@@ -101,7 +101,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant. Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own file changes; Hydra does not announce writes, and a head changing a file through bash was never tracked.
+Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant. Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 

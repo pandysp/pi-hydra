@@ -72,7 +72,7 @@ A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. It
 Authoring guidance for heads that act:
 
 1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
-2. **Report your own file changes.** Hydra does not announce a head's writes. Every acting head is told to mention a file it changed inside the main assistant's working folder in its steer, unless its own instructions say otherwise. Say so in `DELIVER` when a head should stay silent, for example because it only writes logs elsewhere.
+2. **Report what the main assistant needs, not routine work.** Hydra does not announce a head's writes; each acting head is told to report changes the main assistant needs to know about and to keep routine notes, logs or scores to itself.
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
 4. **The turn limit is not a spending limit.** Each check stops with a warning after 25 model calls if the head has not finished. Costs are not capped, so keep the head's instructions focused.
 

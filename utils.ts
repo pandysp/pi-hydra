@@ -388,8 +388,8 @@ export const OBSERVER_DELIVERY_GUIDANCE =
 export const OBSERVER_GUIDANCE =
 	"You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
 
-const FILE_CHANGE_GUIDANCE =
-	"If you changed a file inside the main assistant's working folder, tell it in your steer message, unless your own instructions say otherwise. Hydra does not tell it for you.";
+export const REPORTING_GUIDANCE =
+	"Report only what the main assistant needs to know or act on, such as a project file you created or changed. Routine work you repeat on every check, such as keeping notes, logs or scores, is not news; don't report it.";
 
 function hydraSnapshot(tools: string[] | undefined, activeHeads: readonly string[] | undefined): string {
 	if (activeHeads === undefined || !tools?.includes("hydra")) {
@@ -549,7 +549,7 @@ export function buildAnthropicObservationPrompt(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${FILE_CHANGE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 HEAD INSTRUCTIONS: ${instruction}
 
@@ -568,7 +568,7 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${FILE_CHANGE_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 ${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }

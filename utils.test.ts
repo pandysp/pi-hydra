@@ -8,6 +8,7 @@ import {
 	buildAnthropicObservationPrompt,
 	FOLLOW_UP_GUIDANCE,
 	OBSERVER_DELIVERY_GUIDANCE,
+	REPORTING_GUIDANCE,
 	OBSERVER_GUIDANCE,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
@@ -283,20 +284,6 @@ describe("buildObservationEnvelope", () => {
 	});
 });
 
-describe("file-change reporting", () => {
-	const instruction = "If you changed a file inside the main assistant's working folder, tell it in your steer message, unless your own instructions say otherwise. Hydra does not tell it for you.";
-	it("asks acting heads to report their own file changes", () => {
-		for (const prompt of [
-			buildAnthropicObservationPrompt("docs", "Keep notes.", ["write"]),
-			buildObservationEnvelope("docs", ["write"]),
-			buildObservationEnvelope("docs", undefined),
-		]) {
-			expect(prompt.split(instruction)).toHaveLength(2);
-			expect(prompt).not.toMatch(/After a successful write or edit|Hydra enforces this|Hydra tells the main assistant which files/);
-		}
-	});
-});
-
 describe("enumerated steer-only judge completion", () => {
 	const context = {
 		lastByThisHead: { delivery: "queue" as const, message: "Fix the redirect." },
@@ -415,9 +402,9 @@ describe("shared observer guidance", () => {
 			expect(prompt).toMatchSnapshot();
 		});
 	}
-	it("only acting paths ask heads to report file changes", () => {
+	it("only acting paths tell heads what to report", () => {
 		for (const [name, build] of Object.entries(paths)) {
-			expect(build().includes("tell it in your steer message"), name).toBe(name.endsWith("acting"));
+			expect(build().split(REPORTING_GUIDANCE).length - 1, name).toBe(name.endsWith("acting") ? 1 : 0);
 		}
 	});
 });
