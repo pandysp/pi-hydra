@@ -388,6 +388,12 @@ export const OBSERVER_DELIVERY_GUIDANCE =
 export const OBSERVER_GUIDANCE =
 	"You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
 
+// Marks the head's own instructions. Without it, a Codex head, which gets
+// them as a separate message, took them for the user's latest request.
+export function headInstructions(instruction: string): string {
+	return `HEAD INSTRUCTIONS: ${instruction}`;
+}
+
 export const REPORTING_GUIDANCE =
 	"Report only what the main assistant needs to know or act on, such as a project file you created or changed. Routine work you repeat on every check, such as keeping notes, logs or scores, is not news; don't report it.";
 
@@ -453,7 +459,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 ): string {
 	return `<system-reminder>${OBSERVER_GUIDANCE}
 
-HEAD INSTRUCTIONS: ${instruction}
+${headInstructions(instruction)}
 
 ${enumeratedDeliveryContext(context)}
 
@@ -551,7 +557,7 @@ export function buildAnthropicObservationPrompt(
 ): string {
 	return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-HEAD INSTRUCTIONS: ${instruction}
+${headInstructions(instruction)}
 
 When done, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}

@@ -61,6 +61,7 @@ import {
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
+	headInstructions,
 	isAnthropicPayload,
 	isOpenAIResponsesPayload,
 	mergeObservationPayload,
@@ -283,7 +284,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (!headActs(tools)) {
 			return usesSplitObservationHandoff(ctx.model?.api)
 				? {
-						prompt: instruction,
+						prompt: headInstructions(instruction),
 						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext),
 						completionMode: "enum",
 					}
@@ -300,7 +301,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		// Only Codex remains after the Anthropic and no-tools cases above.
 		return {
-			prompt: instruction,
+			prompt: headInstructions(instruction),
 			envelope: buildObservationEnvelope(name, tools, protocol),
 			completionMode: "tool",
 		};

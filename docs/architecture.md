@@ -43,6 +43,8 @@ Each prompt combines the head's instructions with Hydra's rules:
 | Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
 | OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
 
+On both providers the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
+
 The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
 ## Payload merge

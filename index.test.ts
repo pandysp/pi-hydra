@@ -109,6 +109,8 @@ describe("heads without tools through the extension", () => {
 		expect(existsSync(target)).toBe(false);
 		expect(h.transport).toHaveBeenCalledTimes(1);
 		expect(h.calls()[0]).toMatchObject({ action: "noop", judgeErrorKind: "blocked-tool-request", attemptedTools: ["write"], stopReason: "toolUse" });
+		// Judge heads get their instructions labelled on both providers.
+		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
 		const [report, options] = vi.mocked(h.pi.sendUserMessage).mock.calls[0];
@@ -291,6 +293,9 @@ describe("observation loop stops", () => {
 		// it to map subscription tool names back. Codex requests stay as they were.
 		const noted = JSON.stringify(h.payloads.at(-1)).includes('"toolsAdded"');
 		expect(noted).toBe(api === "anthropic-messages");
+		// Acting heads too. On Codex the instructions arrive as their own
+		// message, which heads otherwise took for the user's latest request.
+		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {
