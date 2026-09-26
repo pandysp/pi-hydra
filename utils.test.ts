@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
 import {
 	headLoopMessages,
-	advanceObservationLoopGuard,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
@@ -13,7 +12,6 @@ import {
 	OBSERVER_GUIDANCE,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
-	decisionFromLoopStopReason,
 	demoteStaleInterrupt,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
@@ -130,78 +128,6 @@ describe("formatHeadManagementReceipt", () => {
 	it("rejects empty names and explanations", () => {
 		expect(() => formatHeadManagementReceipt("add", " ", "needed")).toThrow("non-empty head");
 		expect(() => formatHeadManagementReceipt("remove", "quality", " ")).toThrow("non-empty message");
-	});
-});
-
-describe("advanceObservationLoopGuard", () => {
-	const initial = { iterations: 0 };
-
-	it("continues an active head and counts the completed turn", () => {
-		expect(advanceObservationLoopGuard(initial, { shareLost: false, completed: false, headActive: true, maxIterations: 25 })).toEqual({
-			state: { iterations: 1 },
-			stopReason: null,
-		});
-	});
-
-	it("stops at the hard iteration limit", () => {
-		expect(
-			advanceObservationLoopGuard(
-				{ iterations: 24 },
-				{ shareLost: false, completed: false, headActive: true, maxIterations: 25 },
-			),
-		).toMatchObject({ stopReason: "iteration-limit", state: { iterations: 25 } });
-	});
-
-	it("stops on an enforceable completion without a grace turn", () => {
-		expect(
-			advanceObservationLoopGuard(
-				{ iterations: 1 },
-				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
-			),
-		).toEqual({ state: { iterations: 2 }, stopReason: "completed" });
-	});
-
-	it("stops immediately after external deactivation", () => {
-		expect(
-			advanceObservationLoopGuard(initial, {
-				shareLost: false,
-				completed: false,
-				headActive: false,
-				maxIterations: 25,
-			}),
-		).toMatchObject({ stopReason: "deactivated" });
-	});
-
-	it("lets share loss override completion but accepts completion at the hard boundary", () => {
-		expect(
-			advanceObservationLoopGuard(
-				{ iterations: 1 },
-				{ shareLost: true, completed: true, headActive: false, maxIterations: 25 },
-			).stopReason,
-		).toBe("share-loss");
-		expect(
-			advanceObservationLoopGuard(
-				{ iterations: 24 },
-				{ shareLost: false, completed: true, headActive: true, maxIterations: 25 },
-			).stopReason,
-		).toBe("completed");
-	});
-});
-
-describe("decisionFromLoopStopReason", () => {
-	it("turns non-completion wind-downs into quiet terminal decisions", () => {
-		expect(decisionFromLoopStopReason("deactivated")).toEqual({
-			action: "noop",
-			reason: "head deactivated mid-observation",
-			message: "",
-		});
-		expect(decisionFromLoopStopReason("share-loss")?.action).toBe("noop");
-		expect(decisionFromLoopStopReason("iteration-limit")?.action).toBe("noop");
-	});
-
-	it("leaves normal completion to the accepted tool result", () => {
-		expect(decisionFromLoopStopReason("completed")).toBeNull();
-		expect(decisionFromLoopStopReason(null)).toBeNull();
 	});
 });
 
