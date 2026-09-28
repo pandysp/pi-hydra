@@ -102,7 +102,7 @@ See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles 
 
 Use `none` only when finishing through the `hydra` tool with nothing to report. Heads using the findings JSON instead return an empty array; `none` is not a valid finding action. Invalid answers follow the [failed-check rules](architecture.md#failed-checks).
 
-The main assistant may have moved on while the head was checking. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Do not repeat feedback still waiting for delivery or a problem that is fixed. Follow up only with evidence that the problem still applies after checking the visible response, or with new evidence that changes the finding. A problem that remains does not prove the feedback was ignored.
+A head sees a copy of the conversation while the main assistant keeps working. If the assistant is using tools, a steer reaches it after those calls finish, so advice about the latest result may already be out of date. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Do not repeat feedback still waiting for delivery or a problem that is fixed. Follow up only with evidence that the problem still applies after checking the visible response, or with new evidence that changes the finding. A problem that remains does not prove the feedback was ignored.
 
 ## Heads that manage heads
 
