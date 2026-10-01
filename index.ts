@@ -7,9 +7,9 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAgentLoop, uuidv7 } from "@earendil-works/pi-agent-core";
+import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { cleanupSessionResources } from "@earendil-works/pi-ai";
+import { cleanupSessionResources, uuidv7 } from "@earendil-works/pi-ai";
 import type { Api, AssistantMessage, Message, Model, ProviderHeaders } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
