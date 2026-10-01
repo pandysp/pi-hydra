@@ -9,9 +9,10 @@ All numbers here describe measured regimes, not universal surcharges or timeless
 Observation is enabled only for provider/API pairs whose replay safety and cache behavior have been measured:
 
 - Anthropic with `anthropic-messages`;
-- OpenAI Codex with `openai-codex-responses`, validated on GPT-5.6.
+- OpenAI Codex with `openai-codex-responses`, validated on GPT-5.6;
+- OpenAI's official `openai-responses` endpoint with ChatGPT OAuth sign-in, tested on GPT-6.1 Sol.
 
-Older Codex models pass the same runtime gate but their cache economics are unvalidated. The OpenAI API-key path shares serializer code but remains disabled until measured. Other pairs warn once and skip observation rather than risk full-price replay or driver breakage.
+Older Codex and other ChatGPT models pass their respective runtime gates but their cache economics are unvalidated. The OpenAI API-key path shares serializer code but remains disabled until measured. Other pairs warn once and skip observation rather than risk full-price replay or driver breakage.
 
 Heads always use the driver's model, tool schemas, and thinking configuration. Prompt caches are model-specific; choosing another model would forfeit the shared prefix.
 
@@ -23,7 +24,7 @@ hydra captures the driver's request in `before_provider_request` and schedules a
 
 On Anthropic, probes verified that the cache entry becomes readable at response start with no distinguishable propagation delay: commit+0 observations on Haiku and Fable, with and without thinking, read the committed prefix. A mid-run observation therefore keeps the captured prefix byte-identical and appends only its fresh handoff.
 
-Codex uses the same lifecycle trigger, but commit/read timing is looser. An observation reads whatever has committed and may pay the uncached remainder. Backend observations in July 2026 ranged from near-instant in full-stack traffic to a controlled read becoming available within 65 seconds; timing changes economics, not delivery safety.
+OpenAI Codex and ChatGPT sign-in use the same lifecycle trigger, but commit/read timing is looser. An observation reads whatever has committed and may pay the uncached remainder. Codex backend observations in July 2026 ranged from near-instant in full-stack traffic to a controlled read becoming available within 65 seconds; timing changes economics, not delivery safety.
 
 The first response of each run is skipped unconditionally. On later runs, the previous run-end observation covered the preceding state; in a fresh session, the first review arrives at an eligible later snapshot or at run end.
 
@@ -33,7 +34,7 @@ The assistant response a request produces is not part of that request's prompt-c
 
 On Anthropic, hydra moves the driver's deepest message-level cache marker, including its TTL, onto M's last markable block. With the five-minute marker used in the retained measurements, M changes from fresh input at 1.0× to a cache write at 1.25×, a 0.25× premium; the driver's next turn then reads it at 0.1× instead of writing it at 1.25×, a 1.15× saving—the roughly 5:1 pre-warm bet. A one-hour marker has a different write premium, so current economics depend on the driver's retention setting. Human latency is normally longer than observation TTFT, so M is usually warm before the next prompt.
 
-On Codex, the merge is marker-free and implicit caching controls the frontier. The run-end observation currently pays the newest turn plus its observer tail; do not apply Anthropic's explicit pre-warm accounting to it.
+On both OpenAI routes, the merge is marker-free and implicit caching controls the frontier. When the backend reads the cached prefix, the run-end observation pays the newest turn plus its observer tail; on a miss it can pay for the entire context. Do not apply Anthropic's explicit pre-warm accounting to either route.
 
 M is selected by identity: hydra records the response message's own timestamp at `message_start` and requires an exact match at run end. Wall-clock comparisons lost M nondeterministically in same-millisecond measurements. Errored or aborted final requests correctly attach nothing.
 
@@ -55,16 +56,22 @@ A combined-user treatment was also entitlement-unsafe: after included quota was 
 
 The first developer-envelope treatment cut extra observer turns from 67 to 3 while preserving total-loop cache hit (83.07% versus 83.30%). Review-action accuracy rose from 72.2% to 84.4%; after the generic envelope was tightened so the lens alone controls scope and intervention, a fresh treatment reached 98.9% (88/89 API-successful calls) versus 72.2% for saved controls. Two blinded judges preferred treatment 62 times, control 15 times, with 103 ties.
 
+### ChatGPT sign-in
+
+The new `openai-responses` route uses the same append-only `input` merge as Codex, but only with OpenAI's official endpoint and an active OAuth login. It checks the resolved credential before dispatch and again between acting-head turns; a switch to an API key stops the observation. Its observation also passes the driver's session ID to Pi AI: copying `prompt_cache_key` in the body without the corresponding session routing header measured zero cache reads in a repeated session; with the session ID, the same probe read 1,792 tokens. This route sends the head instructions and Hydra's rules together in one user message, including for acting heads. The Codex split form remains unchanged.
+
+An October 1, 2026 GPT-6.1 Sol OAuth smoke test produced a real arithmetic finding delivered to the user, and an acting head read a file and completed via the `hydra` tool. Cache reads varied: one fresh-session judge observation read 1,664 tokens of its 2,274-token input, while other fresh-session observations read zero. In a continued session, judge observations read 1,792 tokens of 2,385 total, and an acting head read about 69% of its first call's input. The 1,664-read judge cost $0.00190 with zero cache writes; another fresh noop with zero cache reads or writes cost $0.00492. These are different prompts, not a controlled savings estimate. **Cache savings on a fresh observation are not guaranteed.** These few calls establish that reuse is possible, not a stable cost target; `/hydra-stats` shows the measured rate without grading it against Anthropic or Codex.
+
 ## Completion channels
 
-Heads without tools return the same [findings JSON](heads.md#decisions-when-findings-land) on both providers. See [Delivery](architecture.md#delivery) and [Failed checks](architecture.md#failed-checks) for what happens to their answers.
+Heads without tools return the same [findings JSON](heads.md#decisions-when-findings-land) on all supported routes. See [Delivery](architecture.md#delivery) and [Failed checks](architecture.md#failed-checks) for what happens to their answers.
 
 Heads with tools finish differently:
 
-- **OpenAI Codex:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
+- **OpenAI Codex and ChatGPT sign-in:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
 - **Anthropic:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. Finishing through a tool call measured slower and more expensive here.
 
-On both providers, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
+On all supported routes, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
 
 The measurements below used the July 2026 instructions, before the September wording changes. They do not measure the quality of the current wording.
 
@@ -125,7 +132,7 @@ An observation can be cheap while an always-on session is materially more expens
 ## Provider limits
 
 - **Anthropic cold start:** the first observation may fall below the 97% target because the handoff is large relative to a tiny initial context.
-- **Codex commit window:** an observation racing commit may pay its snapshot as fresh input once; this degrades economics rather than correctness.
+- **OpenAI commit window:** an observation racing commit may pay its snapshot as fresh input; this degrades economics rather than correctness. ChatGPT sign-in showed fresh-session misses in the October smoke test.
 - **Codex fallback:** observer-scoped sessions pay the driver context once and may repay after idle expiry.
 - **Headless shutdown:** Pi may exit before a slow run-end observation finishes. `HYDRA_SHUTDOWN_GRACE_MS` defaults to 5 seconds; raise it for headless verification (`0` means do not wait).
 - **Multi-head run end:** heads run in parallel for low latency. On Anthropic each run-end fork may pay M's write rather than coordinating a follower free-ride; measured contention remained a single-digit share of observation spend.
@@ -162,7 +169,7 @@ jq -S 'del(.messages[-2:]) | walk(if type == "object" then del(.cache_control) e
 diff /tmp/drv.json /tmp/obs.json
 ```
 
-For Codex, truncate observation input to the driver length:
+For either OpenAI route, truncate observation input to the driver length:
 
 ```bash
 N=$(jq '.input | length' <driver.json>)

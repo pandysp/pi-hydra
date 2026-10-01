@@ -55,7 +55,8 @@ describe("stats store", () => {
 });
 
 describe("hit bands", () => {
-	it("selects the codex band only for the codex responses api", () => {
+	it("leaves ChatGPT ungraded until its cache target is measured", () => {
+		expect(hitBandsFor("openai-responses")).toBeNull();
 		expect(hitBandsFor("openai-codex-responses")).toBe(HIT_BANDS.codex);
 		expect(hitBandsFor("anthropic-messages")).toBe(HIT_BANDS.default);
 		expect(hitBandsFor(undefined)).toBe(HIT_BANDS.default);

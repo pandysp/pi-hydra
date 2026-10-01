@@ -545,7 +545,25 @@ export function buildObservationEnvelope(
 	tools: string[] | undefined,
 	options: ObservationProtocolOptions = {},
 ): string {
-	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${toolCompletionGuidance(head, tools, options)}`;
+}
+
+/** Keep the same completion contract when OpenAI needs one combined user message. */
+export function buildOpenAIObservationPrompt(
+	head: string,
+	instruction: string,
+	tools: string[] | undefined,
+	options: ObservationProtocolOptions = {},
+): string {
+	return `<system-reminder>${OBSERVER_GUIDANCE}
+
+${headInstructions(instruction)}
+
+${toolCompletionGuidance(head, tools, options).trimStart()}</system-reminder>`;
+}
+
+function toolCompletionGuidance(head: string, tools: string[] | undefined, options: ObservationProtocolOptions): string {
+	return `${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
 ${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }

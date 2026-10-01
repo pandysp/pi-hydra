@@ -52,6 +52,7 @@ import {
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
+	buildOpenAIObservationPrompt,
 	buildAnthropicObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
@@ -129,6 +130,21 @@ function observationFailureHint(transport: typeof streamSimple, message: string)
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+async function isCurrentChatGPTAuth(
+	ctx: ExtensionContext,
+	model: Model<Api>,
+	apiKey: string | undefined,
+	headers: ProviderHeaders | undefined,
+): Promise<boolean> {
+	if (!apiKey || [model.headers, headers].some((value) => Object.keys(value ?? {}).some((key) => key.toLowerCase() === "authorization"))) {
+		return false;
+	}
+	// Pi's request-time OAuth resolution reports this source; the availability
+	// snapshot used by isUsingOAuth can lag behind a credential-store change.
+	const current = await ctx.modelRegistry.getProviderAuth("openai");
+	return current?.source === "OAuth" && current.auth.apiKey === apiKey;
+}
 
 function plainMessageText(content: unknown): string | null {
 	if (typeof content === "string") return content;
@@ -292,6 +308,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				completionMode: "json",
 			};
 		}
+		if (ctx.model?.api === "openai-responses") {
+			return { prompt: buildOpenAIObservationPrompt(name, instruction, tools, protocol), completionMode: "tool" };
+		}
 		// Only Codex remains after the Anthropic and no-tools cases above.
 		return {
 			prompt: headInstructions(instruction),
@@ -380,8 +399,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
-		const { good, fair } = hitBandsFor(ctx.model?.api);
-		const hitColor = meanHit === null ? "muted" : meanHit >= good ? "success" : meanHit >= fair ? "warning" : "error";
+		const bands = hitBandsFor(ctx.model?.api);
+		const hitColor = meanHit === null || bands === null ? "muted" : meanHit >= bands.good ? "success" : meanHit >= bands.fair ? "warning" : "error";
 		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
 			"hydra",
@@ -447,20 +466,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			warnOnce(job.ctx, "hydra: no model selected; observations skipped");
 			return;
 		}
-		// Whether a replayed request really lands as a cache read has been
-		// measured on two providers only: Anthropic's Messages API and
-		// OpenAI's Codex Responses backend. Anywhere else hydra warns once and
-		// stays out, because guessing wrong here means paying full price for
-		// every observation. docs/architecture.md has the procedure for adding
-		// a provider. The OpenAI API-key path uses the same code as codex but
-		// is held back for the same reason: nobody has measured it.
+		// Cache replay has been measured on Anthropic, legacy OpenAI Codex, and
+		// OpenAI's ChatGPT sign-in. Other pairs warn and stay out: a matching
+		// request shape alone does not prove the provider will read its cache.
+		// The OpenAI API-key path remains unmeasured and disabled.
 		const anthropic = model.provider === "anthropic" && model.api === "anthropic-messages";
 		const codex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
-		if (!anthropic && !codex) {
+		const chatgpt = model.provider === "openai" && model.api === "openai-responses" &&
+			model.baseUrl === "https://api.openai.com/v1" && job.ctx.modelRegistry.isUsingOAuth(model);
+		if (!anthropic && !codex && !chatgpt) {
 			const pair = `${model.provider}/${model.api}`;
 			if (!warnedProviders.has(pair)) {
 				warnedProviders.add(pair);
-				notifyUser(job.ctx, `hydra: observations disabled for ${pair} (cache-parity replay is validated on Anthropic and OpenAI Codex only)`, "warning");
+				notifyUser(job.ctx, `hydra: observations disabled for ${pair} (supported: Anthropic, OpenAI Codex, or ChatGPT sign-in at OpenAI's API)`, "warning");
 			}
 			return;
 		}
@@ -510,15 +528,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// The transport is checked again before every observation, because the
 		// user can change it mid-session, and the decision only ever moves
 		// toward hydra using its own separate session, never back.
-		let codexSessionId: string | undefined;
+		// On the new OpenAI route the session ID also sets a routing header.
+		// Copying the driver's prompt_cache_key without that header measured
+		// zero cache reads; sharing it read the driver's cached prefix.
+		let observationSessionId: string | undefined = chatgpt ? job.ctx.sessionManager.getSessionId() : undefined;
 		if (codex) {
 			if (!unsafeForceShare) {
 				codexShareLostReason ??= classifyCodexShareLoss(driverTransport(job.ctx));
 			}
 			if (codexShareLostReason === null) {
-				codexSessionId = job.ctx.sessionManager.getSessionId();
+				observationSessionId = job.ctx.sessionManager.getSessionId();
 			} else {
-				codexSessionId = observerSessionId;
+				observationSessionId = observerSessionId;
 				const advice = codexShareLostReason.startsWith("pi transport")
 					? ' Full cache sharing needs { "transport": "websocket" } in pi\'s settings.json from session start.'
 					: "";
@@ -565,6 +586,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// part-way through a run is not picked up. The API key is handled the
 		// same way.
 		const authBaseUrl = (auth as { baseUrl?: unknown }).baseUrl;
+		if (chatgpt) {
+			let currentAuth: boolean;
+			try {
+				currentAuth = await isCurrentChatGPTAuth(job.ctx, model, auth.apiKey, auth.headers);
+			} catch (error) {
+				notifyUser(job.ctx, `hydra: could not verify ChatGPT sign-in: ${errorText(error)}`, "error");
+				return;
+			}
+			if (!currentAuth || (authBaseUrl && authBaseUrl !== model.baseUrl)) {
+				notifyUser(job.ctx, "hydra: ChatGPT sign-in or endpoint changed; observation skipped", "warning");
+				return;
+			}
+		}
 		const observationModel =
 			typeof authBaseUrl === "string" && authBaseUrl.length > 0
 				? { ...model, baseUrl: authBaseUrl }
@@ -573,8 +607,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const t0 = Date.now();
 		const outcome =
 			job.completionMode === "enum"
-				? await runJudgeObservation(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal)
-				: await runObservationLoop(job, observationModel, auth.apiKey, auth.headers, codexSessionId, onPayload, signal);
+				? await runJudgeObservation(job, observationModel, observationSessionId, onPayload, signal)
+				: await runObservationLoop(job, observationModel, auth.apiKey, auth.headers, observationSessionId, onPayload, signal);
 		if (!outcome || signal.aborted || job.branchGeneration !== branchGeneration) {
 			return;
 		}
@@ -704,9 +738,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// would put back a header pi meant to strip.
 	async function runJudgeObservation(
 		job: Observation,
-		model: Model<"anthropic-messages" | "openai-codex-responses">,
-		apiKey: string,
-		headers: ProviderHeaders | undefined,
+		model: Model<"anthropic-messages" | "openai-codex-responses" | "openai-responses">,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
@@ -722,20 +754,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const call = async (messages: Message[]): Promise<AssistantMessage> => {
 			if (signal.aborted) throw new Error("observation aborted");
-			let freshApiKey = apiKey;
-			let freshHeaders = headers;
-			try {
-				const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
-				if (fresh.ok && fresh.apiKey) {
-					freshApiKey = fresh.apiKey;
-					freshHeaders = fresh.headers;
+			const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
+			if (!fresh.ok || !fresh.apiKey) {
+				throw new Error(`hydra: ${model.provider} credentials unavailable during observation: ${fresh.ok ? "no API key" : fresh.error}`);
+			}
+			if (model.api === "openai-responses") {
+				const baseUrl = (fresh as { baseUrl?: unknown }).baseUrl;
+				if ((baseUrl && baseUrl !== model.baseUrl) ||
+					!await isCurrentChatGPTAuth(job.ctx, model, fresh.apiKey, fresh.headers)) {
+					throw new Error("ChatGPT sign-in or endpoint changed during observation; head stopped");
 				}
-			} catch {
-				// The already-resolved credential remains the safe fallback.
 			}
 			const options = {
-				apiKey: freshApiKey,
-				headers: freshHeaders,
+				apiKey: fresh.apiKey,
+				headers: fresh.headers,
 				sessionId,
 				transport: model.api === "openai-codex-responses" ? ("websocket" as const) : undefined,
 				onPayload,
@@ -779,7 +811,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// head's own turns are only paid for once. See utils.ts.
 	async function runObservationLoop(
 		job: Observation,
-		model: Model<"anthropic-messages" | "openai-codex-responses">,
+		model: Model<"anthropic-messages" | "openai-codex-responses" | "openai-responses">,
 		apiKey: string,
 		headers: ProviderHeaders | undefined,
 		sessionId: string | undefined,
@@ -803,7 +835,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Whether this observation is running inside the driver's own session.
 		// Fixed for the whole loop, and the reason the loop can be stopped by
 		// sharing being given up.
-		const sharedSession = sessionId !== undefined && sessionId !== observerSessionId;
+		const sharedSession = model.api === "openai-codex-responses" && sessionId !== undefined && sessionId !== observerSessionId;
 		let messages: Awaited<ReturnType<typeof runAgentLoop>>;
 		try {
 			messages = await runAgentLoop(
@@ -816,17 +848,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					model,
 					apiKey,
 					headers,
-					// An OAuth token can expire inside a long acting-head loop;
-					// re-resolve per provider call, exactly as the driver does
-					// (contract: must not throw).
+					// Re-resolve per call: OAuth can expire during a tool loop. Never
+					// silently fall back to the initial token when renewal fails.
 					getApiKey: async () => {
 						if (signal.aborted) return undefined;
-						try {
-							const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
-							return fresh.ok ? (fresh.apiKey ?? undefined) : undefined;
-						} catch {
-							return undefined;
+						const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
+						if (!fresh.ok || !fresh.apiKey) {
+							throw new Error(`hydra: ${model.provider} credentials unavailable during observation: ${fresh.ok ? "no API key" : fresh.error}`);
 						}
+						if (model.api === "openai-responses") {
+							const baseUrl = (fresh as { baseUrl?: unknown }).baseUrl;
+							if ((baseUrl && baseUrl !== model.baseUrl) || !await isCurrentChatGPTAuth(job.ctx, model, fresh.apiKey, fresh.headers)) {
+								throw new Error("ChatGPT sign-in or endpoint changed during observation; head stopped");
+							}
+						}
+						return fresh.apiKey;
 					},
 					// Codex only. Whether this is the driver's session id or
 					// hydra's own is decided in observe().
@@ -1508,7 +1544,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api).target}`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api)?.target ?? "n/a (ChatGPT; not calibrated)"}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,

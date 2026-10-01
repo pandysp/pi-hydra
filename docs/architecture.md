@@ -23,7 +23,7 @@ This document explains the system. Detailed provider behavior, economics, dates,
 
 hydra reviews at two lifecycle points.
 
-**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. Codex uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped unconditionally; on later runs the preceding state was already reviewed at the previous run end, while a fresh session still receives its first review at an eligible later snapshot or run end.
+**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped unconditionally; on later runs the preceding state was already reviewed at the previous run end, while a fresh session still receives its first review at an eligible later snapshot or run end.
 
 **Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind.
 
@@ -42,8 +42,9 @@ Each prompt combines the head's instructions with Hydra's rules:
 |---|---|---|
 | Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
 | OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
+| ChatGPT sign-in | Head instructions and Hydra's rules in one user message | JSON without tools; the `hydra` tool otherwise |
 
-On both providers the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
+On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
 The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
@@ -53,7 +54,7 @@ The observation request keeps the driver's captured content prefix and appends a
 
 For an Anthropic mid-run observation, the captured prefix remains byte-identical and Hydra appends a fresh handoff. The complete request is therefore longer; it is not itself byte-identical to the driver request. At Anthropic run end and during acting loops, Hydra deliberately relocates the deepest message-level cache marker onto the appended tail while preserving content-prefix parity.
 
-Codex uses an append-only `input` merge and no explicit marker relocation. See [Provider payload mechanics](providers.md#provider-payload-mechanics) for the exact differences.
+Both OpenAI routes use an append-only `input` merge and no explicit marker relocation. See [Provider payload mechanics](providers.md#provider-payload-mechanics) for the exact differences.
 
 ## Heads are files
 

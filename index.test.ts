@@ -37,7 +37,11 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" } = {}) {
+async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
+	boundary.transport = options.transport ?? "websocket";
+	let currentOAuth = options.oauth ?? true;
+	let authChecks = 0;
+	let authRequests = 0;
 	const cwd = mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -49,7 +53,7 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 	const payloads: unknown[] = [];
 	let idle = true;
 	const api = options.api ?? "anthropic-messages";
-	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : "openai-codex", id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
+	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : api === "openai-responses" ? "openai" : "openai-codex", baseUrl: options.baseUrl ?? "https://api.openai.com/v1", headers: options.modelAuthHeader ? { Authorization: "Bearer sk-fake" } : undefined, id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
 	const transport = vi.fn((model: Model<Api>, context: { messages: Message[] }, opts: { onPayload: (payload: unknown) => unknown }) => {
 		const built = model.api === "anthropic-messages" ? { messages: context.messages } : { input: context.messages };
 		payloads.push(opts.onPayload(built));
@@ -62,8 +66,16 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		cwd, model, sessionManager: sm, isIdle: () => idle, isProjectTrusted: () => true, hasUI: true,
 		ui: { notify, setStatus: vi.fn(), theme: { fg: (_: string, value: string) => value } },
 		modelRegistry: {
-			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test" }),
+			getApiKeyAndHeaders: async () => ++authRequests > (options.failAuthAfter ?? Infinity)
+				? { ok: false, error: "credential refresh failed" }
+				: { ok: true, apiKey: currentOAuth ? "test" : "api-key", headers: options.authorizationHeaderAfter !== undefined && authRequests > options.authorizationHeaderAfter ? { authorization: "Bearer sk-fake" } : undefined },
+			getProviderAuth: async () => {
+				authChecks++;
+				if (options.changeAuthAfter && authChecks > options.changeAuthAfter) currentOAuth = false;
+				return { source: currentOAuth ? "OAuth" : "stored credential", auth: { apiKey: currentOAuth ? "test" : "api-key" } };
+			},
 			getRegisteredProviderConfig: () => ({ api, streamSimple: transport }),
+			isUsingOAuth: () => options.oauth ?? true,
 		},
 		abort: vi.fn(),
 	} as unknown as ExtensionContext;
@@ -95,13 +107,65 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	return { cwd, sm, root, ctx, pi, payloads, transport, notify, emit, observe, calls,
+		changeAuth: () => { currentOAuth = false; },
 		busy: () => { idle = false; }, idle: () => { idle = true; },
 		waitCalls: async (count: number) => { await vi.waitFor(() => expect(calls(), JSON.stringify(notify.mock.calls)).toHaveLength(count)); },
 	};
 }
 
 describe("heads without tools through the extension", () => {
-	it.each(["anthropic-messages", "openai-codex-responses"] as const)("%s never executes or repairs a tool request and reports it in future context", async (api) => {
+	it("observes ChatGPT sign-in under the driver's cache session", async () => {
+		const h = await harness({ api: "openai-responses" });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.calls()[0].api).toBe("openai-responses");
+		expect(h.transport.mock.calls[0][2].sessionId).toBe(h.sm.getSessionId());
+		expect(h.payloads[0]).toMatchObject({ input: expect.arrayContaining([expect.objectContaining({ role: "user" })]) });
+	});
+
+	it("does not enable unmeasured OpenAI API-key replay", async () => {
+		const h = await harness({ api: "openai-responses", oauth: false });
+		await h.observe();
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("observations disabled for openai/openai-responses"), "warning"));
+		expect(h.transport).not.toHaveBeenCalled();
+		expect(h.calls()).toEqual([]);
+	});
+
+	it("rejects an API key even when Pi's OAuth availability snapshot is stale", async () => {
+		const h = await harness({ api: "openai-responses" });
+		h.changeAuth();
+		await h.observe();
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("sign-in or endpoint changed"), "warning"));
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("rejects an Authorization override from the model or resolved headers", async () => {
+		for (const options of [{ modelAuthHeader: true }, { authorizationHeaderAfter: 0 }]) {
+			const h = await harness({ api: "openai-responses", ...options });
+			await h.observe();
+			await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("sign-in or endpoint changed"), "warning"));
+			expect(h.transport).not.toHaveBeenCalled();
+		}
+	});
+
+	it("rechecks the actual OAuth credential before dispatching a judge", async () => {
+		for (const options of [{ changeAuthAfter: 1 }, { failAuthAfter: 1 }, { authorizationHeaderAfter: 1 }]) {
+			const h = await harness({ api: "openai-responses", ...options });
+			await h.observe();
+			await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("observation failed"), "error"));
+			expect(h.transport).not.toHaveBeenCalled();
+			expect(h.calls()).toEqual([]);
+		}
+	});
+
+	it("does not observe a different OpenAI-compatible endpoint", async () => {
+		const h = await harness({ api: "openai-responses", baseUrl: "https://other.example/v1" });
+		await h.observe();
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("observations disabled for openai/openai-responses"), "warning"));
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it.each(["anthropic-messages", "openai-codex-responses", "openai-responses"] as const)("%s never executes or repairs a tool request and reports it in future context", async (api) => {
 		const h = await harness({ api });
 		const target = join(h.cwd, "must-not-exist");
 		await h.observe(answer([tool("write", { path: target, content: "SECRET-ARGUMENT" }), text('{"findings":[{"action":"steer","reason":"mixed","message":"MUST NOT DELIVER"}]}')], "toolUse"));
@@ -277,7 +341,45 @@ describe("messages Hydra sends on a head's behalf", () => {
 });
 
 describe("observation loop stops", () => {
-	it.each(["anthropic-messages", "openai-codex-responses"] as const)("%s stops once the head completes and records its turns", async (api) => {
+	it("keeps a ChatGPT acting head running under the default auto transport", async () => {
+		const h = await harness({ api: "openai-responses", tools: "read", transport: "auto" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.observe(
+			answer([tool("read", { path: "work.txt" })], "toolUse"),
+			answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"),
+		);
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(2);
+		expect(h.calls()[0]).toMatchObject({ action: "noop", iterations: 2, toolsUsed: ["read"] });
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("codex cache sharing lost mid-loop"), "warning");
+	});
+
+	it("does not fall back to a stale token when credential refresh fails mid-loop", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: "read", failAuthAfter: 2 });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.observe(answer([tool("read", { path: "work.txt" })], "toolUse"));
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("credential refresh failed"), "error"));
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.calls()).toEqual([]);
+	});
+
+	it("stops a ChatGPT acting head when an Authorization override appears mid-loop", async () => {
+		const h = await harness({ api: "openai-responses", tools: "read", authorizationHeaderAfter: 2 });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.observe(answer([tool("read", { path: "work.txt" })], "toolUse"));
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("head stopped"), "error"));
+		expect(h.transport).toHaveBeenCalledTimes(1);
+	});
+
+	it("stops a ChatGPT acting head when the credential changes between turns", async () => {
+		const h = await harness({ api: "openai-responses", tools: "read", changeAuthAfter: 2 });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.observe(answer([tool("read", { path: "work.txt" })], "toolUse"));
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("head stopped"), "error"));
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.calls()).toEqual([]);
+	});
+	it.each(["anthropic-messages", "openai-codex-responses", "openai-responses"] as const)("%s stops once the head completes and records its turns", async (api) => {
 		const h = await harness({ api, tools: "read" });
 		writeFileSync(join(h.cwd, "work.txt"), "content");
 		await h.observe(

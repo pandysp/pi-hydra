@@ -58,14 +58,17 @@ export interface HydraCall {
 // What counts as healthy depends on the provider: around 97% on Anthropic,
 // 84 to 87% measured on codex, where the newest turn is always charged as
 // new input. The codex "good" line sits below what was measured, to leave
-// room for the backend being uneven. One table feeds both the footer color
-// and the /hydra-stats target, so the two cannot drift apart.
+// room for the backend being uneven. Calibrated providers share one table
+// for the footer color and /hydra-stats target; ChatGPT stays neutral until
+// a stable target has been measured.
 export const HIT_BANDS = {
 	codex: { good: 80, fair: 60, target: "84%+ (codex)" },
 	default: { good: 97, fair: 90, target: "97%+" },
 } as const;
 
 export function hitBandsFor(api: string | undefined) {
+	// ChatGPT sign-in has cache reads, but no stable target has been measured yet.
+	if (api === "openai-responses") return null;
 	return api === "openai-codex-responses" ? HIT_BANDS.codex : HIT_BANDS.default;
 }
 
