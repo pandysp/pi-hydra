@@ -22,6 +22,12 @@
 			"default": "./flue/dist/flue/index.js"
 		}
 	},
+	"files": [
+		"*.ts",
+		"!*.test.ts",
+		"flue/dist/",
+		"heads/"
+	],
 	"pi": {
 		"image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
 		"extensions": [
