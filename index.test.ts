@@ -718,6 +718,17 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
+	it.each(["openai-codex-responses", "openai-responses"] as const)("%s: a judging head with ends_when gets its condition in the split envelope and ends through the findings JSON", async (api) => {
+		const h = await harness({ heads: [], api });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review.", tools: [], ends_when: "the refactor is committed" });
+		await h.observe(findings({ findings: [], done: true }));
+		await h.waitCalls(1);
+		const input = (h.payloads[0] as { input: { role?: string; content?: unknown }[] }).input;
+		const developer = input.filter((item) => item.role === "developer").map((item) => JSON.stringify(item.content)).join("");
+		expect(developer).toContain("This head ends when: the refactor is committed");
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+	});
+
 	it("anthropic: an acting head with ends_when ends through its JSON decision", async () => {
 		const h = await harness({ heads: [] });
 		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review.", tools: ["read"], ends_when: "the refactor is committed" });
