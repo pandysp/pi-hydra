@@ -13,8 +13,8 @@
  * the gateway, built per call in index.ts.
  */
 import { dirname, join } from "node:path";
-import { parseHeadFile, sanitizeHeadSet, savedHeadList } from "./utils";
-import type { HeadDefinition, HydraConfig } from "./utils";
+import { parseHeadFile, sanitizeHeadSet, savedHeadList } from "./utils.ts";
+import type { HeadDefinition, HydraConfig } from "./utils.ts";
 
 // Diagnostic heads force a fixed decision so the delivery pipeline can be
 // smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its

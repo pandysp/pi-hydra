@@ -5,8 +5,8 @@ import type { Api, AssistantMessage, Message, Model, ToolCall } from "@earendil-
 import type { streamSimple } from "@earendil-works/pi-ai/compat";
 import { convertToLlm, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@earendil-works/pi-coding-agent";
-import hydraExtension from "./index";
-import type { HydraCall } from "./stats";
+import hydraExtension from "./index.ts";
+import type { HydraCall } from "./stats.ts";
 
 const boundary = vi.hoisted(() => ({ agentDir: "", transport: "websocket" }));
 vi.mock("@earendil-works/pi-coding-agent", async (original) => {

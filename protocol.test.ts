@@ -5,7 +5,7 @@ import {
 	hydraToolParameters,
 	isTerminalHydraAction,
 	validateHydraToolParams,
-} from "./protocol";
+} from "./protocol.ts";
 
 describe("hydra tool protocol", () => {
 	it("accepts only a sole valid typed completion from cached tool calls", () => {

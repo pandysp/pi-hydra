@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { HIT_BANDS, hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
-import type { BranchEntryLike, HydraCall } from "./stats";
+import { HIT_BANDS, hitBandsFor, parseBranchEntries, StatsLog } from "./stats.ts";
+import type { BranchEntryLike, HydraCall } from "./stats.ts";
 
 function call(over: Partial<HydraCall>): HydraCall {
 	return {

@@ -66,6 +66,12 @@ Choose heads at any time:
 
 For headless runs, use `--hydra-heads quality,security`.
 
+## Flue agents
+
+The same judge heads can review [Flue](https://flueframework.com/) agents. They check each
+response before it settles and the agent corrects itself in the same response. See
+[Heads in Flue agents](docs/flue.md).
+
 ## Heads are Markdown files
 
 ```markdown

@@ -406,20 +406,26 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 	return `Earlier feedback: ${JSON.stringify(visible)}. lastByThisHead is this head's last delivered message; recipient says who received it. Messages in pending have not reached the main assistant yet. ${FOLLOW_UP_GUIDANCE}`;
 }
 
-function enumeratedDecisionProtocol(head: string): string {
+// `deliveryGuidance` says what print, steer and interrupt do on the host running the head;
+// a host whose delivery differs from pi's passes its own so heads are not told otherwise.
+function enumeratedDecisionProtocol(head: string, deliveryGuidance: string): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
 
-Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${OBSERVER_DELIVERY_GUIDANCE} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
+Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${deliveryGuidance} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
 }
 
 /** The answering rules plus what has already been delivered, sent separately. */
-export function buildEnumeratedJudgeObservationEnvelope(head: string, context: DeliveryContext): string {
+export function buildEnumeratedJudgeObservationEnvelope(
+	head: string,
+	context: DeliveryContext,
+	deliveryGuidance: string = OBSERVER_DELIVERY_GUIDANCE,
+): string {
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.
 
 ${enumeratedDeliveryContext(context)}
 
-${enumeratedDecisionProtocol(head)}`;
+${enumeratedDecisionProtocol(head, deliveryGuidance)}`;
 }
 
 /** The same, folded into one message with the instruction. */
@@ -427,6 +433,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	head: string,
 	instruction: string,
 	context: DeliveryContext,
+	deliveryGuidance: string = OBSERVER_DELIVERY_GUIDANCE,
 ): string {
 	return `<system-reminder>${OBSERVER_GUIDANCE}
 
@@ -434,7 +441,7 @@ ${headInstructions(instruction)}
 
 ${enumeratedDeliveryContext(context)}
 
-${enumeratedDecisionProtocol(head)}</system-reminder>`;
+${enumeratedDecisionProtocol(head, deliveryGuidance)}</system-reminder>`;
 }
 
 export interface EnumeratedDecisionResult {

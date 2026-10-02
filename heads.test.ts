@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { HeadRegistry } from "./heads";
-import type { HeadRegistryGateway } from "./heads";
+import { HeadRegistry } from "./heads.ts";
+import type { HeadRegistryGateway } from "./heads.ts";
 
 const USER_DIR = "/home/u/.pi/agent/hydra";
 const PROJECT_DIR = "/repo/.pi/hydra";

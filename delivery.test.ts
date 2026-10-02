@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
-import type { DeliveryGateway } from "./delivery";
-import type { PersistedDelivery } from "./utils";
-import { parseEnumeratedDecision } from "./utils";
+import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery.ts";
+import type { DeliveryGateway } from "./delivery.ts";
+import type { PersistedDelivery } from "./utils.ts";
+import { parseEnumeratedDecision } from "./utils.ts";
 
 function harness(idle = false) {
 	const sentUsers: Array<{ content: string; deliverAs?: string }> = [];

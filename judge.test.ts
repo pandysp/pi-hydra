@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { buildJudgeReport, classifyJudgeResponse } from "./judge";
+import { buildJudgeReport, classifyJudgeResponse } from "./judge.ts";
 
 function response(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop") {
 	return { content, stopReason } as AssistantMessage;

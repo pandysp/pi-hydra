@@ -6,8 +6,8 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall, uuidv7 } from "@ear
 import type { FauxResponseStep, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
-import hydraExtension from "./index";
-import type { HydraCall } from "./stats";
+import hydraExtension from "./index.ts";
+import type { HydraCall } from "./stats.ts";
 
 type Command = { handler: (args: string, ctx: ExtensionContext) => unknown };
 

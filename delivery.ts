@@ -1,5 +1,5 @@
-import type { Decision, DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./utils";
-import { demoteStaleInterrupt } from "./utils";
+import type { Decision, DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./utils.ts";
+import { demoteStaleInterrupt } from "./utils.ts";
 
 type PendingRole = "user" | "custom";
 type PendingOrigin = "queued" | "idle-user";
