@@ -78,15 +78,10 @@ describe("hydra tool protocol", () => {
 				message: "",
 			}),
 		).toEqual({ action: "complete_observation", delivery: "none", message: "" });
-		// Queueing is kept working but no longer offered, so old sessions and
-		// internal callers still pass validation.
-		expect(
-			validateHydraToolParams({
-				action: "complete_observation",
-				delivery: "queue",
-				message: "legacy follow-up",
-			}),
-		).toEqual({ action: "complete_observation", delivery: "queue", message: "legacy follow-up" });
+		// Hydra's own note route is not a head's choice.
+		expect(() =>
+			validateHydraToolParams({ action: "complete_observation", delivery: "note" as never, message: "follow-up" }),
+		).toThrow("delivery must be one of none, print, steer, interrupt");
 		expect(() => validateHydraToolParams({ action: "manage_heads", message: "missing fields" })).toThrow(
 			"requires operation and head",
 		);
@@ -144,6 +139,6 @@ describe("hydra tool protocol", () => {
 		expect(description).toContain('Use "steer" when the main assistant needs the feedback, even if it can wait');
 		expect(description).toContain("before its next model request");
 		expect(description).toContain("emergency that must stop the run");
-		expect(description).not.toContain("queue");
+		expect(description).not.toContain('"note"');
 	});
 });

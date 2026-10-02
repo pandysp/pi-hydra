@@ -5,12 +5,18 @@
 
 import type { Message } from "@earendil-works/pi-ai";
 
-// Where a head's finding ends up. noop: nowhere. print: shown to the user
-// only. queue: waits for the run to end. steer: reaches the agent between
-// turns. interrupt: reaches it now, canceling whatever it was doing.
-export const ACTIONS = ["noop", "print", "queue", "steer", "interrupt"] as const;
-export type Action = (typeof ACTIONS)[number];
-export const OBSERVATION_DELIVERIES = ["none", "print", "queue", "steer", "interrupt"] as const;
+// Where a head's finding ends up. print: shown to the user only. steer:
+// reaches the agent at its next step, or starts a turn if it is idle.
+// interrupt: reaches it now, canceling whatever it was doing.
+const HEAD_DELIVERIES = ["print", "steer", "interrupt"] as const;
+// What a head may decide: noop sends nothing.
+const HEAD_ACTIONS = ["noop", ...HEAD_DELIVERIES] as const;
+// note is Hydra's own route and never a head's choice: the finding is added to
+// the conversation without starting a turn (during shutdown, and for reviews of
+// a cancelled run).
+export type Action = (typeof HEAD_ACTIONS)[number] | "note";
+// complete_observation calls noop "none".
+export const OBSERVATION_DELIVERIES = ["none", ...HEAD_DELIVERIES] as const;
 export type ObservationDelivery = (typeof OBSERVATION_DELIVERIES)[number];
 export const HEAD_OPERATIONS = ["add", "remove"] as const;
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
@@ -96,7 +102,7 @@ function asDecision(value: unknown): Decision | null {
 		return null;
 	}
 	const obj = value as { action?: unknown; reason?: unknown; message?: unknown };
-	if (typeof obj.action !== "string" || !(ACTIONS as readonly string[]).includes(obj.action)) {
+	if (typeof obj.action !== "string" || !(HEAD_ACTIONS as readonly string[]).includes(obj.action)) {
 		return null;
 	}
 	const action = obj.action as Action;
@@ -386,10 +392,9 @@ export const FOLLOW_UP_GUIDANCE =
  * What a head is told about an earlier delivery leaves out how it was routed,
  * and says only who received it.
  *
- * Queueing still exists in the code but is no longer offered to heads. Naming
- * it in an old record would put the retired choice back in front of the model.
- * Naming the recipient instead tells the head what it needs for a follow-up
- * without describing an old delivery as something it was not.
+ * Hydra's own note route is never a head's choice. Naming it in a record would
+ * put a choice in front of the model that it cannot make. Naming the recipient
+ * instead tells the head what it needs for a follow-up.
  */
 function enumeratedDeliveryContext(context: DeliveryContext): string {
 	const recipient = (delivery: Action): "user" | "agent" => (delivery === "print" ? "user" : "agent");
@@ -453,7 +458,6 @@ export interface EnumeratedDecisionResult {
 	error: string | null;
 }
 
-const ENUMERATED_ACTIONS = ["print", "steer", "interrupt"] as const;
 
 /**
  * Splits a head's numbered findings into at most two groups: what only the
@@ -480,7 +484,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 			return { decisions: null, error: `finding ${index + 1} must be an object` };
 		}
 		const candidate = item as { action?: unknown; reason?: unknown; message?: unknown };
-		if (typeof candidate.action !== "string" || !(ENUMERATED_ACTIONS as readonly string[]).includes(candidate.action)) {
+		if (typeof candidate.action !== "string" || !(HEAD_DELIVERIES as readonly string[]).includes(candidate.action)) {
 			return { decisions: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
 		}
 		const message = typeof candidate.message === "string" ? candidate.message.trim().slice(0, 500) : "";
@@ -488,7 +492,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 			return { decisions: null, error: `finding ${index + 1} requires a non-empty message` };
 		}
 		findings.push({
-			action: candidate.action as (typeof ENUMERATED_ACTIONS)[number],
+			action: candidate.action as (typeof HEAD_DELIVERIES)[number],
 			reason: typeof candidate.reason === "string" ? candidate.reason.slice(0, 200) : "",
 			message,
 		});

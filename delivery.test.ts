@@ -40,7 +40,7 @@ function harness(idle = false) {
 	};
 }
 
-const decision = (action: "print" | "queue" | "steer" | "interrupt", message = "fix it") => ({
+const decision = (action: "print" | "note" | "steer" | "interrupt", message = "fix it") => ({
 	action,
 	reason: "review",
 	message,
@@ -141,12 +141,12 @@ describe("delivery ledger and router", () => {
 		]);
 	});
 
-	it("records queue and print immediately, idle or busy, because neither has an extension-visible consume event", () => {
+	it("records note and print immediately, idle or busy, because neither has an extension-visible consume event", () => {
 		for (const idle of [true, false]) {
 			const ledger = new DeliveryLedger();
 			const runtime = harness(idle);
-			routeFeedback(ledger, runtime.gateway, decision("queue", "later"), "quality", false);
-			expect(ledger.contextFor("quality")).toEqual({ lastByThisHead: { delivery: "queue", message: "later" }, pending: [] });
+			routeFeedback(ledger, runtime.gateway, decision("note", "later"), "quality", false);
+			expect(ledger.contextFor("quality")).toEqual({ lastByThisHead: { delivery: "note", message: "later" }, pending: [] });
 			routeFeedback(ledger, runtime.gateway, decision("print", "rotate it"), "security", false);
 			expect(ledger.contextFor("security").lastByThisHead).toEqual({ delivery: "print", message: "rotate it" });
 			expect(runtime.persisted).toHaveLength(2);
@@ -227,7 +227,7 @@ describe("delivery ledger and router", () => {
 		ledger.stage({ head: "security", delivery: "steer", message: "pending" }, "[pi-hydra security] pending", "queued");
 		ledger.restore([
 			{ head: "security", delivery: "steer", message: "old", timestamp: 1 },
-			{ head: "quality", delivery: "queue", message: "last", timestamp: 2 },
+			{ head: "quality", delivery: "note", message: "last", timestamp: 2 },
 		]);
 		expect(ledger.contextFor("security")).toEqual({
 			lastByThisHead: { delivery: "steer", message: "old" },

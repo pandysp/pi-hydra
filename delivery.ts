@@ -162,7 +162,7 @@ export function routeFeedback(
 	}
 
 	const idle = gateway.isIdle();
-	if (delivery === "queue") {
+	if (delivery === "note") {
 		try {
 			gateway.sendMessage(
 				{
@@ -180,7 +180,7 @@ export function routeFeedback(
 			persistSuccess(ledger, gateway, record);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);
-			gateway.notify(`hydra: queue delivery failed: ${reason}`, "warning");
+			gateway.notify(`hydra: note delivery failed: ${reason}`, "warning");
 		}
 		return delivery;
 	}
