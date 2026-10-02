@@ -27,7 +27,7 @@ export const DIAGNOSTIC_PROMPTS = {
 // A `tools:` entry outside this set can never run (hydra has no execute for
 // other extensions' tools or MCP), so discovery warns about it; the head
 // still loads, since the rest of its list works.
-const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
 
 // "call" is a head added by a hydra call without a file. It exists only while
 // it is active; the saved config is what brings it back on resume.

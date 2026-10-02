@@ -23,7 +23,7 @@ This document explains the system. Detailed provider behavior, economics, dates,
 
 hydra reviews at two lifecycle points.
 
-**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped for active heads, also when none were active yet, so a head added later in the run does not lose its first check. Usually the preceding state was already reviewed at the previous run end. After a cancelled run it was not, and the next eligible snapshot or run end reviews it along with the rest. A fresh session likewise receives its first review at an eligible later snapshot or run end. One-off heads (`lifetime: "once"`) are held until the next review point, including the first response of a run, so their single check sees the request that asked for it; a run end serves as that point when no response follows.
+**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped for active heads, also when none were active yet, so a head added later in the run does not lose its first check. Usually the preceding state was already reviewed at the previous run end. After a cancelled run it was not, and the next eligible snapshot or run end reviews it along with the rest. A fresh session likewise receives its first review at an eligible later snapshot or run end. One-off heads (`lifetime: "once"`) are held until the next review point, including the first response of a run, so their single check sees the request that asked for it; a run end serves as that point when no response follows. One-offs still held when their run is cancelled, the conversation switches branches or the session ends are dropped with a warning.
 
 **Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped.
 
@@ -49,7 +49,7 @@ Each prompt combines the head's instructions with Hydra's rules:
 
 The rule for every head is "split unless measured otherwise": Anthropic and ds4 measured better combined, so every other route, including a provider added later, gets the split. ds4 [moves developer messages to the top of the prompt](providers.md#ds4), which breaks the split's cache match. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
-A head added with `ends_when` is also told its condition and how to report `done`; every other head never sees the word.
+A head added with `ends_when` is also told its condition and how to report `done`. No other head's handoff mentions `done`; the field still appears in the shared `hydra` tool definition, which has to stay identical for cache reuse.
 
 The rules for heads without tools describe what `steer` does. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
@@ -72,7 +72,7 @@ A reusable head is fully defined by one Markdown file. A head added without a fi
 
 Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
 
-The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Full authoring behavior belongs in [Writing heads](heads.md).
+The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to a point before any saved set applies the same launch default (flag, else autostart) instead of keeping the heads of the branch left behind. Full authoring behavior belongs in [Writing heads](heads.md).
 
 ## Per-head scheduling
 

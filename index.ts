@@ -32,7 +32,7 @@ import type {
 } from "./utils.ts";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery.ts";
 import type { DeliveryGateway } from "./delivery.ts";
-import { DIAGNOSTIC_PROMPTS, HeadRegistry } from "./heads.ts";
+import { DIAGNOSTIC_PROMPTS, EXECUTABLE_TOOL_NAMES, HeadRegistry } from "./heads.ts";
 import type { HeadRegistryGateway } from "./heads.ts";
 import type { PersistedDelivery } from "./utils.ts";
 import {
@@ -1100,25 +1100,42 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		registry.discover(gateway, ctx.cwd);
 		const restored = restoreFromBranch(ctx);
 		// A flag on this launch beats whatever was saved, because it is what
-		// the user just asked for. A flag-chosen set is then saved, since it
-		// is the only way to configure a headless run. Heads that started
-		// themselves are not saved, so a later session reads the files again.
-		const flag = pi.getFlag("hydra-heads");
-		if (typeof flag === "string" && flag.length > 0) {
-			if (flag.trim() === "none") {
-				registry.clearHeadSet(gateway);
-			} else if (!registry.setHeadSet(gateway, parseHeadList(flag))) {
-				ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${registry.activeSet().join("+") || "no heads"}`, "warning");
-			}
-		} else if (!restored) {
-			registry.applyAutostart();
+		// the user just asked for.
+		if (launchFlag() !== null || !restored) {
+			applyLaunchHeads(ctx);
 		}
 		updateFooter(ctx);
 	});
 
+	function launchFlag(): string | null {
+		const flag = pi.getFlag("hydra-heads");
+		return typeof flag === "string" && flag.length > 0 ? flag : null;
+	}
+
+	// The heads this launch starts with when no saved set applies: the flag's,
+	// else the autostart heads. A flag-chosen set is saved, since it is the
+	// only way to configure a headless run. Heads that started themselves are
+	// not saved, so a later session reads the files again.
+	function applyLaunchHeads(ctx: ExtensionContext) {
+		const gateway = registryGateway(ctx);
+		const flag = launchFlag();
+		if (flag === null) {
+			registry.applyAutostart();
+		} else if (flag.trim() === "none") {
+			registry.clearHeadSet(gateway);
+		} else if (!registry.setHeadSet(gateway, parseHeadList(flag))) {
+			ctx.ui.notify(`hydra: --hydra-heads matched nothing; observing with ${registry.activeSet().join("+") || "no heads"}`, "warning");
+		}
+	}
+
 	pi.on("session_tree", (_event, ctx) => {
-		// Branch navigation changes which hydra entries are in scope.
-		restoreFromBranch(ctx);
+		// Branch navigation changes which hydra entries are in scope. A branch
+		// without a saved set gets this launch's starting heads back, not the
+		// heads of the branch just left.
+		if (!restoreFromBranch(ctx)) {
+			applyLaunchHeads(ctx);
+			updateFooter(ctx);
+		}
 	});
 
 	pi.on("agent_start", (_event, ctx) => {
@@ -1234,6 +1251,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				notifyUser(ctx, "hydra: the driver hit a continuation error; codex observations retreat to their own cache scope for the rest of this session", "warning");
 			}
 		}
+		// Before the early returns: a cancelled run may end with nothing to
+		// review, and its one-offs must not wait into the next run.
+		if (ctx.signal?.aborted) {
+			dropHeldOneOffs(ctx, "its run was cancelled");
+		}
 		if ((registry.activeSet().length === 0 && heldOneOffs.size === 0) || !capturedPayload || !capturedThisRun) {
 			return;
 		}
@@ -1311,6 +1333,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		if (params.operation === "add") {
 			const { source, lifetime } = params;
+			if (registry.activeSet().some((active) => active in DIAGNOSTIC_PROMPTS)) {
+				throw new Error("A diagnostic head is running and holds the active set. Add heads after it has fired.");
+			}
+			if (source.kind === "inline") {
+				const unusable = (source.tools ?? []).filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool));
+				if (unusable.length > 0) {
+					throw new Error(`Hydra cannot run ${unusable.map((tool) => `"${tool}"`).join(", ")} for a head. Usable tools: ${EXECUTABLE_TOOL_NAMES.join(", ")}.`);
+				}
+			}
 			const plain = source.kind === "file" && lifetime.kind === "ongoing" && lifetime.endsWhen === undefined;
 			if (source.kind === "inline") {
 				if (registry.exists(name)) {
@@ -1328,10 +1359,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				}
 				return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
 			}
+			// A check still waiting or running under this name would share its
+			// lane with the new head, and an old answer could act on the new one.
+			if (heldOneOffs.has(name) || scheduler.isBusy(name)) {
+				throw new Error(`"${name}" is still finishing a check. Wait until it has finished, or use a different name.`);
+			}
 			if (lifetime.kind === "once") {
-				if (heldOneOffs.has(name) || scheduler.isBusy(name)) {
-					throw new Error(`"${name}" is still running a check. Wait until it has finished, or use a different name.`);
-				}
 				const head = registry.get(name);
 				heldOneOffs.set(
 					name,

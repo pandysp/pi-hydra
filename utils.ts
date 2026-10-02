@@ -642,19 +642,34 @@ export interface AddedHead {
 	endsWhen?: string;
 }
 
-/** The saved `added` record; malformed entries are skipped. */
+/**
+ * The saved `added` record. An entry the add call could not have produced is
+ * skipped rather than repaired, so its head counts as missing and the caller
+ * says so; repairing it could, for example, turn a broken tool list into "all
+ * tools".
+ */
 export function savedAddedHeads(config: { added?: unknown }): Record<string, AddedHead> {
-	const record = (value: unknown) => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+	const record = (value: unknown) => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null);
+	const text = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value : null);
 	const added: Record<string, AddedHead> = {};
-	for (const [name, value] of Object.entries(record(config.added))) {
-		if (!isValidHeadName(name)) continue;
-		const { withoutFile, endsWhen } = record(value);
-		const { instructions, tools } = record(withoutFile);
+	for (const [name, value] of Object.entries(record(config.added) ?? {})) {
+		const entry = record(value);
+		if (!isValidHeadName(name) || entry === null) continue;
 		const head: AddedHead = {};
-		if (typeof instructions === "string") {
-			head.withoutFile = { instructions, tools: Array.isArray(tools) ? tools.filter((tool): tool is string => typeof tool === "string") : undefined };
+		if (entry.endsWhen !== undefined) {
+			const endsWhen = text(entry.endsWhen);
+			if (endsWhen === null) continue;
+			head.endsWhen = endsWhen;
 		}
-		if (typeof endsWhen === "string") head.endsWhen = endsWhen;
+		if (entry.withoutFile !== undefined) {
+			const withoutFile = record(entry.withoutFile);
+			const instructions = text(withoutFile?.instructions);
+			const tools = withoutFile?.tools;
+			const toolsValid = tools === undefined || (Array.isArray(tools) && tools.every((tool) => typeof tool === "string"));
+			// A head without a file always has an end; one without is not something an add call makes.
+			if (instructions === null || !toolsValid || head.endsWhen === undefined) continue;
+			head.withoutFile = { instructions, tools: tools as string[] | undefined };
+		}
 		if (head.withoutFile || head.endsWhen !== undefined) added[name] = head;
 	}
 	return added;

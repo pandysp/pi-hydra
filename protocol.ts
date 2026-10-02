@@ -27,7 +27,7 @@ export const hydraToolParameters = Type.Object(
 		lifetime: Type.Optional(
 			StringEnum(HEAD_LIFETIMES, {
 				description:
-					'manage_heads add only. "ongoing" (default): the head checks after each response of the main assistant until it is removed or its ends_when is met. "once": one check that starts right after this call and sees the conversation up to it; it runs in the background, then the head is gone and nothing is saved. Its feedback reaches you later, like any head\'s.',
+					'manage_heads add only. "ongoing" (default): the head checks after each response of the main assistant until it is removed or its ends_when is met. "once": one check, which starts with your next response and sees the conversation up to this call; it runs in the background, then the head is gone and nothing is saved. Its feedback reaches you later, like any head\'s.',
 			}),
 		),
 		ends_when: Type.Optional(
@@ -238,7 +238,8 @@ export function hydraToolDescription(userHeadDir: string): string {
 		'an `ends_when`. Use "once" for a job (check or do something, then',
 		"report) and `ends_when` for watching over several steps. Write a head",
 		"file only for a head worth reusing in later sessions. Adding an active",
-		"head or removing an inactive one changes nothing. When a head changes",
+		"head or removing an inactive one changes nothing; adding an active head",
+		'with "once" or `ends_when` is an error. When a head changes',
 		"the active set, Hydra steers that explanation to the main assistant as",
 		"the head. Only a head, during its check, can use",
 		"`complete_observation`. Keep feedback short, ideally under 240",
