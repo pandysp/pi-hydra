@@ -430,7 +430,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		usages: ObservationUsage[];
 		iterations: number;
 		toolsUsed: string[];
-		selfRemoved: boolean;
 		loopStopReason: ObservationLoopStopReason;
 	}
 
@@ -438,7 +437,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	interface ObservationToolState {
 		completion: Decision | null;
-		selfRemoved: boolean;
 	}
 
 	function clip(text: string, max: number): string {
@@ -593,7 +591,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			iterations,
 			toolsUsed,
 			decisions: outcomeDecisions,
-			selfRemoved,
 			loopStopReason,
 			parseError,
 			errorKind,
@@ -609,9 +606,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 		const thinking = response.content.flatMap((block) => (block.type === "thinking" ? [block.thinking] : [])).join("\n");
-		// A head that removes itself is finished by definition. The removal has
-		// already been reported to the user, and asking a head that no longer
-		// exists for a decision would only be slower and open a race.
 		let decisions = outcomeDecisions;
 		if (errorKind) {
 			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
@@ -622,9 +616,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				errorKind === "provider-error" ? "error" : "warning",
 			);
 			decisions = [{ action: "noop", reason: errorKind, message: "" }];
-		}
-		if ((!decisions || decisions.length === 0) && selfRemoved) {
-			decisions = [{ action: "noop", reason: "completed by self-removal", message: "" }];
 		}
 		if ((!decisions || decisions.length === 0) && job.completionMode === "json") {
 			const parsed = parseDecision(text);
@@ -753,7 +744,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				iterations: 1,
 				toolsUsed: [],
 				...classified,
-				selfRemoved: false,
 				loopStopReason: null,
 			};
 		} catch (error) {
@@ -788,10 +778,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
 		let iterations = 0;
-		const toolState: ObservationToolState = {
-			completion: null,
-			selfRemoved: false,
-		};
+		const toolState: ObservationToolState = { completion: null };
 		let loopStopReason: ObservationLoopStopReason = null;
 		// Whether this observation is running inside the driver's own session.
 		// Fixed for the whole loop, and the reason the loop can be stopped by
@@ -861,9 +848,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						}
 						if (sharedSession && codexShareLostReason !== null) {
 							loopStopReason = "share-loss";
-						} else if (toolState.completion !== null || toolState.selfRemoved) {
+						} else if (toolState.completion !== null) {
 							return { action: "end" as const };
 						} else if (!registry.isActive(job.head)) {
+							// Also how a head that removed itself finishes: no further
+							// model call, because nobody is left to ask for a decision.
 							loopStopReason = "deactivated";
 						}
 						return loopStopReason !== null ? { action: "end" as const } : undefined;
@@ -932,7 +921,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			parseError: null,
 			errorKind: null,
 			attemptedTools: [],
-			selfRemoved: toolState.selfRemoved,
 			loopStopReason,
 		};
 	}
@@ -1314,14 +1302,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return result;
 		}
 
-		// Observer tool results are hidden from both user and driver, and
-		// removing itself ends the head's turn, so Hydra steers the receipt.
-		// Driver-originated calls skip this path because their tool result is
-		// already visible.
+		// Observer tool results are hidden from both user and driver, and a
+		// head that removed itself gets no further turn, so Hydra steers the
+		// receipt. Driver-originated calls skip this path because their tool
+		// result is already visible.
 		steerForHead(ctx, job.head, "head set changed", receipt, job.runSignal);
-		const selfRemoved = params.operation === "remove" && params.head.trim() === job.head;
-		state.selfRemoved ||= selfRemoved;
-		return { ...result, terminate: selfRemoved };
+		return result;
 	}
 
 	const hydraToolDefinition = {

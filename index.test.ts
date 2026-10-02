@@ -504,6 +504,31 @@ describe("observation loop stops", () => {
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("codex cache sharing lost mid-loop"), "warning");
 	});
 
+	it.each(["anthropic-messages", "openai-codex-responses"] as const)("%s: a head that removes itself finishes in that turn, with no further call or warning", async (api) => {
+		const h = await harness({ api, tools: "hydra" });
+		await h.observe(answer([tool("hydra", { action: "manage_heads", operation: "remove", head: "critic", message: "my job here is over" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.calls()[0].action).toBe("noop");
+		expect(h.notify).not.toHaveBeenCalledWith(expect.anything(), "warning");
+		expect(JSON.stringify(vi.mocked(h.pi.sendUserMessage).mock.calls)).toContain("[pi-hydra critic] automatic notice: Removed critic — my job here is over");
+	});
+
+	it("blocks a self-removal sent together with other work, so the head sees that work's result first", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: "hydra, edit" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		const removal = tool("hydra", { action: "manage_heads", operation: "remove", head: "critic", message: "notes updated" });
+		await h.observe(
+			answer([tool("edit", { path: "work.txt", edits: [{ oldText: "missing", newText: "x" }] }), removal], "toolUse"),
+			answer([removal], "toolUse"),
+		);
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(2);
+		const secondTurn = JSON.stringify(h.payloads[1]);
+		expect(secondTurn).toContain("must be the only tool call in their turn");
+		expect(secondTurn).toContain("Could not find");
+	});
+
 	it("stops a head turned off part-way through its check", async () => {
 		const h = await harness({ tools: "read" });
 		writeFileSync(join(h.cwd, "work.txt"), "content");

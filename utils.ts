@@ -553,7 +553,7 @@ export function buildAnthropicObservationPrompt(
 
 ${headInstructions(instruction)}
 
-When done, reply with one JSON object, nothing else:
+When finished, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
 Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}].</system-reminder>`;

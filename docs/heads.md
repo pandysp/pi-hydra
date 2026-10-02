@@ -71,7 +71,7 @@ A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. It
 
 Authoring guidance for heads that act:
 
-1. **Say what to do.** State the head's purpose, when it should act, what work to do, how to know it is done, and who needs the result. `PURPOSE / ACT WHEN / WORK / DONE WHEN / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
+1. **Say what to do.** State the head's purpose, when it should act, what work to do, and who needs the result. `PURPOSE / ACT WHEN / WORK / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
 2. **Report what the main assistant needs, not routine work.** Hydra does not announce a head's writes; each acting head is told to report changes the main assistant needs to know about and to keep routine notes, logs or scores to itself.
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
 4. **No turn or cost limit.** Hydra does not stop a head just because it has made a set number of model or tool calls. Model-call counts and cost are shown in `/hydra-stats`. Finishing the check, turning the head off, closing the session, or unsafe cache sharing still stops it. Provider and tool limits still apply.
@@ -114,8 +114,6 @@ PURPOSE: Keep the active heads matched to the work at hand.
 ACT WHEN: The current phase or risks are not fully covered by the active heads.
 WORK: Add fitting heads, remove irrelevant heads, and write then activate a new
 head when no existing head covers a current risk.
-DONE WHEN: The active heads cover every current phase and risk without
-irrelevant heads.
 DELIVER: Explain each crew change in manage_heads.
 Otherwise complete with none.
 ```
@@ -133,7 +131,6 @@ reactions to their findings.
 ACT WHEN: The user dismisses, contradicts, or ignores another head's finding.
 WORK: Sharpen that head's file by narrowing its focus, adding a boundary, or
 shortening its instruction. Edit at most one head and never your own.
-DONE WHEN: The edited head excludes the kind of finding the user rejected.
 DELIVER: Steer the edit you made; complete with none when the act condition is
 not met.
 ```
