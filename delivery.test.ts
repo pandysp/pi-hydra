@@ -47,32 +47,17 @@ const decision = (action: "print" | "queue" | "steer" | "interrupt", message = "
 });
 
 describe("delivery ledger and router", () => {
-	it("keeps only the latest successful and live queue/steer deliveries for this head", () => {
+	it("keeps only the latest successful and live steer deliveries for this head", () => {
 		const ledger = new DeliveryLedger();
 		ledger.succeed({ head: "security", delivery: "steer", message: "first" });
 		ledger.succeed({ head: "security", delivery: "print", message: "latest" });
-		ledger.stage(
-			{ head: "quality", delivery: "queue", message: "queued" },
-			{ role: "custom", customType: "hydra-feedback", content: "[pi-hydra quality] queued" },
-			"queued",
-		);
-		ledger.stage(
-			{ head: "security", delivery: "steer", message: "same-head pending" },
-			{ role: "user", content: "[pi-hydra security] same-head pending" },
-			"queued",
-		);
-		ledger.stage(
-			{ head: "security", delivery: "interrupt", message: "stop" },
-			{ role: "user", content: "[pi-hydra security] stop" },
-			"queued",
-		);
+		ledger.stage({ head: "security", delivery: "steer", message: "same-head pending" }, "[pi-hydra security] same-head pending", "queued");
+		ledger.stage({ head: "security", delivery: "interrupt", message: "stop" }, "[pi-hydra security] stop", "queued");
+		ledger.stage({ head: "quality", delivery: "steer", message: "other head" }, "[pi-hydra quality] other head", "queued");
 		expect(ledger.contextFor("security")).toEqual({
 			lastByThisHead: { delivery: "print", message: "latest" },
 			pending: [{ head: "security", delivery: "steer", message: "same-head pending" }],
 		});
-		expect(ledger.contextFor("quality").pending).toEqual([
-			{ head: "quality", delivery: "queue", message: "queued" },
-		]);
 	});
 
 	it("moves a matching queued message from pending to successful on message_start", () => {
@@ -83,7 +68,7 @@ describe("delivery ledger and router", () => {
 		expect(ledger.contextFor("security").pending).toEqual([
 			{ head: "security", delivery: "steer", message: "fix it" },
 		]);
-		consumeDeliveredMessage(ledger, runtime.gateway, { role: "user", content: "[pi-hydra security] fix it" });
+		consumeDeliveredMessage(ledger, runtime.gateway, "[pi-hydra security] fix it");
 		expect(ledger.contextFor("security")).toEqual({
 			lastByThisHead: { delivery: "steer", message: "fix it" },
 			pending: [],
@@ -156,33 +141,16 @@ describe("delivery ledger and router", () => {
 		]);
 	});
 
-	it("tracks a streaming follow-up until its custom message reaches the driver", () => {
-		const ledger = new DeliveryLedger();
-		const runtime = harness(false);
-		routeFeedback(ledger, runtime.gateway, decision("queue", "check later"), "quality", false);
-		expect(ledger.contextFor("security").pending).toEqual([]);
-		expect(ledger.contextFor("quality").pending).toEqual([
-			{ head: "quality", delivery: "queue", message: "check later" },
-		]);
-		consumeDeliveredMessage(ledger, runtime.gateway, {
-			role: "custom",
-			customType: "hydra-feedback",
-			content: "[pi-hydra quality] check later",
-		});
-		expect(ledger.contextFor("quality")).toEqual({
-			lastByThisHead: { delivery: "queue", message: "check later" },
-			pending: [],
-		});
-	});
-
-	it("records idle queue and print immediately because neither has an extension-visible consume event", () => {
-		const ledger = new DeliveryLedger();
-		const runtime = harness(true);
-		routeFeedback(ledger, runtime.gateway, decision("queue", "later"), "quality", false);
-		expect(ledger.contextFor("quality").lastByThisHead).toEqual({ delivery: "queue", message: "later" });
-		routeFeedback(ledger, runtime.gateway, decision("print", "rotate it"), "security", false);
-		expect(ledger.contextFor("security").lastByThisHead).toEqual({ delivery: "print", message: "rotate it" });
-		expect(runtime.persisted).toHaveLength(2);
+	it("records queue and print immediately, idle or busy, because neither has an extension-visible consume event", () => {
+		for (const idle of [true, false]) {
+			const ledger = new DeliveryLedger();
+			const runtime = harness(idle);
+			routeFeedback(ledger, runtime.gateway, decision("queue", "later"), "quality", false);
+			expect(ledger.contextFor("quality")).toEqual({ lastByThisHead: { delivery: "queue", message: "later" }, pending: [] });
+			routeFeedback(ledger, runtime.gateway, decision("print", "rotate it"), "security", false);
+			expect(ledger.contextFor("security").lastByThisHead).toEqual({ delivery: "print", message: "rotate it" });
+			expect(runtime.persisted).toHaveLength(2);
+		}
 	});
 
 	it("does not record synchronous send failures and clears settled orphans", () => {
@@ -192,12 +160,8 @@ describe("delivery ledger and router", () => {
 		routeFeedback(ledger, runtime.gateway, decision("steer"), "security", false);
 		expect(ledger.contextFor("security")).toEqual({ lastByThisHead: null, pending: [] });
 
-		ledger.stage(
-			{ head: "quality", delivery: "queue", message: "orphan" },
-			{ role: "custom", customType: "hydra-feedback", content: "[pi-hydra quality] orphan" },
-			"queued",
-		);
-		expect(ledger.settle()).toEqual([{ head: "quality", delivery: "queue", message: "orphan" }]);
+		ledger.stage({ head: "quality", delivery: "steer", message: "orphan" }, "[pi-hydra quality] orphan", "queued");
+		expect(ledger.settle()).toEqual([{ head: "quality", delivery: "steer", message: "orphan" }]);
 		expect(ledger.contextFor("quality")).toEqual({ lastByThisHead: null, pending: [] });
 	});
 
@@ -208,7 +172,7 @@ describe("delivery ledger and router", () => {
 		expect(ledger.contextFor("security").pending).toEqual([
 			{ head: "security", delivery: "steer", message: "expected" },
 		]);
-		consumeDeliveredMessage(ledger, runtime.gateway, { role: "user", content: "ordinary user input" });
+		consumeDeliveredMessage(ledger, runtime.gateway, "ordinary user input");
 		expect(ledger.contextFor("security")).toEqual({ lastByThisHead: null, pending: [] });
 		expect(runtime.persisted).toEqual([]);
 	});
@@ -260,11 +224,7 @@ describe("delivery ledger and router", () => {
 
 	it("restores only successful branch entries and drops live pending state", () => {
 		const ledger = new DeliveryLedger();
-		ledger.stage(
-			{ head: "security", delivery: "steer", message: "pending" },
-			{ role: "user", content: "[pi-hydra security] pending" },
-			"queued",
-		);
+		ledger.stage({ head: "security", delivery: "steer", message: "pending" }, "[pi-hydra security] pending", "queued");
 		ledger.restore([
 			{ head: "security", delivery: "steer", message: "old", timestamp: 1 },
 			{ head: "quality", delivery: "queue", message: "last", timestamp: 2 },

@@ -23,9 +23,9 @@ This document explains the system. Detailed provider behavior, economics, dates,
 
 hydra reviews at two lifecycle points.
 
-**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped unconditionally; on later runs the preceding state was already reviewed at the previous run end, while a fresh session still receives its first review at an eligible later snapshot or run end.
+**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped unconditionally. Usually the preceding state was already reviewed at the previous run end. After a cancelled run it was not, and the next eligible snapshot or run end reviews it along with the rest. A fresh session likewise receives its first review at an eligible later snapshot or run end.
 
-**Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind.
+**Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped.
 
 The provider-specific timing and cache consequences are canonical in [Provider lifecycle](providers.md#provider-lifecycle).
 
@@ -98,7 +98,7 @@ In an open session:
 - `interrupt` stops active work and starts a new run with the finding. If already idle, it just starts the new run.
 - No finding means no message. Hydra saves the result as `noop`.
 
-During shutdown, Hydra uses its internal `queue` route to save `steer` and `interrupt` messages instead of starting idle work. `queue` also supports older sessions, but is not offered to heads.
+During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` and `interrupt` messages by its internal `queue` route: it adds them to the conversation without starting a turn. `queue` also supports older sessions, but is not offered to heads.
 
 Hydra groups findings from each answer into at most two messages. All `print` findings go in one user-only note. All `steer` and `interrupt` findings go in one message for the main assistant, which interrupts if any finding chose it. Every accepted finding appears once; user-only findings never reach the main assistant. An interrupt based on an old copy of the conversation becomes a steer, so it does not stop newer work.
 
@@ -106,7 +106,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant. Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 

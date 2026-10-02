@@ -43,7 +43,9 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void) {
+// busy: the driver calls the checkpoint tool before its final answer, twice
+// for true or the given number of times; the last call holds until released.
+async function consumer(busy: boolean | number, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void) {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -55,6 +57,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 	vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	const settingsManager = SettingsManager.inMemory({ transport: "websocket", compaction: { enabled: false }, retry: { enabled: false } });
 	const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(agentDir, "models-store.json"), allowModelNetwork: false });
+	const checkpointCalls = busy === true ? 2 : busy || 0;
 	const driverPayloads: any[] = [];
 	const observerPayloads: any[] = [];
 	const hold = deferred();
@@ -75,7 +78,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 			return response([{ type: "text", text: '{"findings":[]}' }]);
 		}
 		driverPayloads.push(payload);
-		if (busy && driverPayloads.length <= 2) return response([{ type: "toolCall", id: `checkpoint-${driverPayloads.length}`, name: "checkpoint", arguments: {} }]);
+		if (driverPayloads.length <= checkpointCalls) return response([{ type: "toolCall", id: `checkpoint-${driverPayloads.length}`, name: "checkpoint", arguments: {} }]);
 		if (pauseFinalDriver) await finalDriver.promise;
 		return response([{ type: "text", text: "Driver done." }]);
 	});
@@ -103,7 +106,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 			api.registerTool({ name: "checkpoint", label: "Checkpoint", description: "Test checkpoint", parameters: Type.Object({}),
 				execute: async () => {
 					checkpoints++;
-					if (checkpoints === 2) { entered.resolve(); await hold.promise; }
+					if (checkpoints === checkpointCalls) { entered.resolve(); await hold.promise; }
 					return { content: [{ type: "text", text: "Continue" }], details: {} };
 				},
 			});
@@ -293,6 +296,94 @@ describe("Pi consumer context and session", () => {
 		await h.session.waitForIdle();
 		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain(NOTICE);
 		expect(saved(h, NOTICE)).toHaveLength(0);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a run cancelled during a tool gets no run-end review; the next run does", async () => {
+		const h = await consumer(true, [{ type: "text", text: '{"findings":[]}' }]);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		await h.session.prompt("Finish now.");
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		const runEnds = h.entries("hydra-call").filter(e => (e as any).data.kind === "run-end");
+		expect(runEnds).toHaveLength(1);
+		expect(JSON.stringify(h.observerPayloads.at(-1))).toContain("Driver done.");
+		expect(h.errors).toEqual([]);
+	});
+
+	for (const release of ["after the cancelled run ended", "while the cancelled run is still busy"] as const) {
+		it(`a review still running when the user cancels is saved, and its steer starts no turn (released ${release})`, async () => {
+			const h = await consumer(true, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"LATE-STEER"}]}' }]);
+			const observer = deferred();
+			h.holdObserver(observer.promise);
+			const running = h.session.prompt("Work through checkpoints.");
+			await h.entered.promise;
+			await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+			const aborted = h.session.abort();
+			if (release === "while the cancelled run is still busy") {
+				// The tool still holds, so the run has not ended when the review does.
+				observer.resolve();
+				await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+			}
+			h.hold.resolve();
+			await Promise.all([running, aborted]);
+			const driverRequests = h.driverPayloads.length;
+			observer.resolve();
+			await vi.waitFor(() => expect(h.entries("hydra-feedback").filter(e => JSON.stringify((e as any).content).includes("LATE-STEER"))).toHaveLength(1));
+			// A turn started by the steer would still be running or finished here.
+			await h.session.waitForIdle();
+			expect(h.driverPayloads).toHaveLength(driverRequests);
+			expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+			expect(h.entries("hydra-call")).toHaveLength(1);
+			expect(h.entries("hydra-delivery")).toHaveLength(1);
+			expect(h.errors).toEqual([]);
+		});
+	}
+
+	it("a review still waiting when the user cancels does not start", async () => {
+		const h = await consumer(3, [{ type: "text", text: '{"findings":[]}' }]);
+		const observer = deferred();
+		h.holdObserver(observer.promise);
+		const running = h.session.prompt("Work through checkpoints.");
+		// The first mid-run review is running and held; the second waits behind it.
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		observer.resolve();
+		// Each head reviews one snapshot at a time, so once the next run's
+		// review (the one that sees "Driver done.") is saved, every earlier
+		// review has been started or skipped.
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.observerPayloads.some(p => JSON.stringify(p).includes("Driver done."))).toBe(true));
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(h.observerPayloads.length));
+		expect(h.entries("hydra-call").map(e => (e as any).data.kind)).toEqual(["piggyback", "run-end"]);
+		expect(h.observerPayloads).toHaveLength(2);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a head-file notice from a cancelled run's review starts no turn", async () => {
+		const h = await consumer(true, [{ type: "toolCall", id: "leave", name: "hydra", arguments: { action: "manage_heads", operation: "remove", head: "critic", message: "LEAVING" } }], "hydra");
+		const observer = deferred();
+		h.holdObserver(observer.promise);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		const driverRequests = h.driverPayloads.length;
+		// Head management rereads the head files; a missing one makes Hydra steer.
+		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
+		observer.resolve();
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		await h.session.waitForIdle();
+		expect(h.driverPayloads).toHaveLength(driverRequests);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
 		expect(h.errors).toEqual([]);
 	});
 

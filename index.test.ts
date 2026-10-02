@@ -289,7 +289,7 @@ describe("one error notice per head and error type", () => {
 		await shutdown;
 		expect(h.calls()).toHaveLength(1);
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /) }), { deliverAs: "followUp", triggerTurn: false });
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /) }), { triggerTurn: false });
 	});
 
 	it("does not inject a response arriving after cancellation", async () => {

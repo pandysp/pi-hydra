@@ -170,6 +170,9 @@ interface ObservationSeed {
 	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
 	kind: ObserveKind;
 	branchGeneration: number;
+	// The reviewed run's cancel signal, copied when the review is scheduled:
+	// ctx.signal always returns the current run's.
+	runSignal: AbortSignal | undefined;
 }
 
 interface Observation extends ObservationSeed {
@@ -233,14 +236,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// The registry's pi effects, rebuilt per call so messages carry the
 	// caller's context; mirrors deliveryGateway below.
-	function registryGateway(ctx: ExtensionContext): HeadRegistryGateway {
+	function registryGateway(ctx: ExtensionContext, runSignal?: AbortSignal): HeadRegistryGateway {
 		return {
 			readDir: (dir) => readdirSync(dir),
 			readFile: (path) => readFileSync(path, "utf8"),
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
-			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message),
+			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message, runSignal),
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
 			onActiveSetChanged: () => updateFooter(ctx),
@@ -326,7 +329,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let currentTurnIndex = 0;
 
 	const scheduler = new HeadScheduler<ObservationSeed>({
-		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration,
+		// Waiting reviews of a cancelled run don't start, so nothing new begins
+		// after Escape. That point only gets reviewed if the user writes again.
+		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration && !seed.runSignal?.aborted,
 		observe: async (seed, signal) => {
 			// What has already been delivered is looked up here, not when the
 			// observation was queued. A waiting observation can sit behind one
@@ -720,7 +725,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// A decision formed on an outdated snapshot may steer but no longer
 		// abort: the driver has already moved on.
 		for (const decision of decisions) {
-			routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload);
+			routeDecision(job.ctx, decision, job.head, job.payload !== capturedPayload, job.runSignal);
 		}
 	}
 
@@ -1041,13 +1046,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const key = `${job.head}:${result.errorKind}`;
 		if (!report || reportedErrors.has(key)) return;
 		reportedErrors.add(key);
-		steerForHead(job.ctx, job.head, "hydra error notice", report);
+		steerForHead(job.ctx, job.head, "hydra error notice", report, job.runSignal);
 	}
 
 	// Hydra's own messages go out as the head's steer. The label tells them
 	// apart from the head's findings.
-	function steerForHead(ctx: ExtensionContext, head: string, reason: string, fact: string) {
-		routeDecision(ctx, { action: "steer", reason, message: `automatic notice: ${fact}` }, head, false);
+	function steerForHead(ctx: ExtensionContext, head: string, reason: string, fact: string, runSignal?: AbortSignal) {
+		routeDecision(ctx, { action: "steer", reason, message: `automatic notice: ${fact}` }, head, false, runSignal);
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
@@ -1061,14 +1066,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 	}
 
-	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionHead: string, staleSnapshot: boolean) {
-		// In a headless run the session is already being torn down at this
-		// point, so starting a new driver turn here would race the teardown.
-		// The feedback is saved for the next turn instead. Interactive
-		// sessions are not shutting down yet, so they are unaffected.
+	function routeDecision(ctx: ExtensionContext, decision: Decision, decisionHead: string, staleSnapshot: boolean, runSignal?: AbortSignal) {
+		// Feedback that would start a driver turn is added without one when:
+		// - the session is shutting down: in a headless run it is already
+		//   being torn down, so a new turn would race the teardown;
+		// - the reviewed run was cancelled: a new turn could restart work the
+		//   user just stopped. The review itself still finishes and is saved.
+		const holdBack = shuttingDown ? "during shutdown" : runSignal?.aborted ? "after the run was cancelled" : null;
 		const routed =
-			shuttingDown && (decision.action === "steer" || decision.action === "interrupt")
-				? { ...decision, action: "queue" as const, reason: `${decision.reason}; queued during shutdown` }
+			holdBack !== null && (decision.action === "steer" || decision.action === "interrupt")
+				? { ...decision, action: "queue" as const, reason: `${decision.reason}; queued ${holdBack}` }
 				: decision;
 		routeFeedback(deliveryLedger, deliveryGateway(ctx), routed, decisionHead, staleSnapshot);
 	}
@@ -1076,6 +1083,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// One observation per active head, all from the same captured snapshot.
 	// An empty set observes nothing.
 	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
+		// A cancelled run gets no new review. Its last message is not a final
+		// answer, and a review now could restart work the user just stopped.
+		if (ctx.signal?.aborted) {
+			return;
+		}
 		for (const name of registry.activeSet()) {
 			const tools = registry.headTools(name);
 			const head = registry.get(name);
@@ -1089,6 +1101,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				tools,
 				kind,
 				branchGeneration,
+				runSignal: ctx.signal,
 			});
 		}
 	}
@@ -1154,7 +1167,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			responseTimestamp = null;
 			return;
 		}
-		// Capture the driver's exact bytes; never modify them.
+		// Capture the driver's exact bytes; never modify them. Edits made after
+		// this handler (later handlers, transport wrappers) are not in the copy (#43).
 		capturedPayload = structuredClone(event.payload);
 		responseTimestamp = null;
 		capturedThisRun = true;
@@ -1173,18 +1187,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (event.message.role === "user") {
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
-				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), { role: "user", content });
+				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), content);
 			} else {
 				deliveryLedger.discardIdleUserDeliveries();
-			}
-		} else if (event.message.role === "custom" && event.message.customType === "hydra-feedback") {
-			const content = plainMessageText(event.message.content);
-			if (content !== null) {
-				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), {
-					role: "custom",
-					customType: event.message.customType,
-					content,
-				});
 			}
 		}
 		if (event.message.role !== "assistant") {
@@ -1284,10 +1289,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// would be lost. Who may do what is decided here instead: the driver
 	// manages heads, any head reports a decision, and only a head allowed the
 	// hydra tool may manage heads.
-	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext) {
+	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext, runSignal?: AbortSignal) {
 		const name = params.head.trim();
 		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
-		const gateway = registryGateway(ctx);
+		const gateway = registryGateway(ctx, runSignal);
 		registry.discover(gateway, ctx.cwd);
 		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
 		const reply = (text: string, changed = false) => ({
@@ -1350,7 +1355,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			throw new Error(`Head "${job.head}" is not allowed to manage heads`);
 		}
 		const receipt = formatHeadManagementReceipt(params.operation, params.head, params.message);
-		const result = executeHeadManagement(params, ctx);
+		const result = executeHeadManagement(params, ctx, job.runSignal);
 		const changed = (result.details as { changed?: unknown }).changed === true;
 		if (!changed) {
 			return result;
@@ -1360,7 +1365,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// removing itself ends the head's turn, so Hydra steers the receipt.
 		// Driver-originated calls skip this path because their tool result is
 		// already visible.
-		steerForHead(ctx, job.head, "head set changed", receipt);
+		steerForHead(ctx, job.head, "head set changed", receipt, job.runSignal);
 		const selfRemoved = params.operation === "remove" && params.head.trim() === job.head;
 		state.selfRemoved ||= selfRemoved;
 		return { ...result, terminate: selfRemoved };
