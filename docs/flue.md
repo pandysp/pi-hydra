@@ -78,9 +78,10 @@ is created.
 | none | The response settles |
 
 Heads are told this, instead of pi's behaviour. After the agent's next turn the heads check
-again. After `maxRounds` responses with findings, further findings are logged as warnings
-marked unresolved and the response settles, rather than running Flue into its own limit of 32
-continuations, which fails the response.
+again. After `maxRounds` rounds of feedback in one response, further findings are logged as
+warnings marked unresolved and the response settles, rather than running Flue into its own limit
+of 32 continuations, which fails the response. Rounds, and what heads have already sent, are
+counted per response: the next response starts fresh.
 
 A check that fails (provider error, malformed answer, unsupported provider) is logged as a
 warning and recorded; the response settles unchanged.
