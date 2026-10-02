@@ -410,12 +410,15 @@ describe("observation loop stops", () => {
 		// Acting heads too. On the OpenAI routes the instructions arrive as their
 		// own message, which heads otherwise took for the user's latest request.
 		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
-		// Both OpenAI routes split: Hydra's rules follow as a developer message.
-		const input = (h.payloads[0] as { input?: { role?: string; content?: unknown }[] }).input ?? [];
-		const lens = input.findIndex((item) => item.role === "user" && JSON.stringify(item.content).includes("HEAD INSTRUCTIONS:"));
+		// Both OpenAI routes split on every turn of the loop: Hydra's rules follow
+		// the head's instructions as one developer message.
 		if (api !== "anthropic-messages") {
-			expect(input[lens + 1]).toMatchObject({ role: "developer" });
-			expect(JSON.stringify(input[lens + 1].content)).toContain("The previous user message contains all instructions");
+			for (const payload of h.payloads as { input: { role?: string; content?: unknown }[] }[]) {
+				const lens = payload.input.findIndex((item) => item.role === "user" && JSON.stringify(item.content).includes("HEAD INSTRUCTIONS:"));
+				expect(payload.input[lens + 1]).toMatchObject({ role: "developer" });
+				expect(JSON.stringify(payload.input[lens + 1].content)).toContain("The previous user message contains all instructions");
+				expect(payload.input.filter((item) => item.role === "developer")).toHaveLength(1);
+			}
 		}
 	});
 
