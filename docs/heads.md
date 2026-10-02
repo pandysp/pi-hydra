@@ -1,6 +1,6 @@
 # Heads
 
-A head is a helper that checks the main assistant's work. It can report a finding or say nothing. Each head has one Markdown file with its name, allowed tools and instructions. The session records which heads are active. If a head is busy, Hydra keeps only the newest waiting copy of the conversation for its next check.
+A head is a helper that checks the main assistant's work. It can report a finding or say nothing. A reusable head has one Markdown file with its name, allowed tools and instructions; a head needed only for a moment can be added without a file ([Heads for a moment](#heads-for-a-moment)). The session records which heads are active. If a head is busy, Hydra keeps only the newest waiting copy of the conversation for its next check.
 
 ## Head files
 
@@ -46,7 +46,7 @@ mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/hea
 
 (That path is where `pi install` keeps the clone; from your own checkout, `cp heads/*.md ~/.pi/agent/hydra/`.)
 
-Or skip the copy entirely and tell your agent what you want watched; the `hydra` tool teaches it the file format, and a head the agent writes is a file you can read, edit, and delete.
+Or skip the copy and tell your agent what you want watched. The `hydra` tool teaches it both ways: a head without a file for help needed now, and a head file, which you can read, edit, and delete, for a head worth reusing.
 
 ## Activating heads
 
@@ -55,17 +55,37 @@ The active set is session state: which heads observe right now.
 - `/hydra-heads` opens a multi-select picker over every discovered head.
 - `/hydra-heads quality,security` sets the active set directly; `/hydra-heads none` clears it (a head cannot be named `none`; the command uses it to mean clear).
 - `--hydra-heads quality,security` seeds headless runs (`pi -p`).
-- The agent uses `hydra` with `action: "manage_heads"` to add or remove one head at a time.
+- The agent uses `hydra` with `action: "manage_heads"` to add or remove one head at a time, optionally for a moment only ([Heads for a moment](#heads-for-a-moment)).
 
 Several heads observe at once: each active head gets its own observation in parallel and reuses the agent's cached context instead of rebuilding it. Multiple heads still add material, provider-dependent session cost; see [Economics and measurements](providers.md#economics-and-measurements).
 
 Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Saved state never leaks across sessions; autostart is only the cold-start default.
 
+## Heads for a moment
+
+A head written for one task and left on keeps checking, and paying, after every response, and its file stays behind. When help is needed only now, the agent adds a head with an end instead:
+
+| Call (`manage_heads`, `operation: "add"`) | What happens |
+|---|---|
+| `head: "security"` | today's default (`lifetime: "ongoing"`): the head checks after every response until it is removed |
+| `head: "security", lifetime: "once"` | one check of the head file, then it switches off again |
+| `head: "cache-check", lifetime: "once", instructions: "…"` | one check by a head without a file; nothing is written or saved |
+| `head: "refactor-review", instructions: "…", ends_when: "the refactor is committed"` | a head without a file that checks after every response until its condition is met or it is removed |
+| `head: "security", ends_when: "the auth PR is merged"` | the same with a head file; the file is not changed |
+
+Use `once` for a job: check or do something, then report. Use `ends_when` for watching over several steps. `tools` sets what a head without a file may use, with the same meaning as in a head file.
+
+A `once` check starts with the main assistant's next response, so it sees the request that asked for it, and runs in the background like any other check. It also runs on the first response of a run, which Hydra otherwise skips for heads that already reviewed the run before it. If the run is cancelled, the conversation switches branches or the session ends before the check starts, it does not start, and you get a warning.
+
+A head with `ends_when` is told the condition at every check. When it holds, the head adds `"done": true` to its answer ([Decisions](#decisions-when-findings-land)): Hydra delivers its findings, then removes the head and tells the main assistant why. It judges the condition from the conversation, or checks it with its tools: a PR merged on GitHub stays invisible to a judging head until someone mentions it. You or the main assistant can remove it by name at any time. A head without a file and its end condition are saved with the session, so they survive a resume, and they are gone once the head leaves the active set. `/hydra-heads` lists such a head as "no file"; setting the heads with `/hydra-heads quality,security` switches it off for good.
+
+A head without a file must have an end: `once` or `ends_when`. The `hydra` tool rejects any other combination it cannot honor with an error that says why, and changes nothing.
+
 ## Tools: acting heads
 
 By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` limits what a head can run. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
+`tools:` limits what a head can run; for a head without a file, the add call's `tools` does the same. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors, retries and notices.
 
 A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. The reverse also holds: a tool the head may use but the main assistant lacks (`grep`, `find` and `ls` are off by default in Pi) has no definition there, so the head knows it only by name. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
 
@@ -94,6 +114,8 @@ Use `steer` when the main assistant needs the feedback, even if it can wait. The
 
 See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time, shutdown and after you cancel a run.
 
+A head added with `ends_when` reports that its condition is met with `"done": true` next to its findings, or `done: true` in `complete_observation`. Only such a head is told about `done`. If another head sends it anyway, Hydra keeps the head running, delivers its findings, and records `doneIgnored` for that check.
+
 Use `none` only when finishing through the `hydra` tool with nothing to report. Heads using the findings JSON instead return an empty array; `none` is not a valid finding action. Invalid answers follow the [failed-check rules](architecture.md#failed-checks).
 
 The main assistant may have moved on while the head was checking. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Do not repeat feedback still waiting for delivery or a problem that is fixed. Follow up only with evidence that the problem still applies after checking the visible response, or with new evidence that changes the finding. A problem that remains does not prove the feedback was ignored.
@@ -102,38 +124,9 @@ The main assistant may have moved on while the head was checking. Do not repeat 
 
 A head's job can be the other heads. Two ship as examples in [`heads/`](../heads):
 
-The **foreman** reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. Marking it `autostart: true` makes it part of the cold-start set when no explicit flag or saved session set takes precedence.
+The **foreman** ([`heads/foreman.md`](../heads/foreman.md)) reads the task and staffs the line: it infers what the session is doing, matches the active set to the phase, and re-crews at transitions. For a risk of the moment it adds a head without a file, with `once` or `ends_when`, and writes a head file only for a head worth reusing. Marking it `autostart: true` makes it part of the cold-start set when no explicit flag or saved session set takes precedence.
 
-```markdown
----
-name: foreman
-description: Matches the active heads to the work at hand
-tools: hydra, read, write
----
-PURPOSE: Keep the active heads matched to the work at hand.
-ACT WHEN: The current phase or risks are not fully covered by the active heads.
-WORK: Add fitting heads, remove irrelevant heads, and write then activate a new
-head when no existing head covers a current risk.
-DELIVER: Explain each crew change in manage_heads.
-Otherwise complete with none.
-```
-
-The **tuner** reads your reactions and maintains the head files: a head whose findings get dismissed is sharpened for every future session.
-
-```markdown
----
-name: tuner
-description: Judges the other heads' findings and tunes their files
-tools: read, write, edit, ls
----
-PURPOSE: Maintain the other head files in ~/.pi/agent/hydra/ from the user's
-reactions to their findings.
-ACT WHEN: The user dismisses, contradicts, or ignores another head's finding.
-WORK: Sharpen that head's file by narrowing its focus, adding a boundary, or
-shortening its instruction. Edit at most one head and never your own.
-DELIVER: Steer the edit you made; complete with none when the act condition is
-not met.
-```
+The **tuner** ([`heads/tuner.md`](../heads/tuner.md)) reads your reactions and maintains the head files: a head whose findings get dismissed is sharpened for every future session.
 
 The examples use the [management rules](#tools-acting-heads) described above. A foreman can activate the tuner when needed.
 

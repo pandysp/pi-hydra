@@ -153,6 +153,11 @@ interface ObservationSeed {
 	instruction: string; // frozen at scheduling time; delivery facts are not
 	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
 	kind: ObserveKind;
+	// A one-off head is never in the active set: it was asked for one check,
+	// and this seed is that check.
+	oneOff: boolean;
+	// The head's end condition when the check was scheduled, if it has one.
+	endsWhen: string | undefined;
 	branchGeneration: number;
 	// The reviewed run's cancel signal, copied when the review is scheduled:
 	// ctx.signal always returns the current run's.
@@ -230,7 +235,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			notify: (message, level) => notifyUser(ctx, message, level),
 			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message, runSignal),
 			warnOnce: (message) => warnOnce(ctx, message),
-			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
+			persistConfig: (config) => pi.appendEntry<HydraConfig>("hydra-config", config),
 			onActiveSetChanged: () => updateFooter(ctx),
 		};
 	}
@@ -268,6 +273,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		name: string,
 		tools: string[] | undefined,
 		instruction: string,
+		endsWhen: string | undefined,
 	): Pick<Observation, "prompt" | "envelope" | "completionMode"> {
 		if (name in DIAGNOSTIC_PROMPTS) {
 			return {
@@ -276,17 +282,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
-		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext };
+		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext, endsWhen };
 		const split = usesSplitObservationHandoff(ctx.model?.api, ctx.model?.provider);
 		if (!headActs(tools)) {
 			return split
 				? {
 						prompt: headInstructions(instruction),
-						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext),
+						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext, undefined, endsWhen),
 						completionMode: "enum",
 					}
 				: {
-						prompt: buildEnumeratedJudgeObservationPrompt(name, instruction, deliveryContext),
+						prompt: buildEnumeratedJudgeObservationPrompt(name, instruction, deliveryContext, undefined, endsWhen),
 						completionMode: "enum",
 					};
 		}
@@ -322,13 +328,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const scheduler = new HeadScheduler<ObservationSeed>({
 		// Waiting reviews of a cancelled run don't start, so nothing new begins
 		// after Escape. That point only gets reviewed if the user writes again.
-		// Nor do reviews whose request a different model answered.
-		shouldRun: (seed) =>
-			registry.isActive(seed.head) &&
-			seed.branchGeneration === branchGeneration &&
-			!seed.runSignal?.aborted &&
-			seed.ctx.model !== undefined &&
-			seed.model === modelIdentity(seed.ctx.model.provider, seed.ctx.model.id),
+		// Nor do reviews whose request a different model answered. A one-off
+		// that cannot start says why.
+		shouldRun: (seed) => {
+			const blocked =
+				seed.branchGeneration !== branchGeneration ? "the conversation switched branches"
+				: seed.runSignal?.aborted ? "its run was cancelled"
+				: seed.ctx.model === undefined || seed.model !== modelIdentity(seed.ctx.model.provider, seed.ctx.model.id) ? "the model was switched"
+				: null;
+			if (blocked !== null && seed.oneOff) {
+				notifyUser(seed.ctx, `hydra: one-off head "${seed.head}" did not start: ${blocked}`, "warning");
+			}
+			return blocked === null && (seed.oneOff || registry.isActive(seed.head));
+		},
 		observe: async (seed, signal) => {
 			// What has already been delivered is looked up here, not when the
 			// observation was queued. A waiting observation can sit behind one
@@ -337,7 +349,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			// time.
 			const job: Observation = {
 				...seed,
-				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction),
+				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.endsWhen),
 			};
 			await observe(job, signal);
 		},
@@ -382,6 +394,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// failure that repeats every check must not flood the conversation.
 	const reportedErrors = new Set<string>();
 	let branchGeneration = 0;
+	// One-off heads asked for since the last review point. They start with the
+	// next one, so their copy of the conversation includes the request itself.
+	const heldOneOffs = new Map<string, { instruction: string; tools: string[] | undefined }>();
+
+	function dropHeldOneOffs(ctx: ExtensionContext, why: string) {
+		if (heldOneOffs.size === 0) return;
+		notifyUser(ctx, `hydra: one-off ${heldOneOffs.size === 1 ? "head" : "heads"} ${[...heldOneOffs.keys()].join(", ")} did not start: ${why}`, "warning");
+		heldOneOffs.clear();
+	}
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
 	let debugSeq = 0;
@@ -411,6 +432,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		branchGeneration++;
+		dropHeldOneOffs(ctx, "the conversation switched branches");
 		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
@@ -437,6 +459,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	interface ObservationToolState {
 		completion: Decision | null;
+		done: boolean;
 	}
 
 	function clip(text: string, max: number): string {
@@ -607,6 +630,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 		const thinking = response.content.flatMap((block) => (block.type === "thinking" ? [block.thinking] : [])).join("\n");
 		let decisions = outcomeDecisions;
+		let done = outcome.done;
 		if (errorKind) {
 			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
 			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
@@ -616,11 +640,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				errorKind === "provider-error" ? "error" : "warning",
 			);
 			decisions = [{ action: "noop", reason: errorKind, message: "" }];
+			done = false;
 		}
 		if ((!decisions || decisions.length === 0) && job.completionMode === "json") {
 			const parsed = parseDecision(text);
-			decisions = parsed ? [parsed] : null;
+			if (parsed) {
+				const { done: saysDone, ...decision } = parsed;
+				decisions = [decision];
+				done = saysDone;
+			} else {
+				decisions = null;
+			}
 		}
+		// Only a head that was given an end condition can end itself. Any other
+		// head saying done keeps running; the record shows it said so.
+		const ends = done && !job.oneOff && job.endsWhen !== undefined && registry.endsWhen(job.head) === job.endsWhen;
 		if ((!decisions || decisions.length === 0) && loopStopReason !== null) {
 			decisions = [{
 				action: "noop",
@@ -681,6 +715,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			attemptedTools: attemptedTools.length ? attemptedTools : undefined,
 			iterations: iterations > 1 ? iterations : undefined,
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+			doneIgnored: done && !ends ? true : undefined,
 		};
 		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
@@ -691,6 +726,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		for (const decision of decisions) {
 			routeDecision(job.ctx, decision, job.head, job.runSignal);
+		}
+		if (ends) {
+			registry.removeHead(registryGateway(job.ctx, job.runSignal), job.head);
+			steerForHead(job.ctx, job.head, "head ended", `done, so this head has ended. It was to end when: ${job.endsWhen}`, job.runSignal);
 		}
 	}
 
@@ -778,7 +817,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const usages: ObservationUsage[] = [];
 		const toolsUsed: string[] = [];
 		let iterations = 0;
-		const toolState: ObservationToolState = { completion: null };
+		const toolState: ObservationToolState = { completion: null, done: false };
 		let loopStopReason: ObservationLoopStopReason = null;
 		// Whether this observation is running inside the driver's own session.
 		// Fixed for the whole loop, and the reason the loop can be stopped by
@@ -850,7 +889,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 							loopStopReason = "share-loss";
 						} else if (toolState.completion !== null) {
 							return { action: "end" as const };
-						} else if (!registry.isActive(job.head)) {
+						} else if (!job.oneOff && !registry.isActive(job.head)) {
 							// Also how a head that removed itself finishes: no further
 							// model call, because nobody is left to ask for a decision.
 							loopStopReason = "deactivated";
@@ -922,6 +961,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			errorKind: null,
 			attemptedTools: [],
 			loopStopReason,
+			done: toolState.done,
 		};
 	}
 
@@ -1016,31 +1056,42 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		routeFeedback(deliveryLedger, deliveryGateway(ctx), routed, decisionHead);
 	}
 
-	// One observation per active head, all from the same captured snapshot.
-	// An empty set observes nothing.
-	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null) {
+	// One observation per active head, all from the same captured snapshot,
+	// plus the one check of every one-off head asked for since the last point.
+	// One-offs also run on the first response of a run: that response is only
+	// skipped for heads that already reviewed the run before it.
+	function scheduleObservations(ctx: ExtensionContext, kind: ObserveKind, assistant: AssistantMessage | null, includeActive = true) {
 		// A cancelled run gets no new review. Its last message is not a final
 		// answer, and a review now could restart work the user just stopped.
 		if (ctx.signal?.aborted) {
+			dropHeldOneOffs(ctx, "its run was cancelled");
 			return;
 		}
-		for (const name of registry.activeSet()) {
-			const tools = registry.headTools(name);
-			const head = registry.get(name);
+		const seed = (head: string, instruction: string, tools: string[] | undefined, oneOff: boolean) =>
 			scheduler.schedule({
+				endsWhen: oneOff ? undefined : registry.endsWhen(head),
 				ctx,
 				payload: capturedPayload,
 				assistant,
 				turnIndex: currentTurnIndex,
-				head: name,
-				instruction: head?.prompt ?? "",
+				head,
+				instruction,
 				tools,
 				kind,
+				oneOff,
 				branchGeneration,
 				runSignal: ctx.signal,
 				model: responseModel,
 			});
+		if (includeActive) {
+			for (const name of registry.activeSet()) {
+				seed(name, registry.get(name)?.prompt ?? "", registry.headTools(name), false);
+			}
 		}
+		for (const [name, oneOff] of heldOneOffs) {
+			seed(name, oneOff.instruction, oneOff.tools, true);
+		}
+		heldOneOffs.clear();
 	}
 
 	pi.on("session_start", (_event, ctx) => {
@@ -1095,7 +1146,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_provider_request", (event) => {
-		if (registry.activeSet().length === 0) {
+		if (registry.activeSet().length === 0 && heldOneOffs.size === 0) {
 			// Throw the old snapshot away rather than keeping it. An
 			// observation still running from before must count as out of date,
 			// and a head added part-way through must not treat the old
@@ -1143,14 +1194,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			responseTimestamp = answer.timestamp ?? null;
 			responseModel = modelIdentity(answer.provider, answer.model);
 		}
-		if (registry.activeSet().length === 0 || !capturedPayload) {
+		// Marked even with no heads active: a head added later in this run has
+		// not reviewed the run so far, so its first check must not be skipped.
+		const firstResponse = awaitingFirstResponseOfRun;
+		awaitingFirstResponseOfRun = false;
+		if ((registry.activeSet().length === 0 && heldOneOffs.size === 0) || !capturedPayload) {
 			return;
 		}
-		if (awaitingFirstResponseOfRun) {
-			awaitingFirstResponseOfRun = false;
-			return;
-		}
-		scheduleObservations(ctx, "piggyback", null);
+		scheduleObservations(ctx, "piggyback", null, !firstResponse);
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
@@ -1182,7 +1233,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				notifyUser(ctx, "hydra: the driver hit a continuation error; codex observations retreat to their own cache scope for the rest of this session", "warning");
 			}
 		}
-		if (registry.activeSet().length === 0 || !capturedPayload || !capturedThisRun) {
+		if ((registry.activeSet().length === 0 && heldOneOffs.size === 0) || !capturedPayload || !capturedThisRun) {
 			return;
 		}
 		// selectFinalAssistant guarantees role "assistant" with block content.
@@ -1193,8 +1244,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		scheduleObservations(ctx, "run-end", assistant);
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		shuttingDown = true;
+		dropHeldOneOffs(ctx, "the session ended");
 		await scheduler.shutdown(parseShutdownGrace(process.env.HYDRA_SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS));
 		// pi cleans up the driver's own connection. When observations fall back
 		// to hydra's separate session, that connection is hydra's to close.
@@ -1232,7 +1284,15 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// hydra tool may manage heads.
 	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext, runSignal?: AbortSignal) {
 		const name = params.head.trim();
-		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
+		const lifetimeLabel =
+			params.operation !== "add"
+				? undefined
+				: params.lifetime.kind === "once"
+					? "for one check"
+					: params.lifetime.endsWhen !== undefined
+						? `until ${params.lifetime.endsWhen}`
+						: undefined;
+		const receipt = formatHeadManagementReceipt(params.operation, name, params.message, lifetimeLabel);
 		const gateway = registryGateway(ctx, runSignal);
 		registry.discover(gateway, ctx.cwd);
 		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
@@ -1244,29 +1304,53 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				head: name,
 				heads: [...registry.activeSet()],
 				changed,
+				receipt,
 			},
 		});
 
 		if (params.operation === "add") {
-			if (!registry.exists(name)) {
+			const { source, lifetime } = params;
+			const plain = source.kind === "file" && lifetime.kind === "ongoing" && lifetime.endsWhen === undefined;
+			if (source.kind === "inline") {
+				if (registry.exists(name)) {
+					throw new Error(`"${name}" is already a head's name. Pick a new name for a head without a file, or omit instructions to use the head file "${name}".`);
+				}
+			} else if (!registry.exists(name)) {
 				throw new Error(`Unknown head "${name}". Available: ${registry.names().join(", ") || "none"}.`);
+			} else if (!registry.get(name) && !plain) {
+				// Diagnostic heads take over the whole set; they have no lifetime.
+				throw new Error(`"${name}" is a diagnostic head and cannot take a lifetime or ends_when.`);
 			}
 			if (registry.isActive(name)) {
+				if (!plain) {
+					throw new Error(`"${name}" is already active, so it already checks after every response. Remove it first to add it with a different lifetime or ends_when.`);
+				}
 				return reply(`"${name}" is already active. Observing with: ${activeLabel()}.`);
 			}
-			registry.setHeadSet(gateway, [...registry.activeSet(), name]);
+			if (lifetime.kind === "once") {
+				if (heldOneOffs.has(name) || scheduler.isBusy(name)) {
+					throw new Error(`"${name}" is still running a check. Wait until it has finished, or use a different name.`);
+				}
+				const head = registry.get(name);
+				heldOneOffs.set(
+					name,
+					source.kind === "inline"
+						? { instruction: source.instructions, tools: source.tools }
+						: { instruction: head?.prompt ?? "", tools: registry.headTools(name) },
+				);
+				return reply(`${receipt}\nIt checks once, starting with the next response; its feedback arrives later. Observing with: ${activeLabel()}.`, true);
+			}
+			registry.addHead(gateway, name, {
+				withoutFile: source.kind === "inline" ? { instructions: source.instructions, tools: source.tools } : undefined,
+				endsWhen: lifetime.endsWhen,
+			});
 			return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 		}
 
 		if (!registry.isActive(name)) {
 			return reply(`"${name}" is not active. Observing with: ${activeLabel()}.`);
 		}
-		const remaining = registry.activeSet().filter((active) => active !== name);
-		if (remaining.length > 0) {
-			registry.setHeadSet(gateway, remaining);
-		} else {
-			registry.clearHeadSet(gateway);
-		}
+		registry.removeHead(gateway, name);
 		return reply(`${receipt}\nObserving with: ${activeLabel()}.`, true);
 	}
 
@@ -1285,6 +1369,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			const decision = decisionFromCompletion(params.delivery, params.message);
 			state.completion = decision;
+			state.done = params.done;
 			return {
 				content: [{ type: "text" as const, text: "Observation completed." }],
 				details: { action: params.action, changed: false },
@@ -1295,12 +1380,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (job.tools !== undefined && !job.tools.includes("hydra")) {
 			throw new Error(`Head "${job.head}" is not allowed to manage heads`);
 		}
-		const receipt = formatHeadManagementReceipt(params.operation, params.head, params.message);
 		const result = executeHeadManagement(params, ctx, job.runSignal);
-		const changed = (result.details as { changed?: unknown }).changed === true;
-		if (!changed) {
+		if (!result.details.changed) {
 			return result;
 		}
+		const receipt = result.details.receipt;
 
 		// Observer tool results are hidden from both user and driver, and a
 		// head that removed itself gets no further turn, so Hydra steers the
@@ -1377,7 +1461,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				for (let i = 0; i < items.length; i++) {
 					const item = items[i];
 					const tags = [
-						item.source === "project" ? "project" : null,
+						item.source === "project" ? "project" : item.source === "call" ? "no file" : null,
+						registry.endsWhen(item.name) !== undefined ? `until ${registry.endsWhen(item.name)}` : null,
 						item.autostart ? "autostart" : null,
 						headActs(item.tools) ? "acting" : null,
 					].filter((tag): tag is string => tag !== null);
@@ -1422,7 +1507,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				.filter((name) => name.startsWith(partial))
 				.map((name) => {
 					const source = registry.get(name)?.source;
-					return { value: base + name, label: source === "project" ? `${name} (project)` : name };
+					return { value: base + name, label: source === "project" ? `${name} (project)` : source === "call" ? `${name} (no file)` : name };
 				});
 		},
 		handler: async (args, ctx) => {
@@ -1438,7 +1523,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				if (ctx.hasUI) {
 					await openHeadPicker(ctx);
 				} else {
-					const roster = registry.list().map((head) => `  ${head.name} (${head.source}): ${head.description}`);
+					const roster = registry.list().map((head) => `  ${head.name} (${head.source === "call" ? "no file" : head.source}): ${head.description}`);
 					ctx.ui.notify(
 						[`hydra: active: ${registry.activeSet().join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
 						"info",

@@ -19,6 +19,8 @@ export interface JudgeResult {
 	// Saved as written in the log, never sent into the conversation.
 	parseError: string | null;
 	attemptedTools: string[];
+	/** The head says its end condition is met. Only heads with ends_when act on it. */
+	done: boolean;
 }
 
 function boundedName(name: string): string {
@@ -27,7 +29,7 @@ function boundedName(name: string): string {
 
 export function classifyJudgeResponse(response: AssistantMessage): JudgeResult {
 	const attemptedTools = [...new Set(response.content.flatMap(block => block.type === "toolCall" ? [boundedName(block.name)] : []))].slice(0, 8);
-	const failed = (errorKind: JudgeErrorKind): JudgeResult => ({ decisions: null, errorKind, parseError: null, attemptedTools });
+	const failed = (errorKind: JudgeErrorKind): JudgeResult => ({ decisions: null, errorKind, parseError: null, attemptedTools, done: false });
 	if (response.stopReason === "error") return failed("provider-error");
 	if (response.stopReason === "aborted") return failed("aborted");
 	if (response.stopReason === "length") return failed("truncated");
@@ -42,6 +44,7 @@ export function classifyJudgeResponse(response: AssistantMessage): JudgeResult {
 		errorKind: parsed.error ? "malformed-findings" : null,
 		parseError: parsed.error,
 		attemptedTools,
+		done: parsed.done,
 	};
 }
 

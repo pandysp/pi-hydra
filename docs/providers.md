@@ -93,6 +93,8 @@ Heads with tools finish differently:
 - **OpenAI Codex and ChatGPT sign-in:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
 - **Anthropic and ds4:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. On Anthropic, finishing through a tool call measured slower and more expensive; ds4 uses Anthropic's form for the cache reason in [ds4](#ds4).
 
+A head added with `ends_when` reports that its condition is met with `done: true` in `complete_observation`, or `"done": true` in its JSON decision or findings.
+
 On all supported routes, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
 
 The measurements below used the July 2026 instructions, before the September wording changes. They do not measure the quality of the current wording.

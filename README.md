@@ -97,6 +97,8 @@ Tool permissions are intentionally explicit in their meaning:
 - list names to narrow access, such as `tools: read, grep`;
 - use `tools: []` for a judge-only head with no executable tools.
 
+The main assistant can also add a head for a moment, without a file: for one check (`lifetime: "once"`) or until a condition is met (`ends_when`). See [Heads for a moment](docs/heads.md#heads-for-a-moment).
+
 hydra can execute Pi's standard read, bash, edit, write, grep, find, and ls tools plus its own `hydra` tool. It cannot execute arbitrary MCP or other-extension tools. See [Writing heads](docs/heads.md) for the complete format and examples.
 
 ## Decisions

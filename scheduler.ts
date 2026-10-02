@@ -50,6 +50,12 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
+	/** Whether this head has a check waiting or running. */
+	isBusy(head: string): boolean {
+		const runner = this.runners.get(head);
+		return runner !== undefined && (runner.pending !== null || runner.running !== null);
+	}
+
 	// Heads run alongside each other rather than one after another. Mid-run
 	// that is nearly free, because every head is only reading the cache. At
 	// the end of a run each head pays to add the final message once. The

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Api, AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
@@ -37,17 +37,17 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
+async function harness(options: { heads?: string[]; resume?: { cwd: string; sm: SessionManager }; tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
 	boundary.transport = options.transport ?? "websocket";
 	let currentOAuth = options.oauth ?? true;
 	let authChecks = 0;
 	let authRequests = 0;
-	const cwd = mkdtempSync(join(process.cwd(), ".observer-test-"));
+	const cwd = options.resume?.cwd ?? mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n---\nFollow these test instructions.\n`);
-	const sm = SessionManager.inMemory(cwd);
-	const root = sm.appendCustomEntry("hydra-config", { heads: ["critic"] });
+	const sm = options.resume?.sm ?? SessionManager.inMemory(cwd);
+	const root = options.resume ? sm.getBranch()[0].id : sm.appendCustomEntry("hydra-config", { heads: options.heads ?? ["critic"] });
 	const handlers = new Map<string, Handler>();
 	const responses: (AssistantMessage | Promise<AssistantMessage>)[] = [];
 	const payloads: unknown[] = [];
@@ -107,7 +107,14 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		await emit({ type: "session_shutdown", reason: "quit" });
 		rmSync(cwd, { recursive: true, force: true });
 	});
-	return { cwd, sm, root, ctx, pi, payloads, transport, notify, emit, observe, calls,
+	// The hydra tool as the main assistant calls it.
+	const hydraTool = (params: Record<string, unknown>) => {
+		const definition = vi.mocked(pi.registerTool).mock.calls[0][0] as unknown as { execute: (...args: unknown[]) => Promise<{ content: { text: string }[] }> };
+		return definition.execute("driver-call", { message: "why", ...params }, undefined, undefined, ctx);
+	};
+	const configs = () => sm.getBranch().filter(e => e.type === "custom" && e.customType === "hydra-config").map(e => (e as { data: Record<string, unknown> }).data);
+	const steers = () => vi.mocked(pi.sendUserMessage).mock.calls.map(([content]) => String(content));
+	return { cwd, sm, root, ctx, pi, payloads, transport, notify, emit, observe, calls, hydraTool, configs, steers,
 		changeAuth: () => { currentOAuth = false; },
 		busy: () => { idle = false; }, idle: () => { idle = true; },
 		waitCalls: async (count: number) => { await vi.waitFor(() => expect(calls(), JSON.stringify(notify.mock.calls)).toHaveLength(count)); },
@@ -514,6 +521,18 @@ describe("observation loop stops", () => {
 		expect(JSON.stringify(vi.mocked(h.pi.sendUserMessage).mock.calls)).toContain("[pi-hydra critic] automatic notice: Removed critic — my job here is over");
 	});
 
+	it("anthropic: a decision written in the same reply as removing itself is delivered, not dropped", async () => {
+		const h = await harness({ tools: "hydra" });
+		await h.observe(answer([
+			text('{"action":"steer","reason":"handover","message":"FINAL-FINDING"}'),
+			tool("hydra", { action: "manage_heads", operation: "remove", head: "critic", message: "leaving" }),
+		], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.calls()[0].action).toBe("steer");
+		expect(JSON.stringify(vi.mocked(h.pi.sendUserMessage).mock.calls)).toContain("FINAL-FINDING");
+	});
+
 	it("blocks a self-removal sent together with other work, so the head sees that work's result first", async () => {
 		const h = await harness({ api: "openai-codex-responses", tools: "hydra, edit" });
 		writeFileSync(join(h.cwd, "work.txt"), "content");
@@ -586,5 +605,215 @@ describe("file changes by a head", () => {
 		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
 		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] I rewrote work.txt", undefined);
+	});
+});
+
+describe("heads with an end: once and ends_when", () => {
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+	const headFiles = (h: { cwd: string }) => [join(h.cwd, ".pi", "hydra"), join(h.cwd, "agent", "hydra")].flatMap((dir) => (existsSync(dir) ? readdirSync(dir) : []));
+	const findings = (value: object) => answer([text(JSON.stringify(value))]);
+
+	it("a one-off head without a file checks exactly once, starting with the next response, and leaves nothing behind", async () => {
+		const h = await harness({ heads: [] });
+		const filesBefore = headFiles(h);
+		const reply = await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check the cache key.", tools: [] });
+		expect(reply.content[0].text).toContain("Added cache-check for one check — why");
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.calls()[0].head).toBe("cache-check");
+		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Check the cache key.");
+		await h.observe();
+		await h.emit({ type: "agent_end", messages: [] });
+		await settle();
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(headFiles(h)).toEqual(filesBefore);
+		expect(JSON.stringify(h.configs())).not.toContain("cache-check");
+	});
+
+	it("a one-off head runs on the first response of a run too", async () => {
+		const h = await harness({ heads: [] });
+		await h.emit({ type: "agent_end", messages: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		await h.emit({ type: "agent_start" });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.calls()[0].head).toBe("cache-check");
+	});
+
+	it("runs a head file once without activating it", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic", lifetime: "once" });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
+		await h.observe();
+		await settle();
+		expect(h.transport).toHaveBeenCalledTimes(1);
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+	});
+
+	it("lets a one-off head with tools work through several turns", async () => {
+		const h = await harness({ heads: [], api: "openai-codex-responses" });
+		writeFileSync(join(h.cwd, "work.txt"), "content");
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "worker", lifetime: "once", instructions: "Read work.txt.", tools: ["read"] });
+		await h.observe(
+			answer([tool("read", { path: "work.txt" })], "toolUse"),
+			answer([tool("hydra", { action: "complete_observation", delivery: "steer", message: "work.txt says content" })], "toolUse"),
+		);
+		await h.waitCalls(1);
+		expect(h.transport).toHaveBeenCalledTimes(2);
+		expect(h.calls()[0]).toMatchObject({ head: "worker", action: "steer", toolsUsed: ["read"] });
+	});
+
+	it.each([
+		["instructions under a head file's name", { head: "critic", lifetime: "once", instructions: "x" }, "is already a head's name"],
+		["once for an active head", { head: "critic", lifetime: "once" }, "already active"],
+		["ends_when for an active head", { head: "critic", ends_when: "x" }, "already active"],
+		["an unknown head file", { head: "ghost", lifetime: "once" }, 'Unknown head "ghost"'],
+		["a head without a file and without an end", { head: "fresh", instructions: "x" }, "needs an end"],
+		["once with ends_when", { head: "fresh", lifetime: "once", instructions: "x", ends_when: "y" }, "cannot take ends_when"],
+		["tools for a head file", { head: "critic", lifetime: "once", tools: ["read"] }, "tools is only for a head without a file"],
+		["a diagnostic head with a lifetime", { head: "test", lifetime: "once" }, "diagnostic head"],
+	])("rejects %s and changes nothing", async (_case, fields, error) => {
+		const h = await harness();
+		const configsBefore = h.configs().length;
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", ...fields })).rejects.toThrow(error);
+		expect(h.configs()).toHaveLength(configsBefore);
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.calls()[0].head).toBe("critic");
+	});
+
+	it("rejects a second one-off under a name whose check has not finished", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Again.", tools: [] })).rejects.toThrow("still running a check");
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>((resolve) => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Again.", tools: [] })).rejects.toThrow("still running a check");
+		respond(noop());
+		await h.waitCalls(1);
+	});
+
+	it("warns when a one-off cannot start because its run was cancelled", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		(h.ctx as { signal?: AbortSignal }).signal = AbortSignal.abort();
+		await h.observe();
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('one-off head cache-check did not start: its run was cancelled'), "warning");
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["the conversation switches branches", "the conversation switched branches", (h: Awaited<ReturnType<typeof harness>>) => h.emit({ type: "session_tree" } as ExtensionEvent)],
+		["the session ends", "the session ended", (h: Awaited<ReturnType<typeof harness>>) => h.emit({ type: "session_shutdown", reason: "quit" } as ExtensionEvent)],
+	])("warns when a one-off cannot start because %s", async (_case, why, event) => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		await event(h);
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining(`one-off head cache-check did not start: ${why}`), "warning");
+		await h.observe();
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("anthropic: an acting head with ends_when ends through its JSON decision", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review.", tools: ["read"], ends_when: "the refactor is committed" });
+		await h.observe(answer([text('{"action":"steer","reason":"r","message":"FINAL","done":true}')]));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[0])).toContain("This head ends when: the refactor is committed. If that is true now, add \\\"done\\\": true to the JSON object");
+		expect(h.steers().some((message) => message.includes("FINAL"))).toBe(true);
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		expect(h.calls()[0].doneIgnored).toBeUndefined();
+	});
+
+	it("a head without a file and with ends_when checks every response until it says done, then ends", async () => {
+		const h = await harness({ heads: [] });
+		const filesBefore = headFiles(h);
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review each step.", tools: [], ends_when: "the refactor is committed" });
+		expect(h.configs().at(-1)).toEqual({
+			heads: ["refactor-review"],
+			added: { "refactor-review": { withoutFile: { instructions: "Review each step.", tools: [] }, endsWhen: "the refactor is committed" } },
+		});
+		await h.observe(findings({ findings: [] }));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[0])).toContain("This head ends when: the refactor is committed. If that is true now, add \\\"done\\\": true to the JSON object");
+		await h.observe(findings({ findings: [{ action: "steer", reason: "r", message: "LAST-FINDING" }], done: true }));
+		await h.waitCalls(2);
+		const steers = h.steers();
+		const finding = steers.findIndex((message) => message.includes("LAST-FINDING"));
+		const ended = steers.findIndex((message) => message.includes("[pi-hydra refactor-review] automatic notice: done, so this head has ended. It was to end when: the refactor is committed"));
+		expect(finding).toBeGreaterThanOrEqual(0);
+		expect(ended).toBeGreaterThan(finding);
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		await h.observe();
+		await settle();
+		expect(h.transport).toHaveBeenCalledTimes(2);
+		expect(headFiles(h)).toEqual(filesBefore);
+	});
+
+	it("brings a head without a file and its end condition back on resume", async () => {
+		const first = await harness({ heads: [] });
+		await first.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review each step.", tools: [], ends_when: "the refactor is committed" });
+		const resumed = await harness({ resume: { cwd: first.cwd, sm: first.sm } });
+		await resumed.observe(findings({ findings: [] }));
+		await resumed.waitCalls(1);
+		const payload = JSON.stringify(resumed.payloads[0]);
+		expect(payload).toContain("HEAD INSTRUCTIONS: Review each step.");
+		expect(payload).toContain("This head ends when: the refactor is committed");
+	});
+
+	it("a head file with ends_when ends the same way and its file stays untouched", async () => {
+		const h = await harness({ heads: [] });
+		const file = join(h.cwd, ".pi", "hydra", "critic.md");
+		const before = readFileSync(file, "utf8");
+		const reply = await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic", ends_when: "the auth PR is merged" });
+		expect(reply.content[0].text).toContain("Added critic until the auth PR is merged — why");
+		await h.observe(findings({ findings: [], done: true }));
+		await h.waitCalls(1);
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		expect(readFileSync(file, "utf8")).toBe(before);
+	});
+
+	it("codex: an acting head with ends_when ends through complete_observation", async () => {
+		const h = await harness({ heads: [], api: "openai-codex-responses" });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review.", tools: ["read"], ends_when: "the refactor is committed" });
+		await h.observe(answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "", done: true })], "toolUse"));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[0])).toContain("If that is true now, also pass done: true");
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		expect(h.calls()[0].doneIgnored).toBeUndefined();
+	});
+
+	it("a head without ends_when that says done keeps running, and its record says the done was ignored", async () => {
+		const h = await harness();
+		await h.observe(findings({ findings: [{ action: "steer", reason: "r", message: "STILL-HERE" }], done: true }));
+		await h.waitCalls(1);
+		expect(h.calls()[0].doneIgnored).toBe(true);
+		expect(h.steers().some((message) => message.includes("STILL-HERE"))).toBe(true);
+		expect(h.steers().some((message) => message.includes("has ended"))).toBe(false);
+		expect(JSON.stringify(h.payloads[0])).not.toContain("This head ends when");
+		expect(JSON.stringify(h.payloads[0])).not.toMatch(/"done"|done: true/);
+		await h.observe(noop());
+		await h.waitCalls(2);
+	});
+
+	it("shows a head without a file in completions, keeps it through discovery, and removes it by name", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "refactor-review", instructions: "Review.", tools: [], ends_when: "done" });
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")?.[1] as unknown as { getArgumentCompletions: (prefix: string) => { label: string }[] };
+		expect(command.getArgumentCompletions("ref").map((item) => item.label)).toEqual(["refactor-review (no file)"]);
+		// A head file of the same name appears: the head without a file keeps running.
+		writeFileSync(join(h.cwd, ".pi", "hydra", "refactor-review.md"), "---\nname: refactor-review\ndescription: x\n---\nFILE INSTRUCTIONS\n");
+		await h.emit({ type: "agent_start" });
+		await h.observe(); // the run's first response, reviewed by the previous run's end
+		await h.observe(findings({ findings: [] }));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Review.");
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('head file "refactor-review" is ignored'), "warning");
+		await h.hydraTool({ action: "manage_heads", operation: "remove", head: "refactor-review" });
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
 	});
 });

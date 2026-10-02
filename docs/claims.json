@@ -56,8 +56,8 @@
         "fragment": "tools-acting-heads"
       },
       "baseline": {
-        "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "b9a8e075414d8d154c2df7fca85079080d39f901f12d777caffad890725b0472"
+        "codeHash": "8911028dfd085e04a5d40d519930c0296fcbdf0daf3ebf9f24f03f5255c5dc64",
+        "docHash": "0c2a9aa4c72ecc4928393335308f47e32ccbe030009d0a17731d80920f6e3522"
       }
     },
     {
@@ -107,8 +107,8 @@
         "fragment": "per-head-scheduling"
       },
       "baseline": {
-        "codeHash": "78cef2181dfc55aeecb1db477b08d9914cb65b4775ae97439dc34f423c80104d",
-        "docHash": "9ce9257e715742c07becb845e18d396753d2e143f3bff8f89f4c22dd3110d5b8"
+        "codeHash": "94324bf9c0cf5669e02e60089468c8428be4251b4e1f0dd0ecaa969f48a6477f",
+        "docHash": "3842490b0c71a8387e26efa0bd02ab52e0c0f4f55bf9600ea03178b4a2a94731"
       }
     },
     {
@@ -117,7 +117,7 @@
         {
           "path": "protocol.ts",
           "start": "export const hydraToolParameters",
-          "end": "export interface ManageHeadsParams"
+          "end": "/** Where an added head's instructions come from"
         },
         {
           "path": "delivery.ts",
@@ -168,8 +168,8 @@
         "fragment": "heads-are-files"
       },
       "baseline": {
-        "codeHash": "f4f6cff3052368fc96c4fecc95c1bc1972cc8198e5f84e51ba363116ffdadf60",
-        "docHash": "3015e06f93af8ad78e5d97c2af4c2fe2654c4407a48e465c1222395ec952744d"
+        "codeHash": "53903600e3fbea1711777f287aed6fa83867fd764b899bdd2508aaddede87e52",
+        "docHash": "8981d346a945f00fde8c97b433844687b86be0818251c67e468d1f55fd3d5f63"
       }
     },
     {
@@ -196,8 +196,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "e10747b5ec8a5f07a86067d1a8e5e155362401a9cbbfdea1e1bbb5eb45ea92e4",
-        "docHash": "2b2788dd5b3703ab8d7e7d66a42277bc28e4f9de486f1e1609ab4bdca69d0c1e"
+        "codeHash": "be04f637d16f7e21f5e7a6fcde17c5d8486c3143fab8ec2387ea70ffc905b0e5",
+        "docHash": "127389d6f3e7a093435718de019dbb1914ea12e5d1c4e78d830f0f12a95af601"
       }
     }
   ]

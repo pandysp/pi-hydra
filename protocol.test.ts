@@ -18,7 +18,7 @@ describe("hydra tool protocol", () => {
 					arguments: { action: "complete_observation", delivery: "steer", message: "Fix it." },
 				},
 			]),
-		).toEqual({ action: "complete_observation", delivery: "steer", message: "Fix it." });
+		).toEqual({ action: "complete_observation", delivery: "steer", message: "Fix it.", done: false });
 		expect(
 			completionFromHydraToolCalls([{ type: "toolCall", name: "bash", arguments: { command: "pwd" } }]),
 		).toBeNull();
@@ -77,7 +77,7 @@ describe("hydra tool protocol", () => {
 				delivery: "none",
 				message: "",
 			}),
-		).toEqual({ action: "complete_observation", delivery: "none", message: "" });
+		).toEqual({ action: "complete_observation", delivery: "none", message: "", done: false });
 		// Hydra's own note route is not a head's choice.
 		expect(() =>
 			validateHydraToolParams({ action: "complete_observation", delivery: "note" as never, message: "follow-up" }),
@@ -93,7 +93,55 @@ describe("hydra tool protocol", () => {
 				delivery: "none",
 				message: "",
 			}),
-		).toThrow("does not accept operation or head");
+		).toThrow("does not accept operation, head");
+	});
+
+	it("reads an added head's source and lifetime into one exact shape", () => {
+		const add = (fields: Record<string, unknown>) =>
+			validateHydraToolParams({ action: "manage_heads", operation: "add", head: "cache-check", message: "why", ...fields } as never);
+		expect(add({})).toMatchObject({ source: { kind: "file" }, lifetime: { kind: "ongoing", endsWhen: undefined } });
+		expect(add({ lifetime: "once" })).toMatchObject({ source: { kind: "file" }, lifetime: { kind: "once" } });
+		expect(add({ ends_when: " the auth PR is merged " })).toMatchObject({ lifetime: { kind: "ongoing", endsWhen: "the auth PR is merged" } });
+		expect(add({ lifetime: "once", instructions: "Check the key.", tools: ["read"] })).toMatchObject({
+			source: { kind: "inline", instructions: "Check the key.", tools: ["read"] },
+			lifetime: { kind: "once" },
+		});
+		expect(add({ instructions: "Review each step.", ends_when: "the refactor is committed" })).toMatchObject({
+			source: { kind: "inline", tools: undefined },
+			lifetime: { kind: "ongoing", endsWhen: "the refactor is committed" },
+		});
+	});
+
+	it.each([
+		[{ instructions: "Review." }, "a head without a file needs an end"],
+		[{ lifetime: "ongoing", instructions: "Review." }, "a head without a file needs an end"],
+		[{ lifetime: "once", ends_when: "x" }, 'lifetime "once" ends after one check and cannot take ends_when'],
+		[{ lifetime: "once", tools: ["read"] }, "tools is only for a head without a file"],
+		[{ lifetime: "forever" }, "lifetime must be one of ongoing, once"],
+		[{ lifetime: "once", instructions: "   " }, "instructions must not be empty"],
+		[{ ends_when: "  " }, "ends_when must not be empty"],
+		[{ lifetime: "once", instructions: "x", head: "Bad Name" }, "is not a valid name for a head without a file"],
+		[{ lifetime: "once", instructions: "x", head: "none" }, "is not a valid name for a head without a file"],
+		[{ done: true }, "manage_heads does not accept done"],
+	])("rejects an invalid add: %j", (fields, error) => {
+		expect(() =>
+			validateHydraToolParams({ action: "manage_heads", operation: "add", head: "cache-check", message: "why", ...fields } as never),
+		).toThrow(error);
+	});
+
+	it("keeps remove and complete_observation free of the add fields", () => {
+		for (const field of [{ lifetime: "once" }, { ends_when: "x" }, { instructions: "x" }, { tools: [] }]) {
+			expect(() => validateHydraToolParams({ action: "manage_heads", operation: "remove", head: "q", message: "m", ...field } as never)).toThrow(
+				"manage_heads remove does not accept",
+			);
+			expect(() => validateHydraToolParams({ action: "complete_observation", delivery: "none", message: "", ...field } as never)).toThrow(
+				"complete_observation does not accept",
+			);
+		}
+		expect(validateHydraToolParams({ action: "complete_observation", delivery: "none", message: "", done: true })).toMatchObject({ done: true });
+		expect(() => validateHydraToolParams({ action: "complete_observation", delivery: "none", message: "", done: "yes" } as never)).toThrow(
+			"done must be true or false",
+		);
 	});
 
 	it("rejects deprecated print in live and cached completions", () => {

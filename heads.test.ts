@@ -54,7 +54,7 @@ function createHarness(options: HarnessOptions = {}) {
 		notify: (message, level) => notified.push(`${level}: ${message}`),
 		steer: (head, message) => steered.push(`[${head}] ${message}`),
 		warnOnce: (message) => warnedOnce.push(message),
-		persistConfig: (heads) => persisted.push([...heads]),
+		persistConfig: (config) => persisted.push([...config.heads]),
 		onActiveSetChanged: () => {
 			footerRefreshes++;
 		},
