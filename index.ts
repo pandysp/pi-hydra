@@ -52,7 +52,6 @@ import {
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
-	buildOpenAIObservationPrompt,
 	buildAnthropicObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
@@ -290,8 +289,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
 		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext };
+		const split = usesSplitObservationHandoff(ctx.model?.api);
 		if (!headActs(tools)) {
-			return usesSplitObservationHandoff(ctx.model?.api)
+			return split
 				? {
 						prompt: headInstructions(instruction),
 						envelope: buildEnumeratedJudgeObservationEnvelope(name, deliveryContext),
@@ -302,21 +302,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						completionMode: "enum",
 					};
 		}
-		if (ctx.model?.api === "anthropic-messages") {
-			return {
-				prompt: buildAnthropicObservationPrompt(name, instruction, tools, protocol),
-				completionMode: "json",
-			};
-		}
-		if (ctx.model?.api === "openai-responses") {
-			return { prompt: buildOpenAIObservationPrompt(name, instruction, tools, protocol), completionMode: "tool" };
-		}
-		// Only Codex remains after the Anthropic and no-tools cases above.
-		return {
-			prompt: headInstructions(instruction),
-			envelope: buildObservationEnvelope(name, tools, protocol),
-			completionMode: "tool",
-		};
+		return split
+			? {
+					prompt: headInstructions(instruction),
+					envelope: buildObservationEnvelope(name, tools, protocol),
+					completionMode: "tool",
+				}
+			: {
+					prompt: buildAnthropicObservationPrompt(name, instruction, tools, protocol),
+					completionMode: "json",
+				};
 	}
 
 	// The exact request the driver last sent, kept byte for byte so an

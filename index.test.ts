@@ -407,9 +407,16 @@ describe("observation loop stops", () => {
 		// it to map subscription tool names back. Codex requests stay as they were.
 		const noted = JSON.stringify(h.payloads.at(-1)).includes('"toolsAdded"');
 		expect(noted).toBe(api === "anthropic-messages");
-		// Acting heads too. On Codex the instructions arrive as their own
-		// message, which heads otherwise took for the user's latest request.
+		// Acting heads too. On the OpenAI routes the instructions arrive as their
+		// own message, which heads otherwise took for the user's latest request.
 		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
+		// Both OpenAI routes split: Hydra's rules follow as a developer message.
+		const input = (h.payloads[0] as { input?: { role?: string; content?: unknown }[] }).input ?? [];
+		const lens = input.findIndex((item) => item.role === "user" && JSON.stringify(item.content).includes("HEAD INSTRUCTIONS:"));
+		if (api !== "anthropic-messages") {
+			expect(input[lens + 1]).toMatchObject({ role: "developer" });
+			expect(JSON.stringify(input[lens + 1].content)).toContain("The previous user message contains all instructions");
+		}
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {

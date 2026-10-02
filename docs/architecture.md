@@ -42,9 +42,9 @@ Each prompt combines the head's instructions with Hydra's rules:
 |---|---|---|
 | Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
 | OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
-| ChatGPT sign-in | Heads without tools: as Codex. Heads with tools: head instructions and Hydra's rules in one user message (not measured against the split) | JSON without tools; the `hydra` tool otherwise |
+| ChatGPT sign-in | As Codex | JSON without tools; the `hydra` tool otherwise |
 
-For heads without tools the rule is "combined only on Anthropic": every other route, including a provider added later, gets the split unless a measurement says otherwise. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
+The rule for every head is "combined only on Anthropic": every other route, including a provider added later, gets the split unless a measurement says otherwise. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
 The rules for heads without tools describe what `print`, `steer` and `interrupt` do. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
