@@ -296,6 +296,42 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it("a run cancelled during a tool gets no run-end review; the next run does", async () => {
+		const h = await consumer(true, [{ type: "text", text: '{"findings":[]}' }]);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		await h.session.prompt("Finish now.");
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		const runEnds = h.entries("hydra-call").filter(e => (e as any).data.kind === "run-end");
+		expect(runEnds).toHaveLength(1);
+		expect(JSON.stringify(h.observerPayloads.at(-1))).toContain("Driver done.");
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a review still running when the user cancels is saved, and its steer starts no turn", async () => {
+		const h = await consumer(true, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"LATE-STEER"}]}' }]);
+		const observer = deferred();
+		h.holdObserver(observer.promise);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
+		const aborted = h.session.abort();
+		h.hold.resolve();
+		await Promise.all([running, aborted]);
+		const driverRequests = h.driverPayloads.length;
+		observer.resolve();
+		await vi.waitFor(() => expect(h.entries("hydra-feedback").filter(e => JSON.stringify((e as any).content).includes("LATE-STEER"))).toHaveLength(1));
+		// A turn started by the steer would still be running or finished here.
+		await h.session.waitForIdle();
+		expect(h.driverPayloads).toHaveLength(driverRequests);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.entries("hydra-call")).toHaveLength(1);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("Pi reports a rejected steer as an extension error", async () => {
 		const h = await consumer(false);
 		vi.spyOn(h.session, "sendUserMessage").mockRejectedValueOnce(new Error("asynchronous host failure"));
