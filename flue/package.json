@@ -4,11 +4,9 @@
 	"description": "pi-hydra heads for Flue agents: run-end checks that replay the agent's cached request",
 	"private": true,
 	"type": "module",
-	"exports": {
-		".": "./index.ts"
-	},
 	"scripts": {
-		"check": "tsc",
+		"build": "tsc -p tsconfig.build.json",
+		"check": "tsc && npm run build && git diff --exit-code -- dist",
 		"test": "vitest run"
 	},
 	"peerDependencies": {

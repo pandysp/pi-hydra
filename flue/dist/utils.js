@@ -1,0 +1,711 @@
+/**
+ * Pure helpers for hydra observations.
+ * Extracted for testability; no pi runtime or I/O dependencies.
+ */
+// Where a head's finding ends up. noop: nowhere. print: shown to the user
+// only. queue: waits for the run to end. steer: reaches the agent between
+// turns. interrupt: reaches it now, canceling whatever it was doing.
+export const ACTIONS = ["noop", "print", "queue", "steer", "interrupt"];
+export const OBSERVATION_DELIVERIES = ["none", "print", "queue", "steer", "interrupt"];
+export const HEAD_OPERATIONS = ["add", "remove"];
+/**
+ * A head that decided to interrupt, based on a picture the agent has already
+ * moved past, is downgraded to steering instead.
+ *
+ * The trade is deliberately lopsided. Downgrading when it was not needed costs
+ * one turn of delay. Interrupting when it was not needed throws away work the
+ * agent is in the middle of.
+ */
+export function demoteStaleInterrupt(action, staleSnapshot) {
+    return action === "interrupt" && staleSnapshot ? "steer" : action;
+}
+/**
+ * Heads say `none`, the internals say `noop`. The two names exist because the
+ * internal one came first and the public one reads better; they mean the same
+ * thing.
+ *
+ * The message rules are enforced here rather than merely asked for in the
+ * prompt: `none` must carry an empty message, and anything that is actually
+ * delivered must carry a real one.
+ */
+export function decisionFromCompletion(delivery, message) {
+    if (delivery === "none") {
+        if (message !== "") {
+            throw new Error('complete_observation with delivery "none" requires message to be exactly empty');
+        }
+        return { action: "noop", reason: "observation completed", message: "" };
+    }
+    const normalized = message.trim();
+    if (normalized.length === 0) {
+        throw new Error(`complete_observation with delivery "${delivery}" requires a non-empty message`);
+    }
+    return { action: delivery, reason: "observation completed", message: normalized };
+}
+/**
+ * Adding or removing a head is always reported, because it is a record of what
+ * happened rather than an opinion the head may keep to itself. What changed is
+ * written here so a head cannot misreport it; the head only supplies the
+ * reason.
+ */
+export function formatHeadManagementReceipt(operation, head, message) {
+    const name = head.trim();
+    const explanation = message.trim();
+    if (name.length === 0) {
+        throw new Error("manage_heads requires a non-empty head");
+    }
+    if (explanation.length === 0) {
+        throw new Error("manage_heads requires a non-empty message explaining the change");
+    }
+    return `${operation === "add" ? "Added" : "Removed"} ${name} — ${explanation}`;
+}
+function asDecision(value) {
+    if (typeof value !== "object" || value === null) {
+        return null;
+    }
+    const obj = value;
+    if (typeof obj.action !== "string" || !ACTIONS.includes(obj.action)) {
+        return null;
+    }
+    const action = obj.action;
+    const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
+    const message = typeof obj.message === "string" ? obj.message.trim().slice(0, 500) : "";
+    // A delivery with nothing to deliver is recorded as the noop it is, so
+    // stats never count an interrupt that interrupted nothing.
+    if (action !== "noop" && message === "") {
+        return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "" };
+    }
+    return { action, reason, message };
+}
+function tryParseDecision(text) {
+    try {
+        return asDecision(JSON.parse(text));
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Anthropic heads hand back a small blob of JSON. OpenAI heads call the hydra
+ * tool instead, so this is not used there.
+ */
+export function parseDecision(text) {
+    const cleaned = text
+        .replace(/^```(?:json)?\s*\n?/i, "")
+        .replace(/\n?```\s*$/, "")
+        .trim();
+    const direct = tryParseDecision(cleaned);
+    if (direct) {
+        return direct;
+    }
+    // Models often wrap the JSON in a sentence or two. Braces are counted
+    // rather than pattern-matched, so a decision whose own message contains
+    // braces still parses.
+    for (let start = cleaned.indexOf("{"); start !== -1; start = cleaned.indexOf("{", start + 1)) {
+        let depth = 0;
+        for (let i = start; i < cleaned.length; i++) {
+            if (cleaned[i] === "{") {
+                depth++;
+            }
+            else if (cleaned[i] === "}" && --depth === 0) {
+                const parsed = tryParseDecision(cleaned.slice(start, i + 1));
+                if (parsed) {
+                    return parsed;
+                }
+                break;
+            }
+        }
+    }
+    return null;
+}
+/**
+ * Record a delivery key, evicting the oldest once the set exceeds max.
+ * Returns false when the key was already delivered.
+ */
+export function rememberDelivery(delivered, key, max) {
+    if (delivered.has(key)) {
+        return false;
+    }
+    delivered.add(key);
+    if (delivered.size > max) {
+        delivered.delete(delivered.values().next().value);
+    }
+    return true;
+}
+/**
+ * One observation can be several model calls: a judging head makes one, an
+ * acting head one per turn of its loop.
+ *
+ * Costs and tokens add up across all of them. The cache hit rate comes from
+ * the first call alone, because that is the one that should be almost entirely
+ * a cache read. Later calls in a loop are supposed to pay for the work added
+ * since, so including them would hide a real regression in an average.
+ */
+export function summarizeLoopUsage(usages) {
+    const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    for (const usage of usages) {
+        total.input += usage.input;
+        total.output += usage.output;
+        total.cacheRead += usage.cacheRead;
+        total.cacheWrite += usage.cacheWrite;
+        total.cost += usage.cost;
+    }
+    const first = usages[0];
+    const readable = first ? first.input + first.cacheRead + first.cacheWrite : 0;
+    return { ...total, hitRatio: readable > 0 ? (first.cacheRead / readable) * 100 : 0 };
+}
+/** Parse a user-supplied head list ("quality,security" or "quality security"). */
+export function parseHeadList(value) {
+    return [...new Set(value.split(/[\s,]+/).map((name) => name.trim()).filter((name) => name.length > 0))];
+}
+export function isValidHeadName(name) {
+    return /^[a-z0-9][a-z0-9-]*$/.test(name) && name !== "none";
+}
+/**
+ * A file missing `name:` or `description:` is skipped rather than guessed at,
+ * and the returned error becomes the warning the user sees.
+ *
+ * The head is named by what is inside the file, not by the filename, so
+ * renaming a file does not quietly create a different head.
+ */
+export function parseHeadFile(rawContent) {
+    const content = rawContent.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+    const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (!frontmatter) {
+        return { error: "no frontmatter (name: and description: are required)" };
+    }
+    let name;
+    let description;
+    let tools;
+    let autostart;
+    for (const line of frontmatter[1].split("\n")) {
+        if (/^\s*- /.test(line)) {
+            // Written as a bullet list, the line above would read as empty and
+            // the head would silently lose all its tools. Better to complain.
+            return { error: `block-style lists are not supported; write "tools: read, write" on one line` };
+        }
+        if (line.startsWith("name:")) {
+            name = line.slice("name:".length).trim();
+        }
+        else if (line.startsWith("description:")) {
+            description = line.slice("description:".length).trim();
+        }
+        else if (line.startsWith("tools:")) {
+            // Writing "tools:" with nothing after it means no tools at all.
+            // Leaving the line out entirely means every tool. Those are
+            // opposite answers, so they must never be treated as the same.
+            const value = line.slice("tools:".length).trim().replace(/^\[/, "").replace(/\]$/, "");
+            tools = value === "" ? [] : parseHeadList(value);
+        }
+        else if (line.startsWith("autostart:")) {
+            const value = line.slice("autostart:".length).trim();
+            if (value !== "true" && value !== "false") {
+                return { error: `invalid autostart "${value}" (expected: true, false)` };
+            }
+            autostart = value === "true" || undefined;
+        }
+        else if (line.trim() !== "") {
+            // A misspelled or retired key would otherwise change nothing
+            // without anyone noticing.
+            return { error: `unknown key "${line.split(":")[0].trim()}" (allowed: name, description, tools, autostart)` };
+        }
+    }
+    if (!name) {
+        return { error: "missing name:" };
+    }
+    if (!isValidHeadName(name)) {
+        return { error: `invalid name "${name}" (lowercase kebab-case, "none" is reserved)` };
+    }
+    if (!description) {
+        return { error: "missing description:" };
+    }
+    const prompt = content.slice(frontmatter[0].length).trim();
+    if (prompt.length === 0) {
+        return { error: "missing instruction body" };
+    }
+    return { head: { name, description, tools, autostart, prompt } };
+}
+/** Whether a head's tools allowance lets it act: undefined means all tools. */
+export function headActs(tools) {
+    return tools === undefined || tools.length > 0;
+}
+/**
+ * Whether the head's instruction and the rules for answering are sent as two
+ * messages or one. Decided by measurement, not taste.
+ *
+ * Splitting them helped on Codex Responses, where heads followed instructions
+ * better and answered faster. On Anthropic it made no overall difference and
+ * made Sonnet worse, and the ordering that might have fixed that is not
+ * allowed there, so Anthropic keeps them together.
+ */
+export function usesSplitObservationHandoff(api) {
+    return api === "openai-codex-responses";
+}
+const STEER_ONLY_DECISION_SHAPE = '{"action":"noop|print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
+const ENUMERATED_DECISION_SHAPE = '{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}';
+const MANAGEMENT_NOTE = "A successful manage_heads change automatically tells the main assistant, with your explanation. Do not repeat it in your final message.";
+function toolAllowance(tools) {
+    return tools === undefined ? "the available tools" : `only these tools: ${tools.join(", ")}`;
+}
+export const OBSERVER_DELIVERY_GUIDANCE = '"print" shows a note only to the user; the main assistant will not see it. Use "steer" when the main assistant needs the feedback, even if it can wait. The message reaches it before its next model request without stopping its work. Use "interrupt" only for an emergency that must stop the run.';
+export const OBSERVER_GUIDANCE = "You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
+// The messages a head's loop sends to the model. The loop only holds plain
+// model messages plus Pi's system note with the head's tool list. Anthropic
+// needs that note: with a subscription login Pi sends Claude Code tool names
+// ("Edit") and reads the note to map replies back. On Codex it would add a
+// tool list to the head's request, so it is dropped there. Anything else is
+// new from Pi: it is dropped too, since Pi forbids throwing here, but reported,
+// because dropping the note silently once broke every Anthropic head.
+export function headLoopMessages(messages, keepSystemNote, onUnexpected) {
+    return messages.filter((message) => {
+        if (message.role === "user" || message.role === "assistant" || message.role === "toolResult")
+            return true;
+        if (message.role === "system")
+            return keepSystemNote;
+        onUnexpected(message.role);
+        return false;
+    });
+}
+// Marks the head's own instructions. Without it, a Codex head, which gets
+// them as a separate message, took them for the user's latest request.
+export function headInstructions(instruction) {
+    return `HEAD INSTRUCTIONS: ${instruction}`;
+}
+export const REPORTING_GUIDANCE = "Report only what the main assistant needs to know or act on, such as a project file you created or changed. Routine work you repeat on every check, such as keeping notes, logs or scores, is not news; don't report it.";
+function hydraSnapshot(tools, activeHeads) {
+    if (activeHeads === undefined || !tools?.includes("hydra")) {
+        return "";
+    }
+    return ` Active heads when this check started: ${activeHeads.join(", ") || "none"}. If a later hydra tool result differs, use that newer result.`;
+}
+export const FOLLOW_UP_GUIDANCE = "Compare feedback about the same issue. Do not repeat feedback still waiting for delivery or a problem that is already fixed. A problem that remains does not prove the feedback was ignored. Follow up only with evidence that the problem still applies after checking the visible response, or with new evidence that changes the finding. Follow this head's rules on repeating feedback too.";
+/**
+ * What a head is told about an earlier delivery leaves out how it was routed,
+ * and says only who received it.
+ *
+ * Queueing still exists in the code but is no longer offered to heads. Naming
+ * it in an old record would put the retired choice back in front of the model.
+ * Naming the recipient instead tells the head what it needs for a follow-up
+ * without describing an old delivery as something it was not.
+ */
+function enumeratedDeliveryContext(context) {
+    const recipient = (delivery) => (delivery === "print" ? "user" : "agent");
+    const visible = {
+        lastByThisHead: context.lastByThisHead === null
+            ? null
+            : {
+                recipient: recipient(context.lastByThisHead.delivery),
+                message: context.lastByThisHead.message,
+            },
+        pending: context.pending.map((item) => ({
+            head: item.head,
+            recipient: recipient(item.delivery),
+            message: item.message,
+        })),
+    };
+    return `Earlier feedback: ${JSON.stringify(visible)}. lastByThisHead is this head's last delivered message; recipient says who received it. Messages in pending have not reached the main assistant yet. ${FOLLOW_UP_GUIDANCE}`;
+}
+// `deliveryGuidance` says what print, steer and interrupt do on the host running the head;
+// a host whose delivery differs from pi's passes its own so heads are not told otherwise.
+function enumeratedDecisionProtocol(head, deliveryGuidance) {
+    return `Reply with one JSON object, nothing else:
+${ENUMERATED_DECISION_SHAPE}
+
+Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${deliveryGuidance} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
+}
+/** The answering rules plus what has already been delivered, sent separately. */
+export function buildEnumeratedJudgeObservationEnvelope(head, context, deliveryGuidance = OBSERVER_DELIVERY_GUIDANCE) {
+    return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.
+
+${enumeratedDeliveryContext(context)}
+
+${enumeratedDecisionProtocol(head, deliveryGuidance)}`;
+}
+/** The same, folded into one message with the instruction. */
+export function buildEnumeratedJudgeObservationPrompt(head, instruction, context, deliveryGuidance = OBSERVER_DELIVERY_GUIDANCE) {
+    return `<system-reminder>${OBSERVER_GUIDANCE}
+
+${headInstructions(instruction)}
+
+${enumeratedDeliveryContext(context)}
+
+${enumeratedDecisionProtocol(head, deliveryGuidance)}</system-reminder>`;
+}
+const ENUMERATED_ACTIONS = ["print", "steer", "interrupt"];
+/**
+ * Splits a head's numbered findings into at most two groups: what only the
+ * user sees, and what the agent is told.
+ *
+ * Every message ends up in exactly one group. An interrupt raises the urgency
+ * of the agent's group only. It never drags a user-only finding into the
+ * agent's context, which would leak something the head chose not to send.
+ */
+export function parseEnumeratedDecision(text) {
+    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    let value;
+    try {
+        value = JSON.parse((fenced ? fenced[1] : text).trim());
+    }
+    catch {
+        return { decisions: null, error: "completion must be one JSON object" };
+    }
+    if (typeof value !== "object" || value === null || !Array.isArray(value.findings)) {
+        return { decisions: null, error: "completion requires a findings array" };
+    }
+    const findings = [];
+    for (const [index, item] of value.findings.entries()) {
+        if (typeof item !== "object" || item === null) {
+            return { decisions: null, error: `finding ${index + 1} must be an object` };
+        }
+        const candidate = item;
+        if (typeof candidate.action !== "string" || !ENUMERATED_ACTIONS.includes(candidate.action)) {
+            return { decisions: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
+        }
+        const message = typeof candidate.message === "string" ? candidate.message.trim().slice(0, 500) : "";
+        if (message.length === 0) {
+            return { decisions: null, error: `finding ${index + 1} requires a non-empty message` };
+        }
+        findings.push({
+            action: candidate.action,
+            reason: typeof candidate.reason === "string" ? candidate.reason.slice(0, 200) : "",
+            message,
+        });
+    }
+    if (findings.length === 0) {
+        return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null };
+    }
+    const batch = (action, selected) => ({
+        action,
+        reason: selected
+            .map((finding) => finding.reason)
+            .filter(Boolean)
+            .join(" | "),
+        message: selected.map((finding) => finding.message).join(" | "),
+    });
+    const prints = findings.filter((finding) => finding.action === "print");
+    const agent = findings.filter((finding) => finding.action === "steer" || finding.action === "interrupt");
+    const decisions = [];
+    if (prints.length > 0) {
+        decisions.push(batch("print", prints));
+    }
+    if (agent.length > 0) {
+        decisions.push(batch(agent.some((finding) => finding.action === "interrupt") ? "interrupt" : "steer", agent));
+    }
+    return {
+        decisions,
+        error: null,
+    };
+}
+function actingDeliveryContext(context) {
+    return context === undefined ? "" : ` ${enumeratedDeliveryContext(context)}`;
+}
+/**
+ * On Anthropic the head writes its decision as JSON instead of calling a tool.
+ * Tool calls were measured costing noticeably more output and time, even for
+ * heads with no tools to use, while the JSON came back reliably.
+ *
+ * This is only about how the decision comes back. Doing actual work, and
+ * adding or removing heads, still goes through tools.
+ */
+export function buildAnthropicObservationPrompt(head, instruction, tools, options = {}) {
+    return `<system-reminder>${OBSERVER_GUIDANCE}${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. manage_heads is available only if hydra is among your allowed tools. ${MANAGEMENT_NOTE} Successfully removing your own head ends this check. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+
+${headInstructions(instruction)}
+
+When done, reply with one JSON object, nothing else:
+${STEER_ONLY_DECISION_SHAPE}
+
+Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}].</system-reminder>`;
+}
+/**
+ * Sent as a developer message. The head's instructions stay in the adjacent
+ * user message; this message explains tools and how to finish.
+ */
+export function buildObservationEnvelope(head, tools, options = {}) {
+    return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${toolCompletionGuidance(head, tools, options)}`;
+}
+/** Keep the same completion contract when OpenAI needs one combined user message. */
+export function buildOpenAIObservationPrompt(head, instruction, tools, options = {}) {
+    return `<system-reminder>${OBSERVER_GUIDANCE}
+
+${headInstructions(instruction)}
+
+${toolCompletionGuidance(head, tools, options).trimStart()}</system-reminder>`;
+}
+function toolCompletionGuidance(head, tools, options) {
+    return `${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
+
+${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
+}
+/**
+ * Cleans up a requested set of heads: unknown names are dropped and duplicates
+ * removed.
+ *
+ * A diagnostic head takes over the whole set on its own. Diagnostics fire once
+ * and then put the previous set back, which only works if there is exactly one
+ * set to put back.
+ */
+export function sanitizeHeadSet(requested, catalog) {
+    const known = requested.filter((name) => catalog.exists(name));
+    const unknown = requested.filter((name) => !catalog.exists(name));
+    const diagnostic = known.find((name) => catalog.isDiagnostic(name));
+    return { heads: diagnostic ? [diagnostic] : [...new Set(known)], unknown };
+}
+/**
+ * Reads the saved head list, whichever of the three shapes it is in. `lenses`
+ * and `lens` are what older sessions wrote before the rename.
+ *
+ * An empty list is respected as "the user turned everything off". Null means
+ * nothing was saved at all, which is a different thing and is treated
+ * differently by the caller.
+ */
+export function savedHeadList(config) {
+    if (Array.isArray(config.heads)) {
+        return config.heads.filter((name) => typeof name === "string");
+    }
+    if (Array.isArray(config.lenses)) {
+        return config.lenses.filter((name) => typeof name === "string");
+    }
+    if (typeof config.lens === "string") {
+        return [config.lens];
+    }
+    return null;
+}
+/**
+ * Picks the agent's last message, the one an end-of-run observation has to
+ * carry because nothing else will.
+ *
+ * It has to be the answer to the request that was captured. Any earlier
+ * message is already inside that captured request, so adding it again would
+ * show the head the same text twice. Runs whose last answer was cancelled or
+ * errored fall exactly into that case and produce nothing.
+ *
+ * The two are matched by the timestamp taken when the answer began, not by
+ * comparing clock times. Comparing clocks is a coin toss here, because pi
+ * builds the answer about a millisecond before the request is handed over.
+ */
+export function selectFinalAssistant(messages, responseTimestamp) {
+    if (responseTimestamp === null) {
+        return null;
+    }
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (message.role !== "assistant") {
+            continue;
+        }
+        if (message.stopReason === "error" || message.stopReason === "aborted" || message.errorMessage) {
+            continue;
+        }
+        if (!Array.isArray(message.content) || message.content.length === 0) {
+            continue;
+        }
+        return message.timestamp === responseTimestamp ? message : null;
+    }
+    return null;
+}
+/**
+ * Whether the driver sends its whole conversation on every request.
+ *
+ * That is the condition for sharing a cache session with it. A driver that
+ * sends everything never asks the server to continue from an earlier reply, so
+ * there is nothing an observation can knock out from under it.
+ *
+ * Written to accept only known values, because this comes out of a settings
+ * file the user can edit. Anything unrecognized has to count as unsafe.
+ */
+export function isFullInputTransport(transport) {
+    return transport === "websocket" || transport === "sse";
+}
+/**
+ * The one place that decides whether cache sharing has to stop: null while it
+ * is still safe, otherwise the reason, in words a user can read.
+ *
+ * Kept in one place because that same sentence is also what stops the warning
+ * being printed twice.
+ */
+export function classifyCodexShareLoss(transport) {
+    return isFullInputTransport(transport)
+        ? null
+        : `pi transport "${transport}" (the driver's delta continuation would break under a shared session)`;
+}
+// Matches loosely on purpose, across wording changes and multi-line errors.
+// Matching something harmless only costs a bit of cache saving, and
+// hasDriverContinuationError already requires the run to have failed. Missing
+// a real one costs the user a broken conversation, again and again.
+const CONTINUATION_ERROR = /previous[ _]?response.*not.*found/is;
+/**
+ * The one symptom known to mean that observing inside the driver's session has
+ * broken the driver. Whatever reads this stops sharing for good.
+ */
+export function hasDriverContinuationError(messages) {
+    return messages.some((message) => message.role === "assistant" &&
+        message.stopReason === "error" &&
+        CONTINUATION_ERROR.test(message.errorMessage ?? ""));
+}
+/** Shutdown grace from its raw env value: 0 means "don't wait"; unset or invalid falls back. */
+export function parseShutdownGrace(raw, fallback) {
+    const parsed = raw == null || raw.trim() === "" ? Number.NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+export function isAnthropicPayload(value) {
+    return (typeof value === "object" &&
+        value !== null &&
+        Array.isArray(value.messages));
+}
+/** Remove every message-level marker in place, returning the deepest one removed. */
+function stripMessageMarkers(messages) {
+    let stripped;
+    for (const message of messages) {
+        if (!Array.isArray(message.content)) {
+            continue;
+        }
+        for (const block of message.content) {
+            if (block.cache_control !== undefined) {
+                stripped = block.cache_control;
+                delete block.cache_control;
+            }
+        }
+    }
+    return stripped;
+}
+// Only text, tool_use and tool_result can carry a cache mark. Putting one on a
+// thinking block is rejected by the API outright.
+const MARKABLE_TYPES = ["text", "tool_use", "tool_result"];
+function lastMarkableBlock(message) {
+    if (!Array.isArray(message.content)) {
+        return undefined;
+    }
+    for (let i = message.content.length - 1; i >= 0; i--) {
+        if (MARKABLE_TYPES.includes(message.content[i].type)) {
+            return message.content[i];
+        }
+    }
+    return undefined;
+}
+/** The last block in the added messages that is allowed to carry a cache mark. */
+function lastMarkableBlockOfTail(tail) {
+    for (let i = tail.length - 1; i >= 0; i--) {
+        const block = lastMarkableBlock(tail[i]);
+        if (block) {
+            return block;
+        }
+    }
+    return undefined;
+}
+/**
+ * Adds the observation's own messages to the end of the driver's captured
+ * request.
+ *
+ * The captured part is replayed exactly as it was, so the observation reads
+ * the driver's cache entry instead of paying to build its own. Anthropic only
+ * writes to the cache where a request marks it, and allows four such marks per
+ * request. The driver has already used all four, so hydra never adds one. It
+ * only moves the last one, and where it moves depends on what is being added:
+ *
+ * - Just the head's instruction. Nothing moves and the instruction is not
+ *   cached. It is short and will not be read again.
+ * - The agent's final message plus the instruction, at the end of a run. The
+ *   mark moves onto the final message, so paying to store it also warms up the
+ *   driver's own next turn.
+ * - A whole tool loop. The mark moves to the last message of the loop, so each
+ *   turn is paid for once and read cheaply afterwards rather than resent as new
+ *   text every iteration. This mark deliberately does not carry the driver's
+ *   longer lifetime, because loop entries only need to survive until the next
+ *   iteration.
+ *
+ * Any marks pi-ai put on the added messages are removed first, so there is only
+ * ever one place deciding where they go.
+ */
+export function mergeObservationPayload(captured, tail, envelope) {
+    const merged = structuredClone(captured);
+    // Copy before touching anything: this object belongs to pi-ai and is still
+    // in use. Whatever cache marks pi-ai put on it are then removed, because
+    // the code below is the only thing that decides where they go.
+    const tailMessages = structuredClone(tail);
+    stripMessageMarkers(tailMessages);
+    const anchored = tailMessages[0]?.role === "assistant";
+    const loopTurns = tailMessages.length > (anchored ? 2 : 1);
+    const target = loopTurns
+        ? lastMarkableBlockOfTail(tailMessages)
+        : anchored
+            ? lastMarkableBlock(tailMessages[0])
+            : undefined;
+    if (target) {
+        const stripped = stripMessageMarkers(merged.messages);
+        target.cache_control = loopTurns ? { type: "ephemeral" } : (stripped ?? { type: "ephemeral" });
+    }
+    if (envelope !== undefined) {
+        const promptIndex = tailMessages.findIndex((message) => message.role === "user");
+        if (promptIndex === -1) {
+            throw new Error("cannot insert observation envelope: tail has no user prompt");
+        }
+        tailMessages.splice(promptIndex + 1, 0, {
+            role: "system",
+            content: [{ type: "text", text: envelope }],
+        });
+    }
+    merged.messages = [...merged.messages, ...tailMessages];
+    return merged;
+}
+export function isOpenAIResponsesPayload(value) {
+    return (typeof value === "object" &&
+        value !== null &&
+        Array.isArray(value.input));
+}
+/** Remove every explicit cache breakpoint from the items' content blocks in place. */
+function stripPromptCacheBreakpoints(items) {
+    for (const item of items) {
+        const content = item?.content;
+        if (!Array.isArray(content)) {
+            continue;
+        }
+        for (const block of content) {
+            if (typeof block === "object" && block !== null) {
+                delete block.prompt_cache_breakpoint;
+            }
+        }
+    }
+}
+/**
+ * The same job as the Anthropic merge, for OpenAI's request shape.
+ *
+ * The captured part is replayed exactly as it was, down to the cache key and
+ * every other setting. The difference is that nothing has to be marked here:
+ * this backend caches each request's newest message by itself, so every
+ * observation stores its own and the next one reads it. That is the same
+ * arrangement the Anthropic merge has to set up by hand.
+ *
+ * Whether an observation can also read what the driver stored depends on
+ * routing hydra does not control. Running under the driver's own session id
+ * makes it dependable, which is the decision made in index.ts. Measurements
+ * are in the OpenAI section of docs/providers.md.
+ *
+ * There is no explicit Anthropic-style pre-warm here: a cache mark is legal
+ * only on input, never on what the model wrote. Current Codex accounting still
+ * charges a run-end observation for the newest turn plus its own tail; implicit
+ * caching and shared-session routing determine what later requests can reuse.
+ *
+ * Any marks pi-ai might add are removed, since on this provider the right
+ * number of them is none.
+ */
+export function mergeOpenAIObservationPayload(captured, tail, envelope) {
+    // Copy before stripping, because this object belongs to pi-ai. Only a
+    // shallow copy, unlike the Anthropic merge: nothing here changes the
+    // captured part, so there is no reason to duplicate the whole conversation
+    // on every turn of an acting head's loop. The result therefore shares those
+    // items rather than owning them, which is safe because nothing further down
+    // modifies them.
+    const tailItems = structuredClone(tail);
+    stripPromptCacheBreakpoints(tailItems);
+    if (envelope !== undefined) {
+        const promptIndex = tailItems.findIndex((item) => typeof item === "object" && item !== null && item.role === "user");
+        if (promptIndex === -1) {
+            throw new Error("cannot insert observation envelope: tail has no user prompt");
+        }
+        tailItems.splice(promptIndex + 1, 0, {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: envelope }],
+        });
+    }
+    return { ...captured, input: [...captured.input, ...tailItems] };
+}

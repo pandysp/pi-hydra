@@ -10,13 +10,18 @@ serves from its cache, and adds only the agent's last turn and the head's instru
 
 ## Setup
 
-The adapter lives in [`flue/`](../flue/index.ts) and needs `@flue/runtime` 2.2.2 or later 2.x.
+The adapter lives in [`flue/`](../flue/index.ts) and needs `@flue/runtime` 2.2.2 or later 2.x. Install
+pi-hydra into the Flue app, next to Flue and pi-ai, so the adapter uses the app's own Flue:
+
+```bash
+npm install github:pandysp/pi-hydra @flue/runtime @earendil-works/pi-ai
+```
 
 ```ts
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { useModel } from "@flue/runtime";
 import { start } from "@flue/runtime/node";
-import { createFlueHydra } from "pi-hydra/flue/index.ts";
+import { createFlueHydra } from "pi-hydra/flue";
 
 const hydra = createFlueHydra({ heads: ["/path/to/heads/quality.md"] });
 

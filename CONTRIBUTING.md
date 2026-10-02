@@ -40,7 +40,7 @@ Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the c
 
 ```bash
 npm run check    # tsc, module-state, links, and code-to-doc claims
-npm ci --prefix flue && npm run check --prefix flue   # the Flue adapter's own pinned Flue and pi-ai
+npm ci --prefix flue && npm run check --prefix flue   # the Flue adapter: types, and flue/dist rebuilt and committed
 npm test         # vitest on the root modules and the Flue adapter
 ```
 
