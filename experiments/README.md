@@ -317,3 +317,9 @@ SPLIT_HANDOFF_LOG=/tmp/x.jsonl node experiments/split-handoff.mjs cell chatgpt g
 ```
 
 `split-handoff-2026-10-02.jsonl` holds the run behind [providers.md](../docs/providers.md#chatgpt-sign-in), which reports its results: 240 calls with their full replies.
+
+## ds4 heads (October 2026)
+
+Live pi sessions on the local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) provider (DeepSeek V4 Flash Q2 on an Apple M4 Max), driven through pi's own interface with `/hydra-debug` on: the same three-step coding task each run, navigator and simplifier heads without tools, and in the live runs one head that reads files. A/B runs switched the handoff form for heads without tools, each starting with an empty ds4 disk cache; live runs compared every head request against the main assistant's request as in [Cache parity](../docs/providers.md#cache-parity). GPT-6 Luna sessions on Codex and ChatGPT sign-in ran the same way.
+
+`ds4-heads-2026-10-02.jsonl` holds the runs behind [providers.md](../docs/providers.md#ds4): one `run` line per run (form, cache at start, cache-parity result) followed by its `check` lines, Hydra's per-check records without the heads' answers.

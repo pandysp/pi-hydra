@@ -37,7 +37,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
+async function harness(options: { tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
 	boundary.transport = options.transport ?? "websocket";
 	let currentOAuth = options.oauth ?? true;
 	let authChecks = 0;
@@ -53,7 +53,7 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 	const payloads: unknown[] = [];
 	let idle = true;
 	const api = options.api ?? "anthropic-messages";
-	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : api === "openai-responses" ? "openai" : "openai-codex", baseUrl: options.baseUrl ?? "https://api.openai.com/v1", headers: options.modelAuthHeader ? { Authorization: "Bearer sk-fake" } : undefined, id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
+	const model = { api, provider: options.provider ?? (api === "anthropic-messages" ? "anthropic" : api === "openai-responses" ? "openai" : "openai-codex"), baseUrl: options.baseUrl ?? "https://api.openai.com/v1", headers: options.modelAuthHeader ? { Authorization: "Bearer sk-fake" } : undefined, id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
 	// The main assistant's replies name the model that answered, as pi's do.
 	const driverAnswer = (value: string): AssistantMessage => ({ ...answer([text(value)]), provider: model.provider, model: model.id });
 	const transport = vi.fn((model: Model<Api>, context: { messages: Message[] }, opts: { onPayload: (payload: unknown) => unknown }) => {
@@ -135,6 +135,26 @@ describe("heads without tools through the extension", () => {
 		expect(h.calls()[0].api).toBe("openai-responses");
 		expect(h.transport.mock.calls[0][2].sessionId).toBe(h.sm.getSessionId());
 		expect(h.payloads[0]).toMatchObject({ input: expect.arrayContaining([expect.objectContaining({ role: "user" })]) });
+	});
+
+	it("a judge head on ds4 gets its instructions and the rules in one user message, without a ChatGPT sign-in", async () => {
+		const h = await harness({ api: "openai-responses", provider: "ds4", baseUrl: "http://127.0.0.1:8000/v1", oauth: false });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		const input = (h.payloads[0] as { input: { role?: string; content?: unknown }[] }).input;
+		expect(input.some((item) => item.role === "developer")).toBe(false);
+		const last = input.at(-1)!;
+		expect(last.role).toBe("user");
+		expect(JSON.stringify(last.content)).toContain("You are reviewing the main assistant's work");
+		expect(JSON.stringify(last.content)).toContain("Follow these test instructions.");
+		expect(h.transport.mock.calls[0][2]).toMatchObject({ apiKey: undefined, sessionId: undefined });
+	});
+
+	it("leaves ds4 on any other API disabled", async () => {
+		const h = await harness({ api: "openai-codex-responses", provider: "ds4" });
+		await h.observe();
+		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("observations disabled for ds4/openai-codex-responses"), "warning"));
+		expect(h.transport).not.toHaveBeenCalled();
 	});
 
 	it("does not enable unmeasured OpenAI API-key replay", async () => {
@@ -393,14 +413,22 @@ describe("observation loop stops", () => {
 		expect(h.transport).toHaveBeenCalledTimes(1);
 		expect(h.calls()).toEqual([]);
 	});
-	it.each(["anthropic-messages", "openai-codex-responses", "openai-responses"] as const)("%s stops once the head completes and records its turns", async (api) => {
-		const h = await harness({ api, tools: "read" });
+	it.each([
+		["anthropic-messages", undefined],
+		["openai-codex-responses", undefined],
+		["openai-responses", undefined],
+		["openai-responses", "ds4"],
+	] as const)("%s (%s) stops once the head completes and records its turns", async (api, provider) => {
+		const h = await harness({ api, provider, tools: "read" });
 		writeFileSync(join(h.cwd, "work.txt"), "content");
+		// Anthropic and ds4 get one combined message and finish with a JSON
+		// decision; the other routes split and finish through the hydra tool.
+		const split = api !== "anthropic-messages" && provider !== "ds4";
 		await h.observe(
 			answer([tool("read", { path: "work.txt" })], "toolUse"),
-			api === "anthropic-messages"
-				? answer([text('{"action":"noop","reason":"checked","message":""}')])
-				: answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"),
+			split
+				? answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse")
+				: answer([text('{"action":"noop","reason":"checked","message":""}')]),
 		);
 		await h.waitCalls(1);
 		expect(h.transport).toHaveBeenCalledTimes(2);
@@ -412,15 +440,20 @@ describe("observation loop stops", () => {
 		// Acting heads too. On the OpenAI routes the instructions arrive as their
 		// own message, which heads otherwise took for the user's latest request.
 		expect(JSON.stringify(h.payloads[0])).toContain("HEAD INSTRUCTIONS: Follow these test instructions.");
-		// Both OpenAI routes split on every turn of the loop: Hydra's rules follow
+		// Split routes split on every turn of the loop: Hydra's rules follow
 		// the head's instructions as one developer message.
-		if (api !== "anthropic-messages") {
+		if (split) {
 			for (const payload of h.payloads as { input: { role?: string; content?: unknown }[] }[]) {
 				const lens = payload.input.findIndex((item) => item.role === "user" && JSON.stringify(item.content).includes("HEAD INSTRUCTIONS:"));
 				expect(payload.input[lens + 1]).toMatchObject({ role: "developer" });
 				expect(JSON.stringify(payload.input[lens + 1].content)).toContain("The previous user message contains all instructions");
 				expect(payload.input.filter((item) => item.role === "developer")).toHaveLength(1);
 			}
+		}
+		// ds4 gets no developer message and no key from hydra: pi resolves it.
+		if (provider === "ds4") {
+			for (const payload of h.payloads as { input: { role?: string }[] }[]) expect(payload.input.some((item) => item.role === "developer")).toBe(false);
+			for (const call of h.transport.mock.calls) expect(call[2]).toMatchObject({ apiKey: undefined });
 		}
 	});
 

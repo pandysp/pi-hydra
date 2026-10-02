@@ -277,7 +277,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
 		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext };
-		const split = usesSplitObservationHandoff(ctx.model?.api);
+		const split = usesSplitObservationHandoff(ctx.model?.api, ctx.model?.provider);
 		if (!headActs(tools)) {
 			return split
 				? {
@@ -397,7 +397,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
 		const bands = hitBandsFor(ctx.model?.api);
-		const hitColor = meanHit === null || bands === null ? "muted" : meanHit >= bands.good ? "success" : meanHit >= bands.fair ? "warning" : "error";
+		const hitColor = meanHit === null ? "muted" : meanHit >= bands.good ? "success" : meanHit >= bands.fair ? "warning" : "error";
 		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
 			"hydra",
@@ -462,19 +462,21 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			warnOnce(job.ctx, "hydra: no model selected; observations skipped");
 			return;
 		}
-		// Cache replay has been measured on Anthropic, legacy OpenAI Codex, and
-		// OpenAI's ChatGPT sign-in. Other pairs warn and stay out: a matching
-		// request shape alone does not prove the provider will read its cache.
-		// The OpenAI API-key path remains unmeasured and disabled.
+		// Cache replay has been measured on Anthropic, legacy OpenAI Codex,
+		// OpenAI's ChatGPT sign-in and the local ds4 server. Other pairs warn
+		// and stay out: a matching request shape alone does not prove the
+		// provider will read its cache. The OpenAI API-key path remains
+		// unmeasured and disabled.
 		const anthropic = model.provider === "anthropic" && model.api === "anthropic-messages";
 		const codex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
 		const chatgpt = model.provider === "openai" && model.api === "openai-responses" &&
 			model.baseUrl === "https://api.openai.com/v1" && job.ctx.modelRegistry.isUsingOAuth(model);
-		if (!anthropic && !codex && !chatgpt) {
+		const ds4 = model.provider === "ds4" && model.api === "openai-responses";
+		if (!anthropic && !codex && !chatgpt && !ds4) {
 			const pair = `${model.provider}/${model.api}`;
 			if (!warnedProviders.has(pair)) {
 				warnedProviders.add(pair);
-				notifyUser(job.ctx, `hydra: observations disabled for ${pair} (supported: Anthropic, OpenAI Codex, or ChatGPT sign-in at OpenAI's API)`, "warning");
+				notifyUser(job.ctx, `hydra: observations disabled for ${pair} (supported: Anthropic, OpenAI Codex, ChatGPT sign-in at OpenAI's API, or ds4)`, "warning");
 			}
 			return;
 		}
@@ -1497,7 +1499,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api)?.target ?? "n/a (ChatGPT; not calibrated)"}`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api).target}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,

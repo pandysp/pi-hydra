@@ -41,11 +41,11 @@ The head receives Pi's real provider trajectory, not a summary. On healthy measu
 5. hydra validates the decision and either shows you a note, feeds it to the driver, or delivers nothing.
 6. Accepted observation calls, cache use, and cost are recorded in Pi's session and shown in the footer and `/hydra-stats`.
 
-Anthropic, OpenAI Codex, and ChatGPT sign-in have different handoffs and cache behavior. OpenAI API-key use is not supported yet. The system flow is in [Architecture](docs/architecture.md); provider mechanics, measurements, and economics have one canonical home in [Providers and measurements](docs/providers.md).
+Anthropic, OpenAI Codex, ChatGPT sign-in and the local ds4 provider have different handoffs and cache behavior. OpenAI API-key use is not supported yet. The system flow is in [Architecture](docs/architecture.md); provider mechanics, measurements, and economics have one canonical home in [Providers and measurements](docs/providers.md).
 
 ## Quick start
 
-You need [pi](https://pi.dev/) with an Anthropic or OpenAI Codex model. The runtime gate is provider/API based; validated model coverage and economics are listed in [Supported provider boundary](docs/providers.md#supported-provider-boundary).
+You need [pi](https://pi.dev/) with an Anthropic, OpenAI Codex, ChatGPT sign-in or local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) model. The runtime gate is provider/API based; validated model coverage and economics are listed in [Supported provider boundary](docs/providers.md#supported-provider-boundary).
 
 ```bash
 pi install git:github.com/pandysp/pi-hydra
