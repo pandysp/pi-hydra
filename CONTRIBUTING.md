@@ -43,6 +43,8 @@ npm run check    # tsc, module-state, links, and code-to-doc claims
 npm test         # vitest
 ```
 
+The Flue adapter lives in [flue-hydra](https://github.com/pandysp/flue-hydra), which builds on `utils.ts`, `judge.ts` and `delivery.ts` at a pinned commit of this repository. Changing what those files export or how heads are prompted affects it the next time it moves its pin.
+
 Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
 
 ## What's welcome
