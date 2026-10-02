@@ -120,7 +120,7 @@ export interface DeliveryGateway {
 			display: boolean;
 			details: { head: string; action: DeliveryAction; reason: string };
 		},
-		options: { deliverAs: "followUp"; triggerTurn: false },
+		options: { triggerTurn: false },
 	): void;
 	persist(entry: PersistedDelivery): void;
 }
@@ -185,7 +185,7 @@ export function routeFeedback(
 					display: true,
 					details: { head, action: delivery, reason: decision.reason },
 				},
-				{ deliverAs: "followUp", triggerTurn: false },
+				{ triggerTurn: false },
 			);
 			// Sent while idle, these land in the session straight away but never
 			// announce themselves, so an extension cannot wait to be told.
@@ -212,7 +212,7 @@ export function routeFeedback(
 					display: true,
 					details: { head, action: delivery, reason: decision.reason },
 				},
-				{ deliverAs: "followUp", triggerTurn: false },
+				{ triggerTurn: false },
 			);
 		} else if (idle) {
 			gateway.sendUserMessage(formatted);
