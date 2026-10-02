@@ -437,11 +437,12 @@ describe("mergeObservationPayload", () => {
 	// Shapes taken from a real claude-sonnet-5-5 request: pi-ai adds an empty
 	// system message with the effort before each assistant turn and at the end.
 	const effort = (level: string): PayloadMessage => ({ role: "system", content: [], output_config: { effort: level } });
+	const capturedWithEffort = (level = "low"): AnthropicPayload => ({ ...capturedFixture(), messages: [...capturedFixture().messages, effort(level)] });
 
 	it("leaves captured markers untouched mid-run when pi-ai appends an effort message", () => {
-		const merged = mergeObservationPayload(capturedFixture(), [promptTail(), effort("high")]);
+		const merged = mergeObservationPayload(capturedWithEffort(), [promptTail(), effort("high")]);
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-		expect(blocks(merged.messages[2])[0].cache_control).toBeUndefined();
+		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
 	});
 
 	it("still marks M at run end when effort messages surround it", () => {
@@ -451,10 +452,10 @@ describe("mergeObservationPayload", () => {
 			promptTail(),
 			effort("high"),
 		];
-		const merged = mergeObservationPayload(capturedFixture(), tail);
-		expect(blocks(merged.messages[3])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		const merged = mergeObservationPayload(capturedWithEffort(), tail);
+		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect(blocks(merged.messages[1])[0].cache_control).toBeUndefined();
-		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+		expect(blocks(merged.messages[5])[0].cache_control).toBeUndefined();
 	});
 
 	it("marks the driver's tool results when its last turn ended in a tool call (Flue)", () => {
@@ -465,10 +466,10 @@ describe("mergeObservationPayload", () => {
 			promptTail(),
 			effort("high"),
 		];
-		const merged = mergeObservationPayload(capturedFixture(), tail);
-		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
-		expect(blocks(merged.messages[5])[0].cache_control).toBeUndefined();
+		const merged = mergeObservationPayload(capturedWithEffort(), tail);
+		expect(blocks(merged.messages[5])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+		expect(blocks(merged.messages[6])[0].cache_control).toBeUndefined();
 	});
 
 	it("does not treat a system update after the instruction as a head turn", () => {
@@ -478,9 +479,9 @@ describe("mergeObservationPayload", () => {
 			{ role: "system", content: [{ type: "text", text: "prompt update" }] },
 			effort("high"),
 		];
-		const merged = mergeObservationPayload(capturedFixture(), tail);
-		expect(blocks(merged.messages[2])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+		const merged = mergeObservationPayload(capturedWithEffort(), tail);
+		expect(blocks(merged.messages[3])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[5])[0].cache_control).toBeUndefined();
 	});
 
 	it("advances the marker to the loop frontier when effort messages surround the loop", () => {
@@ -493,9 +494,28 @@ describe("mergeObservationPayload", () => {
 			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
 			effort("high"),
 		];
-		const merged = mergeObservationPayload(capturedFixture(), tail);
-		expect(blocks(merged.messages[7])[0].cache_control).toEqual({ type: "ephemeral" });
+		const merged = mergeObservationPayload(capturedWithEffort(), tail);
+		expect(blocks(merged.messages[8])[0].cache_control).toEqual({ type: "ephemeral" });
 		expect(merged.messages.flatMap((m) => blocks(m)).filter((block) => block.cache_control).length).toBe(1);
+	});
+
+	it("gives the head's messages the effort the driver's request ends with, and leaves the driver's history", () => {
+		const tail: PayloadMessage[] = [
+			effort("low"), // history: the effort the driver's final message was written at
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			effort("high"),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+			effort("high"),
+		];
+		const merged = mergeObservationPayload(capturedWithEffort("medium"), tail);
+		const efforts = merged.messages.slice(3).filter((m) => m.output_config).map((m) => (m.output_config as { effort: string }).effort);
+		expect(efforts).toEqual(["low", "medium", "medium"]);
+	});
+
+	it("refuses a head request that sets an effort when the driver's request sets none", () => {
+		expect(() => mergeObservationPayload(capturedFixture(), [promptTail(), effort("high")])).toThrow("the model changed since it was captured");
 	});
 
 	it("advances the marker to the loop frontier once tool turns are appended, dropping the TTL", () => {
@@ -660,6 +680,8 @@ describe("mergeOpenAIObservationPayload", () => {
 		stream: true,
 		instructions: "You are pi.",
 		prompt_cache_key: "session-abc",
+		// The driver's effort: a top-level field the merge must replay, never the head's own.
+		reasoning: { effort: "medium", summary: "auto" },
 		include: ["reasoning.encrypted_content"],
 		input: [
 			{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },

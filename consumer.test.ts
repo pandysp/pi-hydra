@@ -43,7 +43,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key") {
+async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void) {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -82,7 +82,11 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 	modelRuntime.registerProvider("anthropic", {
 		api: "anthropic-messages", apiKey, baseUrl: "https://fixture.invalid",
 		streamSimple: (model, context, options) => streamSimple(model, context, { ...options, fetch: fetchFixture }),
-		models: [{ id: "fixture", name: "Fixture", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000, maxTokens: 4096 }],
+		models: [{
+			id: "fixture", name: "Fixture", input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000, maxTokens: 4096,
+			// A thinking driver gets current Claude's request shape: the effort travels in a system message at the end.
+			...(thinkingLevel === "off" ? { reasoning: false } : { reasoning: true, compat: { supportsMidConvoEffort: true, forceAdaptiveThinking: true } }),
+		}],
 	});
 	const model = modelRuntime.getModel("anthropic", "fixture") as Model<"anthropic-messages">;
 	let pi!: ExtensionAPI;
@@ -94,6 +98,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 			pi = api;
 			vi.spyOn(pi, "sendMessage");
 			vi.spyOn(pi, "sendUserMessage");
+			beforeHydra?.(api);
 			hydraExtension(pi);
 			api.registerTool({ name: "checkpoint", label: "Checkpoint", description: "Test checkpoint", parameters: Type.Object({}),
 				execute: async () => {
@@ -106,7 +111,7 @@ async function consumer(busy: boolean, firstObserverResponse?: AssistantMessage[
 	});
 	await loader.reload();
 	const sm = SessionManager.create(cwd, join(cwd, "sessions"));
-	const { session } = await createAgentSession({ cwd, agentDir, modelRuntime, model, settingsManager, sessionManager: sm, resourceLoader: loader, tools: ["checkpoint", "write", "hydra"], thinkingLevel: "off" });
+	const { session } = await createAgentSession({ cwd, agentDir, modelRuntime, model, settingsManager, sessionManager: sm, resourceLoader: loader, tools: ["checkpoint", "write", "hydra"], thinkingLevel });
 	const errors: ExtensionError[] = [];
 	await session.bindExtensions({ onError: error => errors.push(error) });
 	expect(errors).toEqual([]);
@@ -201,6 +206,33 @@ describe("Pi consumer context and session", () => {
 		expect(seenIn(h.driverPayloads[3], NOTICE)).toHaveLength(1);
 		expect(saved(h, NOTICE)).toHaveLength(1);
 		expect(h.errors).toEqual([]);
+	});
+
+	const effort = (payload: any) => payload.messages.at(-1).output_config?.effort;
+	const noFindings: AssistantMessage["content"] = [{ type: "text", text: '{"findings":[]}' }];
+
+	it("a head thinks as hard as the main assistant", async () => {
+		for (const headTools of ["[]", "write"]) {
+			const h = await consumer(false, noFindings, headTools, "fixture-key", "medium");
+			await h.session.prompt("Finish now.");
+			await vi.waitFor(() => expect(h.observerPayloads.length).toBeGreaterThan(0));
+			expect(effort(h.driverPayloads[0]), headTools).toBe("medium");
+			expect(h.observerPayloads.map(effort), headTools).toEqual(h.observerPayloads.map(() => "medium"));
+		}
+	});
+
+	it("a head follows the effort the main assistant's request was sent with, not the current setting", async () => {
+		const cases: [string, (api: ExtensionAPI) => void, string][] = [
+			["another extension edits the request", (api) => api.on("before_provider_request", (e) => { (e.payload as any).messages.at(-1).output_config.effort = "low"; }), "low"],
+			["the setting changes after the request was built", (api) => api.on("before_provider_request", () => { api.setThinkingLevel("high"); }), "medium"],
+		];
+		for (const [name, edit, sent] of cases) {
+			const h = await consumer(false, noFindings, "[]", "fixture-key", "medium", edit);
+			await h.session.prompt("Finish now.");
+			await vi.waitFor(() => expect(h.observerPayloads.length).toBeGreaterThan(0));
+			expect(effort(h.driverPayloads[0]), name).toBe(sent);
+			expect(h.observerPayloads.map(effort), name).toEqual(h.observerPayloads.map(() => sent));
+		}
 	});
 
 	it("a head with tools can use them under a subscription login, where Pi renames tools", async () => {
