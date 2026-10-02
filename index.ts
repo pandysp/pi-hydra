@@ -11,7 +11,6 @@ import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { cleanupSessionResources, uuidv7 } from "@earendil-works/pi-ai";
 import type { Api, AssistantMessage, Message, Model, ProviderHeaders } from "@earendil-works/pi-ai";
-import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
 	createBashTool,
 	createEditTool,
@@ -72,58 +71,6 @@ import {
 	usesSplitObservationHandoff,
 } from "./utils.ts";
 
-/**
- * An extension can wrap a provider to change how its requests are sent, for
- * example to bill them to a subscription instead of an API key. pi applies
- * that wrapper to the driver's turns, but pi-ai's own `streamSimple` knows
- * nothing about it and would send observations straight to the provider. The
- * observation is then billed against a different quota than the turn it is
- * observing, and gets rejected on its own while the driver keeps working.
- *
- * Looked up on every call rather than cached, because an extension can
- * register its wrapper late or replace it mid-session.
- *
- * Checked against pi 0.82 and 0.84.1.
- */
-function resolveStreamSimple(ctx: ExtensionContext, model: Model<Api>): typeof streamSimple {
-	// pi types this method but documents it nowhere, and does not export its
-	// return type, so the shape has to be written out here by hand. Every part
-	// is optional on purpose: if a future pi changes it, observations must fall
-	// back quietly rather than throw on every single call.
-	const registry = ctx.modelRegistry as {
-		getRegisteredProviderConfig?: (provider: string) => { api?: string; streamSimple?: unknown } | undefined;
-	};
-	if (typeof registry.getRegisteredProviderConfig !== "function") return streamSimple;
-	const config = registry.getRegisteredProviderConfig(model.provider);
-	// The same rule pi applies in composeModelProvider: a wrapper only counts
-	// for the API it was registered for, otherwise the request goes through
-	// code that never expected it. One deliberate difference from pi: pi wraps
-	// this call so the request is built lazily and hydra does not. That has
-	// never mattered because the answer is always used immediately, but it is
-	// the first thing to check if streaming here ever misbehaves.
-	if (typeof config?.streamSimple !== "function" || config.api !== model.api) return streamSimple;
-	return config.streamSimple as typeof streamSimple;
-}
-
-/**
- * Most setups have no wrapper at all, so its absence is never worth a warning
- * on its own. It only becomes a useful explanation once a request has actually
- * been refused.
- *
- * Takes the transport that was used rather than looking it up a second time,
- * so the explanation always matches the call it describes even when several
- * observations are running at once.
- */
-function observationFailureHint(transport: typeof streamSimple, message: string): string {
-	if (transport !== streamSimple) return "";
-	// Only when the provider refused the request itself. Overloads, network
-	// drops and cancellations say nothing about which transport was used.
-	const looksLikeRejection = /\b400\b|invalid_request_error|extra usage|unauthorized|authentication/i.test(message);
-	return looksLikeRejection
-		? " (no provider transport override was resolved; if an extension shapes this provider's requests, hydra's observations are bypassing it)"
-		: "";
-}
-
 // Headless runs (`pi -p`) quit as soon as the agent stops, which would cut off
 // an observation still waiting on a slow model. 0 means quit without waiting.
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
@@ -143,6 +90,41 @@ async function isCurrentChatGPTAuth(
 	// snapshot used by isUsingOAuth can lag behind a credential-store change.
 	const current = await ctx.modelRegistry.getProviderAuth("openai");
 	return current?.source === "OAuth" && current.auth.apiKey === apiKey;
+}
+
+type ChatGPTCredential = { apiKey: string; headers: ProviderHeaders | undefined };
+
+/**
+ * The credential for one ChatGPT sign-in request, resolved again before every
+ * call: OAuth can expire, or be swapped for an API key, while a check runs.
+ * Never falls back to an earlier token. Callers word the consequence.
+ */
+async function currentChatGPTCredential(
+	ctx: ExtensionContext,
+	model: Model<Api>,
+): Promise<{ credential: ChatGPTCredential } | { reason: string }> {
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok || !auth.apiKey) {
+		return { reason: `hydra: no credentials for ${model.provider}: ${auth.ok ? "no API key" : auth.error}` };
+	}
+	const baseUrl = (auth as { baseUrl?: unknown }).baseUrl;
+	let signedIn: boolean;
+	try {
+		signedIn = await isCurrentChatGPTAuth(ctx, model, auth.apiKey, auth.headers);
+	} catch (error) {
+		return { reason: `hydra: could not verify ChatGPT sign-in: ${errorText(error)}` };
+	}
+	if (!signedIn || (baseUrl && baseUrl !== model.baseUrl)) {
+		return { reason: "hydra: ChatGPT sign-in or endpoint changed" };
+	}
+	return { credential: { apiKey: auth.apiKey, headers: auth.headers } };
+}
+
+/** Throws, ending the check, unless the ChatGPT sign-in is still the one it started with. */
+async function recheckedChatGPTCredential(ctx: ExtensionContext, model: Model<Api>): Promise<ChatGPTCredential> {
+	const current = await currentChatGPTCredential(ctx, model);
+	if ("reason" in current) throw new Error(`${current.reason} during observation; head stopped`);
+	return current.credential;
 }
 
 function plainMessageText(content: unknown): string | null {
@@ -435,7 +417,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		toolsUsed: string[];
 		selfRemoved: boolean;
 		loopStopReason: ObservationLoopStopReason;
-		failureHint?: string;
 	}
 
 	type ObservationLoopStopReason = "share-loss" | "deactivated" | null;
@@ -550,13 +531,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 		}
 
-		const auth = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
-		if (!auth.ok || !auth.apiKey) {
-			const reason = auth.ok ? "no API key" : auth.error;
-			notifyUser(job.ctx, `hydra: no credentials for ${model.provider}: ${reason}`, "warning");
-			return;
-		}
-
 		const onPayload = (built: unknown) => {
 			const merged = mergeBuilt(built);
 			if (debugDir) {
@@ -574,41 +548,25 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return merged;
 		};
 
-		// When login supplies its own server address, pi swaps that address into
-		// the model before sending. The session model here has not been through
-		// that swap, so without this an observation would skip a gateway the
-		// driver's own requests go through. The value is checked rather than
-		// trusted because older pi versions do not return it at all and the cast
-		// is only a compile-time claim.
-		//
-		// Never tested against a real gateway; worked out from reading pi's
-		// source. Also read once per observation, so an address that changes
-		// part-way through a run is not picked up. The API key is handled the
-		// same way.
-		const authBaseUrl = (auth as { baseUrl?: unknown }).baseUrl;
+		// ChatGPT sign-in is the one route whose credential hydra checks itself:
+		// the same model signed in with an API key must not observe. Every other
+		// route leaves key, headers and server address to pi, which resolves
+		// them for each request exactly as for the driver's own turns.
+		let credential: ChatGPTCredential | undefined;
 		if (chatgpt) {
-			let currentAuth: boolean;
-			try {
-				currentAuth = await isCurrentChatGPTAuth(job.ctx, model, auth.apiKey, auth.headers);
-			} catch (error) {
-				notifyUser(job.ctx, `hydra: could not verify ChatGPT sign-in: ${errorText(error)}`, "error");
+			const current = await currentChatGPTCredential(job.ctx, model);
+			if ("reason" in current) {
+				notifyUser(job.ctx, `${current.reason}; observation skipped`, "warning");
 				return;
 			}
-			if (!currentAuth || (authBaseUrl && authBaseUrl !== model.baseUrl)) {
-				notifyUser(job.ctx, "hydra: ChatGPT sign-in or endpoint changed; observation skipped", "warning");
-				return;
-			}
+			credential = current.credential;
 		}
-		const observationModel =
-			typeof authBaseUrl === "string" && authBaseUrl.length > 0
-				? { ...model, baseUrl: authBaseUrl }
-				: model;
 
 		const t0 = Date.now();
 		const outcome =
 			job.completionMode === "enum"
-				? await runJudgeObservation(job, observationModel, observationSessionId, onPayload, signal)
-				: await runObservationLoop(job, observationModel, auth.apiKey, auth.headers, observationSessionId, onPayload, signal);
+				? await runJudgeObservation(job, model, credential, observationSessionId, onPayload, signal)
+				: await runObservationLoop(job, model, credential, observationSessionId, onPayload, signal);
 		if (!outcome || signal.aborted || job.branchGeneration !== branchGeneration) {
 			return;
 		}
@@ -643,7 +601,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
 			notifyUser(
 				job.ctx,
-				`hydra: ${job.head} ${errorKind}: ${JUDGE_ERROR_DESCRIPTIONS[errorKind]}${detail}${tools}; stopReason=${response.stopReason}; recorded as noop${outcome.failureHint ?? ""}`,
+				`hydra: ${job.head} ${errorKind}: ${JUDGE_ERROR_DESCRIPTIONS[errorKind]}${detail}${tools}; stopReason=${response.stopReason}; recorded as noop`,
 				errorKind === "provider-error" ? "error" : "warning",
 			);
 			decisions = [{ action: "noop", reason: errorKind, message: "" }];
@@ -739,11 +697,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	async function runJudgeObservation(
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses" | "openai-responses">,
+		credential: ChatGPTCredential | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
 	): Promise<ObserveOutcome | null> {
-		const transport = resolveStreamSimple(job.ctx, model);
 		const prompt: Message = {
 			role: "user",
 			content: [{ type: "text", text: job.prompt }],
@@ -754,26 +712,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 		const call = async (messages: Message[]): Promise<AssistantMessage> => {
 			if (signal.aborted) throw new Error("observation aborted");
-			const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
-			if (!fresh.ok || !fresh.apiKey) {
-				throw new Error(`hydra: ${model.provider} credentials unavailable during observation: ${fresh.ok ? "no API key" : fresh.error}`);
-			}
-			if (model.api === "openai-responses") {
-				const baseUrl = (fresh as { baseUrl?: unknown }).baseUrl;
-				if ((baseUrl && baseUrl !== model.baseUrl) ||
-					!await isCurrentChatGPTAuth(job.ctx, model, fresh.apiKey, fresh.headers)) {
-					throw new Error("ChatGPT sign-in or endpoint changed during observation; head stopped");
-				}
-			}
+			const current = credential && (await recheckedChatGPTCredential(job.ctx, model));
 			const options = {
-				apiKey: fresh.apiKey,
-				headers: fresh.headers,
+				apiKey: current?.apiKey,
+				headers: current?.headers,
 				sessionId,
 				transport: model.api === "openai-codex-responses" ? ("websocket" as const) : undefined,
 				onPayload,
 				signal,
 			};
-			const response = await transport(model, { systemPrompt: "", messages, tools: [] }, options).result();
+			const response = await job.ctx.modelRegistry.streamSimple(model, { systemPrompt: "", messages, tools: [] }, options).result();
 			usages.push(flattenUsage(response.usage));
 			return response;
 		};
@@ -791,11 +739,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				...classified,
 				selfRemoved: false,
 				loopStopReason: null,
-				failureHint: classified.errorKind === "provider-error" ? observationFailureHint(transport, response.errorMessage ?? "") : undefined,
 			};
 		} catch (error) {
 			if (!signal.aborted) {
-				notifyUser(job.ctx, `hydra: observation failed: ${errorText(error)}${observationFailureHint(transport, errorText(error))}`, "error");
+				notifyUser(job.ctx, `hydra: observation failed: ${errorText(error)}`, "error");
 			}
 			return null;
 		}
@@ -812,13 +759,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	async function runObservationLoop(
 		job: Observation,
 		model: Model<"anthropic-messages" | "openai-codex-responses" | "openai-responses">,
-		apiKey: string,
-		headers: ProviderHeaders | undefined,
+		credential: ChatGPTCredential | undefined,
 		sessionId: string | undefined,
 		onPayload: (built: unknown) => unknown,
 		signal: AbortSignal,
 	): Promise<ObserveOutcome | null> {
-		const transport = resolveStreamSimple(job.ctx, model);
 		const prompt: Message = {
 			role: "user",
 			content: [{ type: "text", text: job.prompt }],
@@ -846,24 +791,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				},
 				{
 					model,
-					apiKey,
-					headers,
-					// Re-resolve per call: OAuth can expire during a tool loop. Never
-					// silently fall back to the initial token when renewal fails.
-					getApiKey: async () => {
-						if (signal.aborted) return undefined;
-						const fresh = await job.ctx.modelRegistry.getApiKeyAndHeaders(model);
-						if (!fresh.ok || !fresh.apiKey) {
-							throw new Error(`hydra: ${model.provider} credentials unavailable during observation: ${fresh.ok ? "no API key" : fresh.error}`);
-						}
-						if (model.api === "openai-responses") {
-							const baseUrl = (fresh as { baseUrl?: unknown }).baseUrl;
-							if ((baseUrl && baseUrl !== model.baseUrl) || !await isCurrentChatGPTAuth(job.ctx, model, fresh.apiKey, fresh.headers)) {
-								throw new Error("ChatGPT sign-in or endpoint changed during observation; head stopped");
-							}
-						}
-						return fresh.apiKey;
-					},
+					apiKey: credential?.apiKey,
+					headers: credential?.headers,
+					// ChatGPT only: re-check the sign-in before every turn of the loop.
+					getApiKey: credential
+						? async () => (signal.aborted ? undefined : (await recheckedChatGPTCredential(job.ctx, model)).apiKey)
+						: undefined,
 					// Codex only. Whether this is the driver's session id or
 					// hydra's own is decided in observe().
 					//
@@ -940,13 +873,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					}
 				},
 				signal,
-				transport,
+				(streamModel, context, options) => job.ctx.modelRegistry.streamSimple(streamModel, context, options),
 			);
 		} catch (error) {
 			if (!signal.aborted) {
 				notifyUser(
 					job.ctx,
-					`hydra: observation loop failed: ${errorText(error)}${observationFailureHint(transport, errorText(error))}`,
+					`hydra: observation loop failed: ${errorText(error)}`,
 					"error",
 				);
 			}
@@ -962,7 +895,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			if (!signal.aborted) {
 				notifyUser(
 					job.ctx,
-					`hydra: observation loop failed: ${response.errorMessage ?? "aborted"}${observationFailureHint(transport, response.errorMessage ?? "")}`,
+					`hydra: observation loop failed: ${response.errorMessage ?? "aborted"}`,
 					"error",
 				);
 			}

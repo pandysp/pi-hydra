@@ -58,7 +58,7 @@ async function observation(
 		sessionManager: { getBranch: () => [], getSessionId: () => sessionId },
 		modelRegistry: {
 			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "offline-fixture-only" }),
-			getRegisteredProviderConfig: () => ({ api: faux.api, streamSimple: faux.streamSimple }),
+			streamSimple: faux.streamSimple,
 		},
 	} as unknown as ExtensionContext;
 	const fire = async (name: string, event: unknown) => {

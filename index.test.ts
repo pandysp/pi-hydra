@@ -74,7 +74,7 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 				if (options.changeAuthAfter && authChecks > options.changeAuthAfter) currentOAuth = false;
 				return { source: currentOAuth ? "OAuth" : "stored credential", auth: { apiKey: currentOAuth ? "test" : "api-key" } };
 			},
-			getRegisteredProviderConfig: () => ({ api, streamSimple: transport }),
+			streamSimple: transport,
 			isUsingOAuth: () => options.oauth ?? true,
 		},
 		abort: vi.fn(),
@@ -366,8 +366,8 @@ describe("observation loop stops", () => {
 		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("codex cache sharing lost mid-loop"), "warning");
 	});
 
-	it("does not fall back to a stale token when credential refresh fails mid-loop", async () => {
-		const h = await harness({ api: "openai-codex-responses", tools: "read", failAuthAfter: 2 });
+	it("does not fall back to a stale ChatGPT token when credential refresh fails mid-loop", async () => {
+		const h = await harness({ api: "openai-responses", tools: "read", failAuthAfter: 2 });
 		writeFileSync(join(h.cwd, "work.txt"), "content");
 		await h.observe(answer([tool("read", { path: "work.txt" })], "toolUse"));
 		await vi.waitFor(() => expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("credential refresh failed"), "error"));
