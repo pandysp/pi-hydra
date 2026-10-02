@@ -28,6 +28,8 @@ jobs:
       - name: Flue adapter dependencies and types
         run: npm ci --prefix flue && npm run check --prefix flue
       - run: npm test
+      - name: pi-hydra/flue installed into a fresh Flue app
+        run: npm run consumer --prefix flue
       - name: syntax-check experiments
         run: for f in experiments/*.mjs; do node --check "$f"; done
 

@@ -7,7 +7,8 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"check": "tsc && npm run build && git diff --exit-code -- dist",
-		"test": "vitest run"
+		"test": "vitest run",
+		"consumer": "node consumer-check.mjs"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": ">=0.87.1",

@@ -52,7 +52,7 @@ afterEach(async () => {
 	runtime = hydra = undefined;
 });
 
-async function run(options: { api?: string; heads?: string[]; maxRounds?: number; agent?: (hydra: FlueHydra) => () => string; driver: Parameters<typeof scripted>[1]; head: Parameters<typeof scripted>[2]; messages?: string[] }) {
+async function run(options: { api?: string; heads?: string[]; maxRounds?: number; agent?: (hydra: FlueHydra) => () => string; driver: Parameters<typeof scripted>[1]; head: Parameters<typeof scripted>[2]; messages?: string[]; tolerateFailures?: boolean }) {
 	const records: HydraRecord[] = [];
 	const logs: { level: string; message: string }[] = [];
 	const unobserve = observe((event) => { if (event.type === "log") logs.push({ level: event.level, message: event.message }); });
@@ -62,8 +62,11 @@ async function run(options: { api?: string; heads?: string[]; maxRounds?: number
 	const Agent = options.agent?.(h) ?? function Agent() { useModel("test/m"); h.useHydra(); return "You answer questions."; };
 	runtime = await start({ agents: [{ agent: Agent, name: "agent" }], providers: [h.wrap(model.provider)] });
 	const handle = init(Agent);
-	const replies = [];
-	for (const message of options.messages ?? ["What is 17 times 23?"]) replies.push(await handle.read(await handle.dispatch(message)));
+	const replies: any[] = [];
+	for (const message of options.messages ?? ["What is 17 times 23?"]) {
+		const reply = handle.read(await handle.dispatch(message));
+		replies.push(options.tolerateFailures ? await reply.catch((error: unknown) => error) : await reply);
+	}
 	unobserve();
 	return { replies, records, logs, sent: model.sent };
 }
@@ -120,6 +123,24 @@ describe("pi-hydra heads in Flue", () => {
 		expect(result.replies[0].text).toMatch(/attempt 2$/);
 		expect(result.records.map((r) => r.round)).toEqual([0, 1, 2]);
 		expect(result.logs.some((log) => log.level === "warn" && log.message.includes("unresolved after 2 rounds"))).toBe(true);
+	});
+
+	it("a response that fails after a correction does not use up the next response's rounds", async () => {
+		const result = await run({
+			maxRounds: 1,
+			// First response: a wrong answer, a steer, then the correction attempt fails.
+			// Second response: a wrong answer, a steer, the correction.
+			driver: (_sent, i) => i === 1
+				? fauxAssistantMessage("", { stopReason: "error", errorMessage: "400 invalid request" })
+				: fauxAssistantMessage(i === 3 ? "391" : "401"),
+			// The answer under review is the message just before the head's prompt.
+			head: (sent) => findings(...(JSON.stringify(sent.messages.at(-2)).includes("401") ? [{ action: "steer", message: "17 × 23 is 391" }] : [])),
+			messages: ["first question", "second question"],
+			tolerateFailures: true,
+		});
+		expect(result.replies[0]).toBeInstanceOf(Error);
+		expect(result.replies[1].text).toMatch(/391$/);
+		expect(result.records.map((r) => [r.round, r.outcome])).toEqual([[0, "findings"], [0, "findings"], [1, "none"]]);
 	});
 
 	it("after a terminating tool the head sees the real tool result", async () => {

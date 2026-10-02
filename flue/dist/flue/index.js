@@ -77,10 +77,19 @@ export function createFlueHydra(options) {
         observe(event) {
             if (event.type === "turn_request" && event.turnId)
                 purposes.set(event.turnId, event.purpose);
+            // A finished model call no longer needs its purpose, whether or not it was recorded.
+            if (event.type === "turn" && event.turnId)
+                purposes.delete(event.turnId);
             if (event.type === "turn_messages" && event.purpose === "agent" && event.conversationId) {
                 const state = conversations.get(event.conversationId);
                 if (state)
                     state.tail = modelMessages([event.message, ...event.toolResults]);
+            }
+            // The one place state is released: when the conversation's response ends, however it ended
+            // (settled, failed, aborted), and also for agents that never call useHydra().
+            if (event.type === "operation" && event.operationKind === "prompt" && event.conversationId &&
+                event.harness === "default" && event.session === "default" && event.taskId === undefined) {
+                conversations.delete(event.conversationId);
             }
         },
         interceptor: (operation, ctx, next) => scope.run({
@@ -204,7 +213,6 @@ export function createFlueHydra(options) {
         }
         if (!SUPPORTED_APIS.has(state.capture.model.api)) {
             failAll(conversationId, state.rounds, "unsupported-api", `provider API ${state.capture.model.api} is not supported (anthropic-messages, openai-codex-responses)`);
-            conversations.delete(conversationId);
             return;
         }
         const records = await Promise.all(heads.map((head) => check(head, state, conversationId, ctx.signal)));
@@ -220,14 +228,11 @@ export function createFlueHydra(options) {
                     steers.push({ head: record.head, decision });
             }
         }
-        if (steers.length === 0) {
-            conversations.delete(conversationId);
+        if (steers.length === 0)
             return;
-        }
         const body = steers.map(({ head, decision }) => `[pi-hydra ${head}] ${decision.message}`).join("\n");
         if (state.rounds >= maxRounds) {
             ctx.log.warn(`[pi-hydra] unresolved after ${maxRounds} rounds of feedback; the response settles with these findings open:\n${body}`);
-            conversations.delete(conversationId);
             return;
         }
         ctx.append({ kind: "signal", type: "pi-hydra", tagName: "pi-hydra", body });

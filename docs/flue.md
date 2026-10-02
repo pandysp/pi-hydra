@@ -11,11 +11,16 @@ serves from its cache, and adds only the agent's last turn and the head's instru
 ## Setup
 
 The adapter lives in [`flue/`](../flue/index.ts) and needs `@flue/runtime` 2.2.2 or later 2.x. Install
-pi-hydra into the Flue app, next to Flue and pi-ai, so the adapter uses the app's own Flue:
+pi-hydra into the Flue app, next to Flue and the pi-ai version that Flue release depends on
+(0.87.x for Flue 2.2.2), so the adapter uses the app's own Flue:
 
 ```bash
-npm install github:pandysp/pi-hydra @flue/runtime @earendil-works/pi-ai
+npm install github:pandysp/pi-hydra @flue/runtime@2.2.2 @earendil-works/pi-ai@0.87.1
 ```
+
+A pi-ai version different from Flue's gives the wrapped provider incompatible types.
+[`flue/consumer-check.mjs`](../flue/consumer-check.mjs) installs this exact combination into a
+fresh app, type-checks it and runs a scripted agent; CI runs it.
 
 ```ts
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
