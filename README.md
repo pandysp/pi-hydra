@@ -68,9 +68,8 @@ For headless runs, use `--hydra-heads quality,security`.
 
 ## Flue agents
 
-The same judge heads can review [Flue](https://flueframework.com/) agents. They check each
-response before it settles and the agent corrects itself in the same response. See
-[Heads in Flue agents](docs/flue.md).
+The same judge heads can review [Flue](https://flueframework.com/) agents with
+[flue-hydra](https://github.com/pandysp/flue-hydra), a separate package built on pi-hydra's core.
 
 ## Heads are Markdown files
 

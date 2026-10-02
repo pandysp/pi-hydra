@@ -16,12 +16,6 @@
 	"license": "MIT",
 	"type": "module",
 	"private": true,
-	"exports": {
-		"./flue": {
-			"types": "./flue/dist/flue/index.d.ts",
-			"default": "./flue/dist/flue/index.js"
-		}
-	},
 	"pi": {
 		"image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
 		"extensions": [
@@ -48,8 +42,7 @@
 		"@earendil-works/pi-agent-core": ">=0.87.1",
 		"@earendil-works/pi-ai": ">=0.87.1",
 		"@earendil-works/pi-coding-agent": ">=0.87.1",
-		"@earendil-works/pi-tui": ">=0.87.1",
-		"@flue/runtime": ">=2.2.2 <3"
+		"@earendil-works/pi-tui": ">=0.87.1"
 	},
 	"peerDependenciesMeta": {
 		"@earendil-works/pi-agent-core": {
@@ -62,9 +55,6 @@
 			"optional": true
 		},
 		"@earendil-works/pi-tui": {
-			"optional": true
-		},
-		"@flue/runtime": {
 			"optional": true
 		}
 	}

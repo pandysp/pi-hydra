@@ -46,7 +46,7 @@ Each prompt combines the head's instructions with Hydra's rules:
 
 On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
-The rules for heads without tools describe what `print`, `steer` and `interrupt` do. pi uses its own description; a host whose delivery differs passes its own, as the [Flue adapter](flue.md#what-happens-to-findings) does.
+The rules for heads without tools describe what `print`, `steer` and `interrupt` do. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
 The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
@@ -169,7 +169,6 @@ There is no build step; Pi loads the TypeScript through jiti.
 | `judge.ts` | Check answers from heads without tools and track their error notices |
 | `delivery.ts` | Delivery ledger and routing |
 | `utils.ts` | Shared types and pure prompt, parsing, guard, and payload logic |
-| `flue/index.ts` | The same heads for Flue agents, at the end of each response ([Heads in Flue agents](flue.md)) |
 
 Setup and checks are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
