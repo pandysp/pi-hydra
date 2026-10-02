@@ -153,8 +153,8 @@ async function consumer(options: ConsumerOptions = {}) {
 			}
 			driverPayloads.push(payload);
 			return slowFinalResponse && driverPayloads.length === 1
-				? delayedOpenaiResponse("Driver done.", highEconomics)
-				: openaiResponse("Driver done.", highEconomics);
+				? delayedOpenaiResponse(`Driver done ${foregroundPayloads.length}.`, highEconomics)
+				: openaiResponse(`Driver done ${foregroundPayloads.length}.`, highEconomics);
 		}
 		if (observing) {
 			observerPayloads.push(payload);
@@ -177,8 +177,8 @@ async function consumer(options: ConsumerOptions = {}) {
 			if (probe.slowHeaders) await new Promise(resolve => setTimeout(resolve, 1400));
 		}
 		return slowFinalResponse && foreground && realRequestCount === finalRequest
-			? delayedResponse([{ type: "text", text: "Driver done." }], highEconomics)
-			: response([{ type: "text", text: "Driver done." }], highEconomics);
+			? delayedResponse([{ type: "text", text: `Driver done ${realRequestCount}.` }], highEconomics)
+			: response([{ type: "text", text: `Driver done ${realRequestCount}.` }], highEconomics);
 	});
 	function requestFixture(model: Model<any>, context: any, options?: SimpleStreamOptions) {
 		// Test oracle, not a Hydra rule: the agent loop's requests carry the run's
@@ -449,7 +449,7 @@ function expectLatestAnswerInHead(h: Awaited<ReturnType<typeof consumer>>, opena
 	const prefix = openai ? driver.input : driver.messages;
 	const sent = openai ? head.input : head.messages;
 	const answers = sent.slice(prefix.length).filter((message: any) => message.role === "assistant");
-	expect(wireText(actual)).toBe("Driver done.");
+	expect(wireText(actual)).toBe(`Driver done ${h.foregroundPayloads.length}.`);
 	expect(answers).toHaveLength(1);
 	expect(wireText(answers[0])).toBe(wireText(actual));
 }
