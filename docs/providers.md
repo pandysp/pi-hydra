@@ -169,28 +169,32 @@ In an active session:
 ls /tmp/hydra-debug-*/
 ```
 
-For an Anthropic mid-run pair, dropping the appended handoff must reproduce the driver request:
+For Anthropic, truncate the observation's messages to the driver's length. The tail is the handoff, M at run end, and on models with mid-conversation effort the empty `system` messages pi-ai adds around them. A mid-run pair must then match exactly:
 
 ```bash
-jq -S '.' <driver.json> > /tmp/drv.json
-jq -S 'del(.messages[-1])' <observation.json> > /tmp/obs.json
+DRIVER=/tmp/hydra-debug-<id>/hydra-driver-<stem>.json
+OBSERVATION=/tmp/hydra-debug-<id>/hydra-observation-<stem>.json
+N=$(jq '.messages | length' "$DRIVER")
+jq -S '.' "$DRIVER" > /tmp/drv.json
+jq -S --argjson n "$N" '.messages |= .[:$n]' "$OBSERVATION" > /tmp/obs.json
 diff /tmp/drv.json /tmp/obs.json
 ```
 
-For Anthropic run end, drop M and the handoff and ignore deliberate marker relocation:
+At run end the driver's last mark moves onto M, so also ignore cache markers:
 
 ```bash
-jq -S 'walk(if type == "object" then del(.cache_control) else . end)' <driver.json> > /tmp/drv.json
-jq -S 'del(.messages[-2:]) | walk(if type == "object" then del(.cache_control) else . end)' <observation.json> > /tmp/obs.json
+N=$(jq '.messages | length' "$DRIVER")
+jq -S 'walk(if type == "object" then del(.cache_control) else . end)' "$DRIVER" > /tmp/drv.json
+jq -S --argjson n "$N" '.messages |= .[:$n] | walk(if type == "object" then del(.cache_control) else . end)' "$OBSERVATION" > /tmp/obs.json
 diff /tmp/drv.json /tmp/obs.json
 ```
 
 For either OpenAI route, truncate observation input to the driver length:
 
 ```bash
-N=$(jq '.input | length' <driver.json>)
-jq -S '.' <driver.json> > /tmp/drv.json
-jq -S --argjson n "$N" '.input |= .[:$n]' <observation.json> > /tmp/obs.json
+N=$(jq '.input | length' "$DRIVER")
+jq -S '.' "$DRIVER" > /tmp/drv.json
+jq -S --argjson n "$N" '.input |= .[:$n]' "$OBSERVATION" > /tmp/obs.json
 diff /tmp/drv.json /tmp/obs.json
 ```
 
