@@ -123,21 +123,9 @@ Healthy shared-mode Codex observations measured roughly 84%–87% cache hit. A J
 
 In the registered production-shaped wave of August 3, 2026, six driver runs compared the then-shipped enumerate-all-findings contract (ENUM) with a single-finding baseline (MAIN). Across cache-comparable observations, MAIN cost $0.0253 per observation and 52.1% of driver cost (103 observations); ENUM cost $0.0356 and 77.0% (108 observations). Including all charged cache misses and calls after failed driver turns raised those ratios to 66.2% and 93.3%. These establish cost only; the quality benchmark was still in progress. See [capstone producer results](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
 
-### Flue adapter
+### Flue agents
 
-Measured October 1–2, 2026 with [`flue/live-check.mjs`](../flue/live-check.mjs) (Flue 2.2.2, pi-ai
-0.87.1, low thinking, subscription logins, one judge head, a prefix of about 4K–7K tokens). Each
-check is a run-end check: the agent's last request, its last turn and the head prompt.
-
-| Provider | First check of a response | Check after a correction |
-|---|---|---|
-| Anthropic, Opus 5.5 | 5,974–6,053 of about 6,760–7,000 input tokens read from cache in 7/7 runs; the rest is the final turn written to cache plus 4 new tokens; $0.006–$0.011 per check where recorded, 2.5–7.1 s | 6,209 and 6,382 of about 7,200–7,280 read (2 runs) |
-| Codex, GPT-5.5, heads on the agent's session | 3,584 of 3,922–3,964 read in 10/14 runs, 2,560 in 4/14, never 0; 2.0–5.6 s | 2,560 of about 4,030–4,075 read in 14/14 runs |
-| Codex, heads on their own session | 3,584 read in 4/7 runs, 0 in 3/7 | 2,560 read in 7/7 runs |
-
-The Codex rows are why the adapter runs the agent on the `websocket` transport and shares its
-session. An earlier spike with a 13–22K prefix and a tool call over two turns measured the same
-pattern at larger size: Anthropic replays read 22,513–22,603 tokens with 4 new, Codex 12,800.
+[flue-hydra](https://github.com/pandysp/flue-hydra) runs the same heads in Flue agents; its measurements live in its README.
 
 ### Interpreting the numbers
 

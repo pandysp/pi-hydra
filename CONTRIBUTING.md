@@ -40,9 +40,7 @@ Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the c
 
 ```bash
 npm run check    # tsc, module-state, links, and code-to-doc claims
-npm ci --prefix flue && npm run check --prefix flue   # the Flue adapter: types, and flue/dist rebuilt and committed
-npm test         # vitest on the root modules and the Flue adapter
-npm run consumer --prefix flue   # pack, install into a fresh Flue app, type-check and run
+npm test         # vitest
 ```
 
 Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
