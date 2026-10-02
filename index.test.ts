@@ -240,19 +240,31 @@ describe("heads without tools through the extension", () => {
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining(kind), expect.any(String));
 	});
 
-	it("keeps valid noop, print and steer separate", async () => {
+	it("keeps valid noop and steer separate", async () => {
 		const h = await harness();
 		await h.observe(noop());
 		await h.waitCalls(1);
 		expect(h.calls()[0]).not.toHaveProperty("judgeErrorKind", expect.any(String));
 		await h.observe(answer([text(JSON.stringify({ findings: [
-			{ action: "print", message: "USER ONLY", reason: "user" },
 			{ action: "steer", message: "DRIVER ACTION", reason: "driver" },
 		] }))]));
 		await h.waitCalls(2);
-		expect(h.notify).toHaveBeenCalledWith("[pi-hydra critic] USER ONLY", "info");
 		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
 		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] DRIVER ACTION", undefined);
+	});
+
+	it.each([false, true])("rejects deprecated head print without delivering its answer (mixed: %s)", async (mixed) => {
+		const h = await harness();
+		const findings = [
+			{ action: "print", message: "PRIVATE PRINT", reason: "user" },
+			...(mixed ? [{ action: "steer", message: "PRIVATE STEER", reason: "driver" }] : []),
+		];
+		await h.observe(answer([text(JSON.stringify({ findings }))]));
+		await h.waitCalls(1);
+		expect(h.calls()[0]).toMatchObject({ action: "noop", judgeErrorKind: "malformed-findings" });
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("PRIVATE PRINT"), "info");
+		expect(JSON.stringify(vi.mocked(h.pi.sendUserMessage).mock.calls)).not.toMatch(/PRIVATE PRINT|PRIVATE STEER/);
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 	});
 });
 
@@ -504,6 +516,36 @@ describe("observation loop stops", () => {
 		await h.waitCalls(1);
 		expect(h.transport).toHaveBeenCalledTimes(1);
 		expect(h.calls()[0].action).toBe("noop");
+	});
+});
+
+describe("acting JSON answer validation", () => {
+	it.each([
+		["anthropic-messages", "anthropic"],
+		["openai-responses", "ds4"],
+	] as const)("%s (%s) accepts one prose-wrapped decision with a literal trailing brace", async (api, provider) => {
+		const h = await harness({ api, provider, tools: "read" });
+		await h.observe(answer([text('Decision: {"action":"steer","reason":"r","message":"Use the template syntax."} The placeholder is {name}.')]));
+		await h.waitCalls(1);
+		expect(h.calls()[0].action).toBe("steer");
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith("[pi-hydra critic] Use the template syntax.", undefined);
+	});
+
+	it.each([
+		["anthropic-messages", "anthropic"],
+		["openai-responses", "ds4"],
+	] as const)("%s (%s) rejects mixed findings without extracting a nested steer", async (api, provider) => {
+		const h = await harness({ api, provider, tools: "read" });
+		await h.observe(answer([text(JSON.stringify({ findings: [
+			{ action: "print", message: "PRIVATE PRINT" },
+			{ action: "steer", message: "PRIVATE STEER" },
+		] }))]));
+		await h.waitCalls(1);
+		expect(h.calls()[0].action).toBe("noop");
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("unparseable JSON decision"), "warning");
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("PRIVATE PRINT"), "info");
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 	});
 });
 

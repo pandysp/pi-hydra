@@ -22,7 +22,7 @@ export const hydraToolParameters = Type.Object(
 		delivery: Type.Optional(
 			StringEnum(OBSERVATION_DELIVERIES, {
 				description:
-					"complete_observation only: none=nothing to report; print=user-only note; steer=message to the main assistant without stopping it",
+					"complete_observation only: none=nothing to report; steer=message to the main assistant without stopping it",
 			}),
 		),
 		message: Type.String({

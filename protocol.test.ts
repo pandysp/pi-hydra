@@ -59,7 +59,7 @@ describe("hydra tool protocol", () => {
 		};
 		expect(schema.required).toEqual(["action", "message"]);
 		expect(schema.properties?.action?.enum).toEqual(["manage_heads", "complete_observation"]);
-		expect(schema.properties?.delivery?.enum).toEqual(["none", "print", "steer"]);
+		expect(schema.properties?.delivery?.enum).toEqual(["none", "steer"]);
 	});
 
 	it("enforces action-specific fields at runtime", () => {
@@ -81,7 +81,7 @@ describe("hydra tool protocol", () => {
 		// Hydra's own note route is not a head's choice.
 		expect(() =>
 			validateHydraToolParams({ action: "complete_observation", delivery: "note" as never, message: "follow-up" }),
-		).toThrow("delivery must be one of none, print, steer");
+		).toThrow("delivery must be one of none, steer");
 		expect(() => validateHydraToolParams({ action: "manage_heads", message: "missing fields" })).toThrow(
 			"requires operation and head",
 		);
@@ -94,6 +94,16 @@ describe("hydra tool protocol", () => {
 				message: "",
 			}),
 		).toThrow("does not accept operation or head");
+	});
+
+	it("rejects deprecated print in live and cached completions", () => {
+		expect(() =>
+			// @ts-expect-error print is retained internally, not in the public delivery type.
+			validateHydraToolParams({ action: "complete_observation", delivery: "print", message: "user only" }),
+		).toThrow("delivery must be one of none, steer");
+		expect(completionFromHydraToolCalls([
+			{ type: "toolCall", name: "hydra", arguments: { action: "complete_observation", delivery: "print", message: "user only" } },
+		])).toBeNull();
 	});
 
 	it("rejects the remaining cross-branch field mistakes", () => {
@@ -135,7 +145,7 @@ describe("hydra tool protocol", () => {
 
 	it("defines delivery by who must act and when", () => {
 		const description = hydraToolDescription("/heads");
-		expect(description).toContain('"print" shows a note only to the user; the main assistant will not see it');
+		expect(description).not.toContain('"print"');
 		expect(description).toContain('Use "steer" when the main assistant needs the feedback, even if it can wait');
 		expect(description).toContain("before its next model request");
 		expect(description).not.toContain('"note"');

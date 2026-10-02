@@ -248,6 +248,23 @@ describe("Pi consumer context and session", () => {
 		expect(existsSync(join(h.cwd, "made-by-head.txt"))).toBe(true);
 	});
 
+	it("an acting head cannot restart the driver with a steer extracted from invalid mixed findings", async () => {
+		const h = await consumer(false, [{ type: "text", text: JSON.stringify({ findings: [
+			{ action: "print", message: "PRIVATE PRINT" },
+			{ action: "steer", message: "PRIVATE STEER" },
+		] }) }], "read");
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		await h.session.waitForIdle();
+		expect(h.entries("hydra-call")[0]).toMatchObject({ data: { action: "noop" } });
+		expect(h.entries("hydra-delivery")).toHaveLength(0);
+		expect(h.driverPayloads).toHaveLength(1);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(saved(h, "PRIVATE STEER")).toHaveLength(0);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("deliberate observer steering resumes a fully idle main assistant without a user message", async () => {
 		const h = await consumer(false, [{ type: "text", text: '{"findings":[{"action":"steer","reason":"check","message":"DELIBERATE-STEER"}]}' }]);
 		const gate = deferred();

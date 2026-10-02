@@ -9,5 +9,5 @@ ACT WHEN: The user dismisses, contradicts, or ignores another head's finding.
 WORK: Sharpen that head's file by narrowing its focus, adding a boundary, or
 shortening its instruction. Edit at most one head and never your own.
 DONE WHEN: The edited head excludes the kind of finding the user rejected.
-DELIVER: Print the edit you made; complete with none when the act condition is
+DELIVER: Steer the edit you made; complete with none when the act condition is
 not met.

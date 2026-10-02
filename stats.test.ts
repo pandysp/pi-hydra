@@ -98,14 +98,16 @@ describe("parseBranchEntries", () => {
 	it("keeps valid delivery receipts and drops malformed ones", () => {
 		const valid = { head: "quality", delivery: "steer", message: "m", timestamp: 7 };
 		const note = { ...valid, delivery: "note", timestamp: 8 };
+		const print = { ...valid, delivery: "print", timestamp: 9 };
 		const { deliveries } = parseBranchEntries([
 			entry("hydra-delivery", valid),
 			entry("hydra-delivery", note),
+			entry("hydra-delivery", print),
 			entry("hydra-delivery", { ...valid, delivery: "abort" }),
 			entry("hydra-delivery", { ...valid, message: "" }),
 			entry("hydra-delivery", { ...valid, timestamp: Number.NaN }),
 			entry("hydra-delivery", "not an object"),
 		]);
-		expect(deliveries).toEqual([valid, note]);
+		expect(deliveries).toEqual([valid, note, print]);
 	});
 });

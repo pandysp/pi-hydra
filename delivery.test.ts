@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery.ts";
 import type { DeliveryGateway } from "./delivery.ts";
 import type { PersistedDelivery } from "./utils.ts";
-import { parseEnumeratedDecision } from "./utils.ts";
 
 function harness(idle = false) {
 	const sentUsers: Array<{ content: string; deliverAs?: string }> = [];
@@ -70,19 +69,11 @@ describe("delivery ledger and router", () => {
 		expect(runtime.persisted).toHaveLength(1);
 	});
 
-	it("delivers enumerated user and agent findings to their chosen recipients", () => {
-		const parsed = parseEnumeratedDecision(
-			JSON.stringify({
-				findings: [
-					{ action: "print", reason: "user", message: "Rotate the credential." },
-					{ action: "steer", reason: "agent", message: "Run the migration." },
-				],
-			}),
-		);
-		expect(parsed.error).toBeNull();
+	it("retains internal print and steer delivery to their chosen recipients", () => {
+		const decisions = [decision("print", "Rotate the credential."), decision("steer", "Run the migration.")];
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
-		const deliveries = parsed.decisions!.map((item) =>
+		const deliveries = decisions.map((item) =>
 			routeFeedback(ledger, runtime.gateway, item, "security"),
 		);
 		expect(deliveries).toEqual(["print", "steer"]);
