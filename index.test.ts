@@ -79,7 +79,6 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 			streamSimple: transport,
 			isUsingOAuth: () => options.oauth ?? true,
 		},
-		abort: vi.fn(),
 	} as unknown as ExtensionContext;
 	const pi = {
 		on: (name: string, handler: Handler) => handlers.set(name, handler),

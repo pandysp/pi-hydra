@@ -9,13 +9,9 @@ function harness(idle = false) {
 	const sentCustom: string[] = [];
 	const notices: Array<{ message: string; level: string }> = [];
 	const persisted: PersistedDelivery[] = [];
-	let aborted = false;
 	let throwOnSend = false;
 	const gateway: DeliveryGateway = {
 		isIdle: () => idle,
-		abort: () => {
-			aborted = true;
-		},
 		notify: (message, level) => notices.push({ message, level }),
 		sendUserMessage: (content, options) => {
 			if (throwOnSend) throw new Error("send failed");
@@ -33,14 +29,13 @@ function harness(idle = false) {
 		sentCustom,
 		notices,
 		persisted,
-		aborted: () => aborted,
 		throwOnSend: () => {
 			throwOnSend = true;
 		},
 	};
 }
 
-const decision = (action: "print" | "note" | "steer" | "interrupt", message = "fix it") => ({
+const decision = (action: "print" | "note" | "steer", message = "fix it") => ({
 	action,
 	reason: "review",
 	message,
@@ -52,7 +47,6 @@ describe("delivery ledger and router", () => {
 		ledger.succeed({ head: "security", delivery: "steer", message: "first" });
 		ledger.succeed({ head: "security", delivery: "print", message: "latest" });
 		ledger.stage({ head: "security", delivery: "steer", message: "same-head pending" }, "[pi-hydra security] same-head pending", "queued");
-		ledger.stage({ head: "security", delivery: "interrupt", message: "stop" }, "[pi-hydra security] stop", "queued");
 		ledger.stage({ head: "quality", delivery: "steer", message: "other head" }, "[pi-hydra quality] other head", "queued");
 		expect(ledger.contextFor("security")).toEqual({
 			lastByThisHead: { delivery: "print", message: "latest" },
@@ -63,7 +57,7 @@ describe("delivery ledger and router", () => {
 	it("moves a matching queued message from pending to successful on message_start", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
-		routeFeedback(ledger, runtime.gateway, decision("steer"), "security", false);
+		routeFeedback(ledger, runtime.gateway, decision("steer"), "security");
 		expect(ledger.contextFor("quality").pending).toEqual([]);
 		expect(ledger.contextFor("security").pending).toEqual([
 			{ head: "security", delivery: "steer", message: "fix it" },
@@ -89,7 +83,7 @@ describe("delivery ledger and router", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
 		const deliveries = parsed.decisions!.map((item) =>
-			routeFeedback(ledger, runtime.gateway, item, "security", false),
+			routeFeedback(ledger, runtime.gateway, item, "security"),
 		);
 		expect(deliveries).toEqual(["print", "steer"]);
 		expect(runtime.notices).toEqual([
@@ -110,44 +104,13 @@ describe("delivery ledger and router", () => {
 		});
 	});
 
-	it("delivers one agent batch and aborts when any agent finding is an emergency", () => {
-		const parsed = parseEnumeratedDecision(
-			JSON.stringify({
-				findings: [
-					{ action: "print", reason: "user", message: "Rotate the credential." },
-					{ action: "steer", reason: "fix", message: "Run the migration." },
-					{ action: "interrupt", reason: "emergency", message: "Stop the destructive command." },
-				],
-			}),
-		);
-		const ledger = new DeliveryLedger();
-		const runtime = harness(false);
-		expect(parsed.decisions).toHaveLength(2);
-		expect(
-			parsed.decisions!.map((item) => routeFeedback(ledger, runtime.gateway, item, "security", false)),
-		).toEqual(["print", "interrupt"]);
-		expect(runtime.aborted()).toBe(true);
-		expect(runtime.notices).toEqual([
-			{
-				message: "[pi-hydra security] Rotate the credential.",
-				level: "info",
-			},
-		]);
-		expect(runtime.sentUsers).toEqual([
-			{
-				content: "[pi-hydra security] Run the migration. | Stop the destructive command.",
-				deliverAs: "followUp",
-			},
-		]);
-	});
-
 	it("records note and print immediately, idle or busy, because neither has an extension-visible consume event", () => {
 		for (const idle of [true, false]) {
 			const ledger = new DeliveryLedger();
 			const runtime = harness(idle);
-			routeFeedback(ledger, runtime.gateway, decision("note", "later"), "quality", false);
+			routeFeedback(ledger, runtime.gateway, decision("note", "later"), "quality");
 			expect(ledger.contextFor("quality")).toEqual({ lastByThisHead: { delivery: "note", message: "later" }, pending: [] });
-			routeFeedback(ledger, runtime.gateway, decision("print", "rotate it"), "security", false);
+			routeFeedback(ledger, runtime.gateway, decision("print", "rotate it"), "security");
 			expect(ledger.contextFor("security").lastByThisHead).toEqual({ delivery: "print", message: "rotate it" });
 			expect(runtime.persisted).toHaveLength(2);
 		}
@@ -157,7 +120,7 @@ describe("delivery ledger and router", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
 		runtime.throwOnSend();
-		routeFeedback(ledger, runtime.gateway, decision("steer"), "security", false);
+		routeFeedback(ledger, runtime.gateway, decision("steer"), "security");
 		expect(ledger.contextFor("security")).toEqual({ lastByThisHead: null, pending: [] });
 
 		ledger.stage({ head: "quality", delivery: "steer", message: "orphan" }, "[pi-hydra quality] orphan", "queued");
@@ -168,7 +131,7 @@ describe("delivery ledger and router", () => {
 	it("drops an idle user delivery when a different user message starts first", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(true);
-		routeFeedback(ledger, runtime.gateway, decision("steer", "expected"), "security", false);
+		routeFeedback(ledger, runtime.gateway, decision("steer", "expected"), "security");
 		expect(ledger.contextFor("security").pending).toEqual([
 			{ head: "security", delivery: "steer", message: "expected" },
 		]);
@@ -180,31 +143,16 @@ describe("delivery ledger and router", () => {
 	it("drops an idle user delivery when a non-text user message starts", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(true);
-		routeFeedback(ledger, runtime.gateway, decision("steer", "expected"), "security", false);
+		routeFeedback(ledger, runtime.gateway, decision("steer", "expected"), "security");
 		ledger.discardIdleUserDeliveries();
 		expect(ledger.contextFor("security")).toEqual({ lastByThisHead: null, pending: [] });
-	});
-
-	it("demotes stale interrupt before staging and preserves live interrupt semantics", () => {
-		const staleLedger = new DeliveryLedger();
-		const staleRuntime = harness(false);
-		expect(routeFeedback(staleLedger, staleRuntime.gateway, decision("interrupt"), "security", true)).toBe("steer");
-		expect(staleRuntime.aborted()).toBe(false);
-		expect(staleRuntime.sentUsers[0]?.deliverAs).toBe("steer");
-
-		const liveLedger = new DeliveryLedger();
-		const liveRuntime = harness(false);
-		expect(routeFeedback(liveLedger, liveRuntime.gateway, decision("interrupt"), "security", false)).toBe("interrupt");
-		expect(liveRuntime.aborted()).toBe(true);
-		expect(liveRuntime.sentUsers[0]?.deliverAs).toBe("followUp");
-		expect(liveLedger.contextFor("security").pending).toEqual([]);
 	});
 
 	it("allows an intentional byte-identical repeat after rejection", () => {
 		const ledger = new DeliveryLedger();
 		const runtime = harness(false);
 		ledger.succeed({ head: "security", delivery: "steer", message: "same finding" });
-		routeFeedback(ledger, runtime.gateway, decision("steer", "same finding"), "security", false);
+		routeFeedback(ledger, runtime.gateway, decision("steer", "same finding"), "security");
 		expect(runtime.sentUsers).toEqual([{ content: "[pi-hydra security] same finding", deliverAs: "steer" }]);
 	});
 
@@ -214,7 +162,7 @@ describe("delivery ledger and router", () => {
 		runtime.gateway.persist = () => {
 			throw new Error("disk full");
 		};
-		routeFeedback(ledger, runtime.gateway, decision("print", "visible"), "quality", false);
+		routeFeedback(ledger, runtime.gateway, decision("print", "visible"), "quality");
 		expect(ledger.contextFor("quality").lastByThisHead).toEqual({ delivery: "print", message: "visible" });
 		expect(runtime.notices.at(-1)).toEqual({
 			message: "hydra: delivered feedback but could not persist its receipt (disk full)",

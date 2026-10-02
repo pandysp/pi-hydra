@@ -7,21 +7,21 @@ import type { Message } from "@earendil-works/pi-ai";
 
 // Where a head's finding ends up. print: shown to the user only. steer:
 // reaches the agent at its next step, or starts a turn if it is idle.
-// interrupt: reaches it now, canceling whatever it was doing.
-const HEAD_DELIVERIES = ["print", "steer", "interrupt"] as const;
+const HEAD_DELIVERIES = ["print", "steer"] as const;
 // What a head may decide: noop sends nothing.
 const HEAD_ACTIONS = ["noop", ...HEAD_DELIVERIES] as const;
 // note is Hydra's own route and never a head's choice: the finding is added to
 // the conversation without starting a turn (during shutdown, and for reviews of
 // a cancelled run).
-export type Action = (typeof HEAD_ACTIONS)[number] | "note";
+export const DELIVERY_ACTIONS = [...HEAD_DELIVERIES, "note"] as const;
+export type DeliveryAction = (typeof DELIVERY_ACTIONS)[number];
+export type Action = "noop" | DeliveryAction;
 // complete_observation calls noop "none".
 export const OBSERVATION_DELIVERIES = ["none", ...HEAD_DELIVERIES] as const;
 export type ObservationDelivery = (typeof OBSERVATION_DELIVERIES)[number];
 export const HEAD_OPERATIONS = ["add", "remove"] as const;
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
 
-export type DeliveryAction = Exclude<Action, "noop">;
 
 export interface DeliveryRecord {
 	head: string;
@@ -36,18 +36,6 @@ export interface DeliveryContext {
 
 export interface PersistedDelivery extends DeliveryRecord {
 	timestamp: number;
-}
-
-/**
- * A head that decided to interrupt, based on a picture the agent has already
- * moved past, is downgraded to steering instead.
- *
- * The trade is deliberately lopsided. Downgrading when it was not needed costs
- * one turn of delay. Interrupting when it was not needed throws away work the
- * agent is in the middle of.
- */
-export function demoteStaleInterrupt(action: Action, staleSnapshot: boolean): Action {
-	return action === "interrupt" && staleSnapshot ? "steer" : action;
 }
 
 export interface Decision {
@@ -109,7 +97,7 @@ function asDecision(value: unknown): Decision | null {
 	const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
 	const message = typeof obj.message === "string" ? obj.message.trim().slice(0, 500) : "";
 	// A delivery with nothing to deliver is recorded as the noop it is, so
-	// stats never count an interrupt that interrupted nothing.
+	// stats never count a delivery that said nothing.
 	if (action !== "noop" && message === "") {
 		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "" };
 	}
@@ -340,9 +328,9 @@ export interface ObservationProtocolOptions {
 }
 
 const STEER_ONLY_DECISION_SHAPE =
-	'{"action":"noop|print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
+	'{"action":"noop|print|steer","reason":"≤120 chars","message":"≤240 chars, empty if noop"}';
 const ENUMERATED_DECISION_SHAPE =
-	'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}';
+	'{"findings":[{"action":"print|steer","reason":"≤120 chars","message":"≤240 chars"}]}';
 
 const MANAGEMENT_NOTE =
 	"A successful manage_heads change automatically tells the main assistant, with your explanation. Do not repeat it in your final message.";
@@ -352,7 +340,7 @@ function toolAllowance(tools: string[] | undefined): string {
 }
 
 export const OBSERVER_DELIVERY_GUIDANCE =
-	'"print" shows a note only to the user; the main assistant will not see it. Use "steer" when the main assistant needs the feedback, even if it can wait. The message reaches it before its next model request without stopping its work. Use "interrupt" only for an emergency that must stop the run.';
+	'"print" shows a note only to the user; the main assistant will not see it. Use "steer" when the main assistant needs the feedback, even if it can wait. The message reaches it before its next model request without stopping its work.';
 
 export const OBSERVER_GUIDANCE =
 	"You are reviewing the main assistant's work. You are not the main assistant; it keeps working on its own. Do not continue its task or answer for it. This head's instructions define what to check and how much to report. Follow them. The main assistant may have moved on since this copy of the conversation was taken. Do not repeat its plan or doubts, or suggest work it already plans to do unless the plan itself is the problem. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing; that alone does not prove a problem.";
@@ -423,7 +411,7 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 	return `Earlier feedback: ${JSON.stringify(visible)}. lastByThisHead is this head's last delivered message; recipient says who received it. Messages in pending have not reached the main assistant yet. ${FOLLOW_UP_GUIDANCE}`;
 }
 
-// `deliveryGuidance` says what print, steer and interrupt do on the host running the head;
+// `deliveryGuidance` says what print and steer do on the host running the head;
 // a host whose delivery differs from pi's passes its own so heads are not told otherwise.
 function enumeratedDecisionProtocol(head: string, deliveryGuidance: string): string {
 	return `Reply with one JSON object, nothing else:
@@ -471,9 +459,9 @@ export interface EnumeratedDecisionResult {
  * Splits a head's numbered findings into at most two groups: what only the
  * user sees, and what the agent is told.
  *
- * Every message ends up in exactly one group. An interrupt raises the urgency
- * of the agent's group only. It never drags a user-only finding into the
- * agent's context, which would leak something the head chose not to send.
+ * Every message ends up in exactly one group. A user-only finding never goes
+ * into the agent's context, which would leak something the head chose not to
+ * send.
  */
 export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult {
 	const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -508,7 +496,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	if (findings.length === 0) {
 		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null };
 	}
-	const batch = (action: "print" | "steer" | "interrupt", selected: Decision[]): Decision => ({
+	const batch = (action: "print" | "steer", selected: Decision[]): Decision => ({
 		action,
 		reason: selected
 			.map((finding) => finding.reason)
@@ -517,13 +505,13 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 		message: selected.map((finding) => finding.message).join(" | "),
 	});
 	const prints = findings.filter((finding) => finding.action === "print");
-	const agent = findings.filter((finding) => finding.action === "steer" || finding.action === "interrupt");
+	const agent = findings.filter((finding) => finding.action === "steer");
 	const decisions: Decision[] = [];
 	if (prints.length > 0) {
 		decisions.push(batch("print", prints));
 	}
 	if (agent.length > 0) {
-		decisions.push(batch(agent.some((finding) => finding.action === "interrupt") ? "interrupt" : "steer", agent));
+		decisions.push(batch("steer", agent));
 	}
 	return {
 		decisions,
