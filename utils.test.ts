@@ -5,7 +5,6 @@ import {
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
-	buildOpenAIObservationPrompt,
 	buildAnthropicObservationPrompt,
 	FOLLOW_UP_GUIDANCE,
 	OBSERVER_DELIVERY_GUIDANCE,
@@ -211,13 +210,6 @@ describe("buildObservationEnvelope", () => {
 		expect(buildObservationEnvelope("docs", ["read", "write"], { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
 		expect(buildObservationEnvelope("unbounded", undefined, { activeHeads: ["quality"] })).not.toContain("Active heads when this check started");
 	});
-});
-
-it("keeps tool completion rules with the head instructions in one OpenAI user message", () => {
-	const prompt = buildOpenAIObservationPrompt("docs", "Check the fixture.", ["read"]);
-	expect(prompt).toContain("HEAD INSTRUCTIONS: Check the fixture.");
-	expect(prompt).toContain('call hydra exactly once with action "complete_observation"');
-	expect(prompt).not.toContain("previous user message");
 });
 
 describe("enumerated steer-only judge completion", () => {

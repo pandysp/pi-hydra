@@ -303,8 +303,8 @@ export function headActs(tools: string[] | undefined): boolean {
 
 /**
  * Whether the head's instruction and the rules for answering are sent as two
- * messages or one, for heads without tools (the rules as a developer
- * message). Decided by measurement, not taste.
+ * messages or one (the rules as a developer message), for every head. Decided
+ * by measurement, not taste.
  *
  * Splitting them helped on both OpenAI routes: on Codex heads followed
  * instructions better and answered faster, and with combined messages GPT-6
@@ -557,20 +557,6 @@ export function buildObservationEnvelope(
 	options: ObservationProtocolOptions = {},
 ): string {
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${toolCompletionGuidance(head, tools, options)}`;
-}
-
-/** Combined handoff for acting heads on ChatGPT sign-in; not measured against the split. */
-export function buildOpenAIObservationPrompt(
-	head: string,
-	instruction: string,
-	tools: string[] | undefined,
-	options: ObservationProtocolOptions = {},
-): string {
-	return `<system-reminder>${OBSERVER_GUIDANCE}
-
-${headInstructions(instruction)}
-
-${toolCompletionGuidance(head, tools, options).trimStart()}</system-reminder>`;
 }
 
 function toolCompletionGuidance(head: string, tools: string[] | undefined, options: ObservationProtocolOptions): string {
