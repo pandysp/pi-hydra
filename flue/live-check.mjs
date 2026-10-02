@@ -3,7 +3,7 @@
 // The agent's multiply tool is deliberately wrong. A judge head that checks arithmetic should
 // catch the wrong product at the response's finish; the agent should then correct its answer
 // before the response settles. Prints the reply, every head record and the cache numbers.
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import * as v from "valibot";
@@ -61,6 +61,7 @@ const reply = await handle.read(await handle.dispatch("What is 1847 times 2963? 
 });
 await flue.stop();
 await hydra.close();
+rmSync(heads, { recursive: true, force: true });
 console.log(JSON.stringify({
 	route,
 	reply: reply.text,

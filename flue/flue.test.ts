@@ -1,10 +1,10 @@
 // End to end through real Flue (runtime, durable store, hooks) with a scripted model.
 // The script builds an Anthropic-shaped request body and passes it through onPayload, the way
 // pi-ai's real providers do, so capture, merge and replay run exactly as they would live.
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import * as v from "valibot";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { defineTool, GeneralSubagent, init, observe, useModel, useSubagent, useTool } from "@flue/runtime";
@@ -15,8 +15,12 @@ type Sent = { messages: { role: string; content: { type: string; text: string }[
 const text = (sent: Sent) => JSON.stringify(sent.messages);
 const isHeadRequest = (sent: Sent) => text(sent).includes("You are reviewing the main assistant's work");
 
+const headDirs: string[] = [];
+afterAll(() => { for (const dir of headDirs) rmSync(dir, { recursive: true, force: true }); });
+
 function headFile(name: string, extra = "tools: []"): string {
 	const dir = mkdtempSync(join(tmpdir(), "hydra-flue-test-"));
+	headDirs.push(dir);
 	const path = join(dir, `${name}.md`);
 	writeFileSync(path, `---\nname: ${name}\ndescription: test head\n${extra}\n---\nCheck the answer.\n`);
 	return path;
