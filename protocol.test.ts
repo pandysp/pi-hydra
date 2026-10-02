@@ -59,7 +59,7 @@ describe("hydra tool protocol", () => {
 		};
 		expect(schema.required).toEqual(["action", "message"]);
 		expect(schema.properties?.action?.enum).toEqual(["manage_heads", "complete_observation"]);
-		expect(schema.properties?.delivery?.enum).toEqual(["none", "print", "steer", "interrupt"]);
+		expect(schema.properties?.delivery?.enum).toEqual(["none", "print", "steer"]);
 	});
 
 	it("enforces action-specific fields at runtime", () => {
@@ -81,7 +81,7 @@ describe("hydra tool protocol", () => {
 		// Hydra's own note route is not a head's choice.
 		expect(() =>
 			validateHydraToolParams({ action: "complete_observation", delivery: "note" as never, message: "follow-up" }),
-		).toThrow("delivery must be one of none, print, steer, interrupt");
+		).toThrow("delivery must be one of none, print, steer");
 		expect(() => validateHydraToolParams({ action: "manage_heads", message: "missing fields" })).toThrow(
 			"requires operation and head",
 		);
@@ -138,7 +138,6 @@ describe("hydra tool protocol", () => {
 		expect(description).toContain('"print" shows a note only to the user; the main assistant will not see it');
 		expect(description).toContain('Use "steer" when the main assistant needs the feedback, even if it can wait');
 		expect(description).toContain("before its next model request");
-		expect(description).toContain("emergency that must stop the run");
 		expect(description).not.toContain('"note"');
 	});
 });

@@ -4,6 +4,7 @@
  * rebuilding state from a session branch. Rendering (the footer and
  * /hydra-stats) stays in index.ts, which owns the UI.
  */
+import { DELIVERY_ACTIONS } from "./utils.ts";
 import type { Action, HydraConfig, PersistedDelivery } from "./utils.ts";
 import type { JudgeErrorKind } from "./judge.ts";
 
@@ -127,10 +128,7 @@ function persistedDelivery(value: unknown): PersistedDelivery | null {
 	if (
 		typeof candidate.head !== "string" ||
 		candidate.head.length === 0 ||
-		(candidate.delivery !== "print" &&
-			candidate.delivery !== "note" &&
-			candidate.delivery !== "steer" &&
-			candidate.delivery !== "interrupt") ||
+		!(DELIVERY_ACTIONS as readonly unknown[]).includes(candidate.delivery) ||
 		typeof candidate.message !== "string" ||
 		candidate.message.length === 0 ||
 		typeof candidate.timestamp !== "number" ||

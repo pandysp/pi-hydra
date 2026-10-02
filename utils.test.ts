@@ -12,7 +12,6 @@ import {
 	OBSERVER_GUIDANCE,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
-	demoteStaleInterrupt,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
@@ -56,8 +55,8 @@ describe("parseDecision", () => {
 	});
 
 	it("extracts a decision embedded in prose", () => {
-		const text = 'Here is my verdict: {"action":"interrupt","reason":"bad","message":"stop"} — done.';
-		expect(parseDecision(text)).toEqual({ action: "interrupt", reason: "bad", message: "stop" });
+		const text = 'Here is my verdict: {"action":"steer","reason":"bad","message":"stop"} — done.';
+		expect(parseDecision(text)).toEqual({ action: "steer", reason: "bad", message: "stop" });
 	});
 
 	it("extracts a decision whose message contains braces", () => {
@@ -75,7 +74,7 @@ describe("parseDecision", () => {
 	});
 
 	it("records a delivery with nothing to deliver as the noop it is", () => {
-		expect(parseDecision('{"action":"interrupt","reason":"bad","message":""}')).toEqual({
+		expect(parseDecision('{"action":"print","reason":"bad","message":""}')).toEqual({
 			action: "noop",
 			reason: "bad (empty message)",
 			message: "",
@@ -229,7 +228,7 @@ describe("enumerated steer-only judge completion", () => {
 		const prompt = buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context);
 		for (const text of [envelope, prompt]) {
 			expect(text).toContain(
-				'{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}',
+				'{"findings":[{"action":"print|steer","reason":"≤120 chars","message":"≤240 chars"}]}',
 			);
 			expect(text).toContain("empty findings array if there are none");
 			expect(text).toContain("You cannot use tools");
@@ -276,13 +275,12 @@ describe("enumerated steer-only judge completion", () => {
 		});
 	});
 
-	it("groups agent findings and interrupts only when one of them requests it", () => {
+	it("groups all agent findings into one steer", () => {
 		expect(
 			parseEnumeratedDecision(
 				JSON.stringify({
 					findings: [
 						{ action: "steer", reason: "fix", message: "Run the migration." },
-						{ action: "interrupt", reason: "emergency", message: "Stop the destructive command." },
 						{ action: "steer", reason: "verify", message: "Re-run the checks." },
 					],
 				}),
@@ -290,9 +288,9 @@ describe("enumerated steer-only judge completion", () => {
 		).toEqual({
 			decisions: [
 				{
-					action: "interrupt",
-					reason: "fix | emergency | verify",
-					message: "Run the migration. | Stop the destructive command. | Re-run the checks.",
+					action: "steer",
+					reason: "fix | verify",
+					message: "Run the migration. | Re-run the checks.",
 				},
 			],
 			error: null,
@@ -927,17 +925,6 @@ describe("parseHeadList", () => {
 
 	it("returns empty for blank input", () => {
 		expect(parseHeadList("  ")).toEqual([]);
-	});
-});
-
-describe("demoteStaleInterrupt", () => {
-	it("demotes only a stale interrupt, and only to steer", () => {
-		expect(demoteStaleInterrupt("interrupt", true)).toBe("steer");
-		expect(demoteStaleInterrupt("interrupt", false)).toBe("interrupt");
-		expect(demoteStaleInterrupt("steer", true)).toBe("steer");
-		expect(demoteStaleInterrupt("note", true)).toBe("note");
-		expect(demoteStaleInterrupt("print", true)).toBe("print");
-		expect(demoteStaleInterrupt("noop", true)).toBe("noop");
 	});
 });
 

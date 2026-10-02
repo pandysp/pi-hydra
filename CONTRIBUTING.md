@@ -45,12 +45,12 @@ npm test         # vitest
 
 The Flue adapter lives in [flue-hydra](https://github.com/pandysp/flue-hydra), which builds on `utils.ts`, `judge.ts` and `delivery.ts` at a pinned commit of this repository. Changing what those files export or how heads are prompted affects it the next time it moves its pin.
 
-Smoke-test delivery with the hidden diagnostic heads: `/hydra-heads test` forces a `steer`, `/hydra-heads test-interrupt` forces an `interrupt`. They fire once and revert. The revert prevents an infinite loop: a forced interrupt injects a user message, which starts a run, whose run-end observation would otherwise interrupt again.
+Smoke-test delivery with the hidden diagnostic head: `/hydra-heads test` forces a `steer`. It fires once and reverts. The revert prevents an infinite loop: a forced steer while idle injects a user message, which starts a run, whose run-end observation would otherwise steer again.
 
 ## What's welcome
 
 - New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
-- Steps toward mid-generation interrupts (see "Where this is going" in the README)
+- Steps toward mid-generation observation (see "Where this is going" in the README)
 - Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/providers.md`](docs/providers.md) first)
 - Replications or extensions of the [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md)
 

@@ -38,5 +38,4 @@ stops reading; decide everything and you make calls that were never yours.
 Question first when unsure: a wrong steer derails the run, a wrong question
 costs one answer. One finding per steer. Restate the ask when you steer.
 Escalate only if the last steer changed nothing. Notes for the user go to
-print. Interrupt only when the whole direction is wrong. Do not comment on
-the code itself.
+print. Do not comment on the code itself.

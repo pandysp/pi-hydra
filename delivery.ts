@@ -1,5 +1,4 @@
 import type { Decision, DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./utils.ts";
-import { demoteStaleInterrupt } from "./utils.ts";
 
 type PendingOrigin = "queued" | "idle-user";
 
@@ -23,10 +22,7 @@ export class DeliveryLedger {
 		return {
 			lastByThisHead: last ? { delivery: last.delivery, message: last.message } : null,
 			pending: this.pending
-				.filter(
-					(item) =>
-						item.record.head === head && item.record.delivery === "steer",
-				)
+				.filter((item) => item.record.head === head)
 				.map((item) => ({ ...item.record })),
 		};
 	}
@@ -96,9 +92,8 @@ export class DeliveryLedger {
 
 export interface DeliveryGateway {
 	isIdle(): boolean;
-	abort(): void;
 	notify(message: string, level: "info" | "warning"): void;
-	sendUserMessage(content: string, options?: { deliverAs: "steer" | "followUp" }): void;
+	sendUserMessage(content: string, options?: { deliverAs: "steer" }): void;
 	sendMessage(
 		message: {
 			customType: string;
@@ -142,11 +137,10 @@ export function routeFeedback(
 	gateway: DeliveryGateway,
 	decision: Decision,
 	head: string,
-	staleSnapshot: boolean,
 ): DeliveryAction | "noop" {
 	if (decision.action === "noop" || !decision.message) return "noop";
 
-	const delivery = demoteStaleInterrupt(decision.action, staleSnapshot) as DeliveryAction;
+	const delivery = decision.action;
 	const record: DeliveryRecord = { head, delivery, message: decision.message };
 	const formatted = `[pi-hydra ${head}] ${decision.message}`;
 
@@ -193,9 +187,6 @@ export function routeFeedback(
 	try {
 		if (idle) {
 			gateway.sendUserMessage(formatted);
-		} else if (delivery === "interrupt") {
-			gateway.abort();
-			gateway.sendUserMessage(formatted, { deliverAs: "followUp" });
 		} else {
 			gateway.sendUserMessage(formatted, { deliverAs: "steer" });
 		}

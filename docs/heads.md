@@ -85,7 +85,7 @@ A head with tools must finish its checks and tool work before reporting. See [Co
 A head without tools returns one JSON object:
 
 ```json
-{"findings":[{"action":"print|steer|interrupt","reason":"≤120 chars","message":"≤240 chars"}]}
+{"findings":[{"action":"print|steer","reason":"≤120 chars","message":"≤240 chars"}]}
 ```
 
 This head's instructions define what to check and how much to report. Return one entry per finding, or an empty array if there are none. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing. A quote lets someone check the finding; it does not prove the finding is right.
@@ -94,9 +94,6 @@ Choose an action for each finding:
 
 - `print` when only the user needs the note.
 - `steer` when the main assistant needs the feedback, even if it can wait.
-- `interrupt` for an emergency that must stop the run.
-
-The head's instructions decide when it may interrupt. Say so explicitly if it must never interrupt.
 
 See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time, shutdown and after you cancel a run.
 
@@ -173,7 +170,7 @@ The five review examples are designed to catch different things rather than repe
 ### Navigator
 **Lens:** done declared without proof, moved goalposts, quietly dropped requirements, guesses where a question was owed, unchecked assumptions, building before understanding, symptom fixes where the user wants the cause.
 **Why:** The other reviewers judge the code; this one judges the trajectory against the ask, like the non-typing partner in pair programming. In human-AI sessions the human plans and the agent executes, and the common failure is the plan quietly coming apart: requirements dropped, wrong problem solved, victory declared on green tests alone.
-**Boundary:** Do not comment on the code itself. Steer at the level of the goal; interrupt only when the whole direction is wrong.
+**Boundary:** Do not comment on the code itself. Steer at the level of the goal.
 
 ## More head ideas
 

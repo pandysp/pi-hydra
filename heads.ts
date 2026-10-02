@@ -21,7 +21,6 @@ import type { HeadDefinition, HydraConfig } from "./utils.ts";
 // completions and the picker.
 export const DIAGNOSTIC_PROMPTS = {
 	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "steer", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
-	"test-interrupt": `<system-reminder>Developer integration test for hydra's interrupt path. Call the hydra tool exactly once with action "complete_observation", delivery "interrupt", and message "hydra interrupt fired; if you see this in your context, interrupt delivery works". Do nothing else.</system-reminder>`,
 } as const;
 
 // What hydra can execute for a head: the seven standard tools plus its own.
@@ -293,9 +292,9 @@ export class HeadRegistry {
 		);
 	}
 
-	// Diagnostic heads are one-shot: revert before routing, otherwise an
-	// interrupt delivery re-triggers itself forever (each injected message
-	// starts a run whose run-end observation would interrupt again).
+	// Diagnostic heads are one-shot: revert before routing, otherwise their
+	// steer re-triggers itself forever (a steer sent while idle starts a run
+	// whose run-end observation would steer again).
 	revertDiagnosticAfterFire(gateway: HeadRegistryGateway, head: string) {
 		if (head in DIAGNOSTIC_PROMPTS && this.activeHeads.length === 1 && this.activeHeads[0] === head) {
 			this.activeHeads = this.productHeads;

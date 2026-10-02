@@ -16,7 +16,7 @@ This document explains the system. Detailed provider behavior, economics, dates,
 4. The per-head scheduler runs each active head independently.
 5. The observation engine chooses a provider- and mode-specific handoff.
 6. Judge-only heads make one provider call; acting heads use Pi's own agent loop.
-7. Decisions pass through the delivery layer and become a user-only note, driver-directed steer or interrupt, or noop.
+7. Decisions pass through the delivery layer and become a user-only note, a driver-directed steer, or noop.
 8. Calls, configuration, and delivery receipts are persisted as Pi session entries.
 
 ## Commit-point observation
@@ -49,7 +49,7 @@ Each prompt combines the head's instructions with Hydra's rules:
 
 The rule for every head is "split unless measured otherwise": Anthropic and ds4 measured better combined, so every other route, including a provider added later, gets the split. ds4 [moves developer messages to the top of the prompt](providers.md#ds4), which breaks the split's cache match. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
-The rules for heads without tools describe what `print`, `steer` and `interrupt` do. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
+The rules for heads without tools describe what `print` and `steer` do. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
 The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
 
@@ -98,12 +98,11 @@ In an open session:
 
 - `print` shows a note in Pi's interactive interface. It shows nothing in `pi -p`, and the main assistant never sees it.
 - `steer` sends the finding as a user message before the main assistant's next model request. If it is idle, the message starts a new run.
-- `interrupt` stops active work and starts a new run with the finding. If already idle, it just starts the new run.
 - No finding means no message. Hydra saves the result as `noop`.
 
-During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` and `interrupt` messages as a `note`: it adds them to the conversation without starting a turn. `note` is Hydra's own route, never a head's choice.
+During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` messages as a `note`: it adds them to the conversation without starting a turn. `note` is Hydra's own route, never a head's choice.
 
-Hydra groups findings from each answer into at most two messages. All `print` findings go in one user-only note. All `steer` and `interrupt` findings go in one message for the main assistant, which interrupts if any finding chose it. Every accepted finding appears once; user-only findings never reach the main assistant. An interrupt based on an old copy of the conversation becomes a steer, so it does not stop newer work.
+Hydra groups findings from each answer into at most two messages. All `print` findings go in one user-only note. All `steer` findings go in one message for the main assistant. Every accepted finding appears once; user-only findings never reach the main assistant.
 
 Hydra tracks which messages are waiting and which arrived. Heads are told who received each message; a user-only note does not mean the main assistant saw it.
 
