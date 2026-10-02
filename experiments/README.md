@@ -305,3 +305,16 @@ with no other writer. A lost race wastes the pre-warm; it never adds cost.
    sessions): the driver's next first request read prefix+M to the token
    (5292 = 4867 + 425) and wrote only its new user prompt (21 tok).
    Re-verification procedure: [`../docs/architecture.md`](../docs/architecture.md#observation-timing).
+
+## Split vs combined head handoff (October 2026)
+
+`split-handoff.mjs` asks whether a head without tools should get its instructions and Hydra's rules as one user message ("combined") or as a user message plus a developer message ("split") on the OpenAI routes. It replays a run-end check of an arithmetic head over a transcript whose tool returned a wrong product (and, as a control, the correct one) on GPT-6 astra, sol, luna and 6.1-sol, at low, medium and high effort, on Codex and ChatGPT sign-in. Requests are built with pi-hydra's own handoff builders and `mergeOpenAIObservationPayload`; answers are scored with `classifyJudgeResponse`, and a catch must name the correct product.
+
+```bash
+node experiments/split-handoff.mjs 3 2          # 3 wrong-answer and 2 control calls per cell; needs pi's openai and openai-codex logins
+node experiments/split-handoff.mjs retry        # rerun calls that ended in a provider error
+SPLIT_HANDOFF_LOG=/tmp/x.jsonl node experiments/split-handoff.mjs cell chatgpt gpt-6-sol low split 3
+```
+
+`split-handoff-2026-10-02.jsonl` is the run behind [providers.md](../docs/providers.md#chatgpt-sign-in) (240 calls, full replies). Split: 66 of 72 wrong answers caught, 0 of 48 false alarms, 0 of 120 answers rejected. Combined: 34 of 72 caught, 0 of 48 false alarms, 51 of 120 rejected because the head called the main assistant's tool.
+

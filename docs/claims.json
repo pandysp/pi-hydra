@@ -77,6 +77,11 @@
           "path": "utils.ts",
           "start": "function actingDeliveryContext(",
           "end": "export interface HeadCatalog"
+        },
+        {
+          "path": "utils.ts",
+          "start": "export function usesSplitObservationHandoff",
+          "end": "export interface ObservationProtocolOptions"
         }
       ],
       "doc": {
@@ -84,7 +89,7 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "659075e8921f5c5ceb88c12a8134601d4ee2e4c2f344aa48cbcd4c994e4db3a7",
+        "codeHash": "17682808c62df375a9a46a587d7341ae2a4306367095f7b8363a29af5cf149e1",
         "docHash": "c2f66f2cb08724c61e0b1b94e8d1405e1fad1ab98f2de049384d34d323e8b6d4"
       }
     },

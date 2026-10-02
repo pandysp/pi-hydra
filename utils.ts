@@ -559,7 +559,7 @@ export function buildObservationEnvelope(
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.${toolCompletionGuidance(head, tools, options)}`;
 }
 
-/** Keep the same completion contract when OpenAI needs one combined user message. */
+/** Combined handoff for acting heads on ChatGPT sign-in; not measured against the split. */
 export function buildOpenAIObservationPrompt(
 	head: string,
 	instruction: string,
