@@ -127,7 +127,7 @@ function persistedDelivery(value: unknown): PersistedDelivery | null {
 		typeof candidate.head !== "string" ||
 		candidate.head.length === 0 ||
 		(candidate.delivery !== "print" &&
-			candidate.delivery !== "queue" &&
+			candidate.delivery !== "note" &&
 			candidate.delivery !== "steer" &&
 			candidate.delivery !== "interrupt") ||
 		typeof candidate.message !== "string" ||

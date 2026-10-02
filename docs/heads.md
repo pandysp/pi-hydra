@@ -98,7 +98,7 @@ Choose an action for each finding:
 
 The head's instructions decide when it may interrupt. Say so explicitly if it must never interrupt.
 
-See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time and shutdown.
+See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time, shutdown and after you cancel a run.
 
 Use `none` only when finishing through the `hydra` tool with nothing to report. Heads using the findings JSON instead return an empty array; `none` is not a valid finding action. Invalid answers follow the [failed-check rules](architecture.md#failed-checks).
 

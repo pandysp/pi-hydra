@@ -1,5 +1,6 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { OBSERVER_DELIVERY_GUIDANCE } from "./utils.ts";
+import { OBSERVATION_DELIVERIES, OBSERVER_DELIVERY_GUIDANCE } from "./utils.ts";
+import type { ObservationDelivery } from "./utils.ts";
 
 /**
  * The driver and every head are shown the same tool description. They have to
@@ -19,7 +20,7 @@ export const hydraToolParameters = Type.Object(
 		operation: Type.Optional(StringEnum(["add", "remove"] as const, { description: "manage_heads only" })),
 		head: Type.Optional(Type.String({ minLength: 1, description: "manage_heads only: the head name" })),
 		delivery: Type.Optional(
-			StringEnum(["none", "print", "steer", "interrupt"] as const, {
+			StringEnum(OBSERVATION_DELIVERIES, {
 				description:
 					"complete_observation only: none=nothing to report; print=user-only note; steer=message to the main assistant without stopping it; interrupt=stop the run for an emergency",
 			}),
@@ -42,8 +43,7 @@ export interface ManageHeadsParams {
 
 export interface CompleteObservationParams {
 	action: "complete_observation";
-	/** Queueing still works, for old sessions, but heads are no longer offered it. */
-	delivery: "none" | "print" | "queue" | "steer" | "interrupt";
+	delivery: ObservationDelivery;
 	message: string;
 }
 
@@ -73,7 +73,7 @@ export interface RawHydraToolParams {
 	action: "manage_heads" | "complete_observation";
 	operation?: "add" | "remove";
 	head?: string;
-	delivery?: "none" | "print" | "queue" | "steer" | "interrupt";
+	delivery?: ObservationDelivery;
 	message: string;
 }
 
@@ -94,6 +94,9 @@ export function validateHydraToolParams(value: RawHydraToolParams): HydraToolPar
 	}
 	if (value.delivery === undefined) {
 		throw new Error("complete_observation requires delivery");
+	}
+	if (!(OBSERVATION_DELIVERIES as readonly string[]).includes(value.delivery)) {
+		throw new Error(`complete_observation delivery must be one of ${OBSERVATION_DELIVERIES.join(", ")}`);
 	}
 	if (value.operation !== undefined || value.head !== undefined) {
 		throw new Error("complete_observation does not accept operation or head");

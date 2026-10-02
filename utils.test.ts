@@ -44,8 +44,8 @@ function blocks(message: PayloadMessage): PayloadBlock[] {
 
 describe("parseDecision", () => {
 	it("parses a plain JSON decision", () => {
-		expect(parseDecision('{"action":"queue","reason":"r","message":"m"}')).toEqual({
-			action: "queue",
+		expect(parseDecision('{"action":"steer","reason":"r","message":"m"}')).toEqual({
+			action: "steer",
 			reason: "r",
 			message: "m",
 		});
@@ -83,9 +83,13 @@ describe("parseDecision", () => {
 		expect(parseDecision('{"action":"steer","reason":"","message":"   "}')?.action).toBe("noop");
 	});
 
+	it("rejects Hydra's own note route, which no head may choose", () => {
+		expect(parseDecision('{"action":"note","reason":"r","message":"m"}')).toBeNull();
+	});
+
 	it("caps reason and message lengths", () => {
 		const parsed = parseDecision(
-			JSON.stringify({ action: "queue", reason: "r".repeat(300), message: "m".repeat(600) }),
+			JSON.stringify({ action: "steer", reason: "r".repeat(300), message: "m".repeat(600) }),
 		);
 		expect(parsed?.reason).toHaveLength(200);
 		expect(parsed?.message).toHaveLength(500);
@@ -177,14 +181,14 @@ describe("buildAnthropicObservationPrompt", () => {
 		const prompt = buildAnthropicObservationPrompt("foreman", "Re-crew.", ["hydra", "read"], {
 			activeHeads: ["foreman", "quality"],
 			deliveryContext: {
-				lastByThisHead: { delivery: "queue", message: "Old internal delivery." },
+				lastByThisHead: { delivery: "note", message: "Old internal delivery." },
 				pending: [],
 			},
 		});
 		expect(prompt).toContain("Active heads when this check started: foreman, quality");
 		expect(prompt).toContain("manage_heads change automatically tells the main assistant");
 		expect(prompt).toContain("removing your own head ends this check");
-		expect(prompt).not.toContain("queue");
+		expect(prompt).not.toContain('"note"');
 	});
 });
 
@@ -198,12 +202,12 @@ describe("buildObservationEnvelope", () => {
 			activeHeads: ["quality", "security"],
 			deliveryContext: {
 				lastByThisHead: null,
-				pending: [{ head: "crew", delivery: "queue", message: "Old internal delivery." }],
+				pending: [{ head: "crew", delivery: "note", message: "Old internal delivery." }],
 			},
 		});
 		expect(envelope).toContain("manage_heads change automatically tells the main assistant");
 		expect(envelope).toContain("Active heads when this check started: quality, security");
-		expect(envelope).not.toContain("queue");
+		expect(envelope).not.toContain('"note"');
 	});
 
 	it("does not expose active state without explicit hydra capability", () => {
@@ -214,8 +218,8 @@ describe("buildObservationEnvelope", () => {
 
 describe("enumerated steer-only judge completion", () => {
 	const context = {
-		lastByThisHead: { delivery: "queue" as const, message: "Fix the redirect." },
-		pending: [{ head: "quality", delivery: "queue" as const, message: "Cover the adjacent mutation bug." }],
+		lastByThisHead: { delivery: "note" as const, message: "Fix the redirect." },
+		pending: [{ head: "quality", delivery: "note" as const, message: "Cover the adjacent mutation bug." }],
 	};
 
 	it("renders the same ENUM-SO2 contract for split and combined provider handoffs", () => {
@@ -227,7 +231,8 @@ describe("enumerated steer-only judge completion", () => {
 			);
 			expect(text).toContain("empty findings array if there are none");
 			expect(text).toContain("You cannot use tools");
-			expect(text.toLowerCase()).not.toContain("queue");
+			expect(text).toContain('"recipient":"agent"');
+			expect(text).not.toContain('"note"');
 		}
 		expect(envelope).toContain("previous user message contains all instructions for the security head");
 		expect(envelope).not.toContain("Fix security issues.");
@@ -292,11 +297,11 @@ describe("enumerated steer-only judge completion", () => {
 		});
 	});
 
-	it("accepts a fenced object but rejects hidden queue and malformed findings", () => {
+	it("accepts a fenced object but rejects Hydra's own note route and malformed findings", () => {
 		expect(parseEnumeratedDecision('```json\n{"findings":[]}\n```').decisions?.[0]?.action).toBe("noop");
 		expect(
-			parseEnumeratedDecision('{"findings":[{"action":"queue","reason":"later","message":"Do it later."}]}'),
-		).toMatchObject({ decisions: null, error: 'finding 1 has invalid action "queue"' });
+			parseEnumeratedDecision('{"findings":[{"action":"note","reason":"later","message":"Do it later."}]}'),
+		).toMatchObject({ decisions: null, error: 'finding 1 has invalid action "note"' });
 		expect(parseEnumeratedDecision('{"findings":[{"action":"steer","reason":"missing message"}]}')).toMatchObject({
 			decisions: null,
 			error: "finding 1 requires a non-empty message",
@@ -326,7 +331,7 @@ describe("shared observer guidance", () => {
 				expect(prompt.split(block)).toHaveLength(2);
 			}
 			expect(prompt).toContain('"recipient":"user"');
-			expect(prompt).not.toMatch(/\bqueue\b|List every finding|empty list is normal/);
+			expect(prompt).not.toMatch(/List every finding|empty list is normal/);
 			expect(prompt).toMatchSnapshot();
 		});
 	}
@@ -928,7 +933,7 @@ describe("demoteStaleInterrupt", () => {
 		expect(demoteStaleInterrupt("interrupt", true)).toBe("steer");
 		expect(demoteStaleInterrupt("interrupt", false)).toBe("interrupt");
 		expect(demoteStaleInterrupt("steer", true)).toBe("steer");
-		expect(demoteStaleInterrupt("queue", true)).toBe("queue");
+		expect(demoteStaleInterrupt("note", true)).toBe("note");
 		expect(demoteStaleInterrupt("print", true)).toBe("print");
 		expect(demoteStaleInterrupt("noop", true)).toBe("noop");
 	});

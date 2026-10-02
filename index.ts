@@ -378,7 +378,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let initialTransportPinned = false;
 
 	// Stats and successful delivery facts, rebuilt from the current session
-	// branch on restore. Live queue state never crosses branch navigation.
+	// branch on restore. Pending deliveries never cross branch navigation.
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
 	// One error notice per head and error type on the current branch; a
@@ -677,7 +677,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			decisions = [{ action: "noop", reason, message: "" }];
 		}
 		const primaryDecision = decisions.reduce((selected, candidate) => {
-			const urgency: Record<Action, number> = { noop: 0, print: 1, queue: 2, steer: 3, interrupt: 4 };
+			const urgency: Record<Action, number> = { noop: 0, print: 1, note: 2, steer: 3, interrupt: 4 };
 			return urgency[candidate.action] > urgency[selected.action] ? candidate : selected;
 		});
 
@@ -1075,7 +1075,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const holdBack = shuttingDown ? "during shutdown" : runSignal?.aborted ? "after the run was cancelled" : null;
 		const routed =
 			holdBack !== null && (decision.action === "steer" || decision.action === "interrupt")
-				? { ...decision, action: "queue" as const, reason: `${decision.reason}; queued ${holdBack}` }
+				? { ...decision, action: "note" as const, reason: `${decision.reason}; added without a turn ${holdBack}` }
 				: decision;
 		routeFeedback(deliveryLedger, deliveryGateway(ctx), routed, decisionHead, staleSnapshot);
 	}
@@ -1266,7 +1266,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const details = message.details;
 		const action = details?.action ?? "noop";
 		const actionColor =
-			action === "interrupt" ? "error" : action === "steer" ? "accent" : action === "queue" ? "warning" : "muted";
+			action === "interrupt" ? "error" : action === "steer" ? "accent" : action === "note" ? "warning" : "muted";
 
 		let text =
 			theme.fg("accent", "🐍 hydra ") +
@@ -1522,7 +1522,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				return;
 			}
 			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
-			const counts: Record<Action, number> = { noop: 0, print: 0, queue: 0, steer: 0, interrupt: 0 };
+			const counts: Record<Action, number> = { noop: 0, print: 0, note: 0, steer: 0, interrupt: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {
 				for (const action of call.actions?.length ? call.actions : [call.action]) {
@@ -1550,7 +1550,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total cache write: ${write.toLocaleString()} tokens`,
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
-					`  decision groups: ${counts.noop} noop / ${counts.print} print / ${counts.queue} queue / ${counts.steer} steer / ${counts.interrupt} interrupt`,
+					`  decision groups: ${counts.noop} noop / ${counts.print} print / ${counts.note} note / ${counts.steer} steer / ${counts.interrupt} interrupt`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,
