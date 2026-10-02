@@ -1,5 +1,5 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { OBSERVER_DELIVERY_GUIDANCE } from "./utils";
+import { OBSERVER_DELIVERY_GUIDANCE } from "./utils.ts";
 
 /**
  * The driver and every head are shown the same tool description. They have to

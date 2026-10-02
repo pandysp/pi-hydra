@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils";
+import type { AnthropicPayload, OpenAIResponsesPayload, PayloadBlock, PayloadMessage } from "./utils.ts";
 import {
 	headLoopMessages,
 	buildEnumeratedJudgeObservationEnvelope,
@@ -34,7 +34,7 @@ import {
 	selectFinalAssistant,
 	summarizeLoopUsage,
 	usesSplitObservationHandoff,
-} from "./utils";
+} from "./utils.ts";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
 	if (!Array.isArray(message.content)) {

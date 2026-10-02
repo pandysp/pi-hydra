@@ -4,8 +4,8 @@
  * rebuilding state from a session branch. Rendering (the footer and
  * /hydra-stats) stays in index.ts, which owns the UI.
  */
-import type { Action, HydraConfig, PersistedDelivery } from "./utils";
-import type { JudgeErrorKind } from "./judge";
+import type { Action, HydraConfig, PersistedDelivery } from "./utils.ts";
+import type { JudgeErrorKind } from "./judge.ts";
 
 export type ObserveKind = "piggyback" | "run-end";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { HeadScheduler } from "./scheduler";
-import type { SchedulerHooks } from "./scheduler";
+import { HeadScheduler } from "./scheduler.ts";
+import type { SchedulerHooks } from "./scheduler.ts";
 
 interface Seed {
 	head: string;

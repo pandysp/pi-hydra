@@ -1,6 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { parseEnumeratedDecision } from "./utils";
-import type { Decision } from "./utils";
+import { parseEnumeratedDecision } from "./utils.ts";
+import type { Decision } from "./utils.ts";
 
 export type JudgeErrorKind =
 	| "provider-error"

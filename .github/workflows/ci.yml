@@ -25,6 +25,8 @@ jobs:
       - run: npm ci
       - run: npm ls --depth=0
       - run: npm run check
+      - name: Flue adapter dependencies and types
+        run: npm ci --prefix flue && npm run check --prefix flue
       - run: npm test
       - name: syntax-check experiments
         run: for f in experiments/*.mjs; do node --check "$f"; done
@@ -49,6 +51,8 @@ jobs:
           @earendil-works/pi-tui@latest
       - run: npm ls --depth=0
       - run: npm run check
+      - name: Flue adapter dependencies and types
+        run: npm ci --prefix flue && npm run check --prefix flue
       - run: npm test
       - name: syntax-check experiments
         run: for f in experiments/*.mjs; do node --check "$f"; done

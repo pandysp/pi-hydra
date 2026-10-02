@@ -30,24 +30,24 @@ import type {
 	Decision,
 	HydraConfig,
 	ObservationUsage,
-} from "./utils";
-import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery";
-import type { DeliveryGateway } from "./delivery";
-import { DIAGNOSTIC_PROMPTS, HeadRegistry } from "./heads";
-import type { HeadRegistryGateway } from "./heads";
-import type { PersistedDelivery } from "./utils";
+} from "./utils.ts";
+import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery.ts";
+import type { DeliveryGateway } from "./delivery.ts";
+import { DIAGNOSTIC_PROMPTS, HeadRegistry } from "./heads.ts";
+import type { HeadRegistryGateway } from "./heads.ts";
+import type { PersistedDelivery } from "./utils.ts";
 import {
 	hydraToolDescription,
 	hydraToolParameters,
 	isTerminalHydraAction,
 	validateHydraToolParams,
-} from "./protocol";
-import type { ManageHeadsParams, RawHydraToolParams } from "./protocol";
-import { HeadScheduler } from "./scheduler";
-import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS } from "./judge";
-import type { JudgeResult } from "./judge";
-import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats";
-import type { HydraCall, ObserveKind } from "./stats";
+} from "./protocol.ts";
+import type { ManageHeadsParams, RawHydraToolParams } from "./protocol.ts";
+import { HeadScheduler } from "./scheduler.ts";
+import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS } from "./judge.ts";
+import type { JudgeResult } from "./judge.ts";
+import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats.ts";
+import type { HydraCall, ObserveKind } from "./stats.ts";
 import {
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
@@ -71,7 +71,7 @@ import {
 	selectFinalAssistant,
 	summarizeLoopUsage,
 	usesSplitObservationHandoff,
-} from "./utils";
+} from "./utils.ts";
 
 /**
  * An extension can wrap a provider to change how its requests are sent, for

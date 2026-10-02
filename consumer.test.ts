@@ -6,7 +6,7 @@ import { streamSimple } from "@earendil-works/pi-ai/compat";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, initTheme, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionError } from "@earendil-works/pi-coding-agent";
-import hydraExtension from "./index";
+import hydraExtension from "./index.ts";
 
 function deferred() {
 	let resolve!: () => void;
