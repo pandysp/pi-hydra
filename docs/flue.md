@@ -108,9 +108,6 @@ the measured numbers in [Flue adapter](providers.md#flue-adapter).
   in the measured runs.
 - **After compaction** the agent's request starts with a fresh summary, so the first check reads
   less from cache.
-- **Claude subscription logins.** Whether a request counts against the plan or is refused as
-  third-party use depends on what it contains. Flue requests have been accepted on the plan in
-  every test so far; pi's own requests without an extra billing extension were refused.
 
 ## Checking it yourself
 
