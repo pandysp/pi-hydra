@@ -792,6 +792,27 @@ function lastMarkableBlockOf(messages: PayloadMessage[]): PayloadBlock | undefin
 	return undefined;
 }
 
+const isEffortMessage = (message: PayloadMessage) =>
+	message.role === "system" && Array.isArray(message.content) && message.content.length === 0 && "output_config" in message;
+
+/**
+ * A head thinks as hard as the driver. On Anthropic models with
+ * mid-conversation effort, pi-ai sets the effort in an empty system message at
+ * the end of each request, and the head's end is written by the head's own
+ * pi-ai call. Whatever effort that call chose, the head's messages take the
+ * effort the driver's request actually ends with: the captured request is the
+ * only record of what the driver sent.
+ */
+function adoptDriverEffort(captured: PayloadMessage[], headMessages: PayloadMessage[]): void {
+	const driverEffort = captured.filter(isEffortMessage).at(-1)?.output_config;
+	for (const message of headMessages.filter(isEffortMessage)) {
+		if (driverEffort === undefined) {
+			throw new Error("the head's request sets an effort, but the driver's request does not; the model changed since it was captured");
+		}
+		message.output_config = structuredClone(driverEffort);
+	}
+}
+
 /**
  * Where the head's instruction starts: the first user message that is not the
  * driver's tool results. Everything before it is the driver's last turn,
@@ -844,6 +865,7 @@ export function mergeObservationPayload(captured: AnthropicPayload, tail: Payloa
 	// Decided by the head's instruction, not by counting messages: pi-ai also
 	// adds empty system messages that only carry the thinking effort.
 	const promptIndex = headPromptIndex(tailMessages);
+	adoptDriverEffort(captured.messages, tailMessages.slice(promptIndex + 1));
 	const loopTurns = tailMessages.slice(promptIndex + 1).some((message) => message.role === "assistant");
 	const target = loopTurns
 		? lastMarkableBlockOf(tailMessages)

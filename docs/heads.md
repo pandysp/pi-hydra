@@ -27,7 +27,7 @@ Frontmatter keys:
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
 
-There is no supported `model` key: a head replays the agent's provider context, and prompt caches are model-specific. Every head runs on the agent's model. Matching the model is required for cache reuse—though provider timing and session routing still determine the actual hit—and is why a head cannot be assigned a stronger model than the driver's.
+There is no supported `model` key: a head replays the agent's provider context, and prompt caches are model-specific. Every head runs on the agent's model and thinks at the agent's thinking level. Matching the model is required for cache reuse—though provider timing and session routing still determine the actual hit—and is why a head cannot be assigned a stronger model than the driver's.
 
 ## Where heads live
 

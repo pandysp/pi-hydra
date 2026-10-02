@@ -14,7 +14,7 @@ Observation is enabled only for provider/API pairs whose replay safety and cache
 
 Older Codex and other ChatGPT models pass their respective runtime gates but their cache economics are unvalidated. The OpenAI API-key path shares serializer code but remains disabled until measured. Other pairs warn once and skip observation rather than risk full-price replay or driver breakage.
 
-Heads always use the driver's model, tool schemas, and thinking configuration. Prompt caches are model-specific; choosing another model would forfeit the shared prefix.
+Heads always use the driver's model, tool schemas, and thinking configuration. Prompt caches are model-specific; choosing another model would forfeit the shared prefix. Replaying the captured request is not enough for thinking effort: on Anthropic models with mid-conversation effort, pi-ai sets the effort in a `system` message at the end of each request, and the head's own call writes the one at the end of its request. The merge therefore gives the head's effort messages the effort the captured request ends with, so the captured request decides, even if the setting or the model changed since. Hydra captures the request in its own `before_provider_request` handler: edits by extensions whose handlers run earlier are included, edits by handlers that run after Hydra's are not, for the effort as for the rest of the replay. That message comes after the cached prefix, so it costs no cache reads.
 
 ## Provider lifecycle
 
