@@ -705,6 +705,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 							action: "complete_observation",
 							delivery: outcomeDecisions[0].action === "noop" ? "none" : outcomeDecisions[0].action,
 							message: outcomeDecisions[0].message,
+							...(done ? { done: true } : {}),
 						})
 					: clip(text, 200),
 			stopReason: response.stopReason,

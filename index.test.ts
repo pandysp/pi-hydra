@@ -794,6 +794,7 @@ describe("heads with an end: once and ends_when", () => {
 		await h.observe(answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "", done: true })], "toolUse"));
 		await h.waitCalls(1);
 		expect(JSON.stringify(h.payloads[0])).toContain("If that is true now, also pass done: true");
+		expect(JSON.parse(h.calls()[0].rawResponse ?? "{}")).toMatchObject({ action: "complete_observation", done: true });
 		expect(h.configs().at(-1)).toEqual({ heads: [] });
 		expect(h.calls()[0].doneIgnored).toBeUndefined();
 	});
