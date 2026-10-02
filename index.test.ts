@@ -114,6 +114,18 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 }
 
 describe("heads without tools through the extension", () => {
+	it("a judge head on ChatGPT sign-in gets its instructions as a user message and the rules as a developer message", async () => {
+		const h = await harness({ api: "openai-responses" });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		const input = (h.payloads[0] as { input: { role?: string; content?: unknown }[] }).input;
+		const lens = input.findIndex((item) => item.role === "user" && JSON.stringify(item.content).includes("HEAD INSTRUCTIONS:"));
+		expect(lens).toBeGreaterThanOrEqual(0);
+		expect(input[lens + 1]).toMatchObject({ role: "developer" });
+		expect(JSON.stringify(input[lens + 1].content)).toContain("You are reviewing the main assistant's work");
+		expect(JSON.stringify(input[lens].content)).not.toContain("You are reviewing the main assistant's work");
+	});
+
 	it("observes ChatGPT sign-in under the driver's cache session", async () => {
 		const h = await harness({ api: "openai-responses" });
 		await h.observe(noop());

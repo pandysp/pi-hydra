@@ -165,8 +165,9 @@ describe("headActs", () => {
 });
 
 describe("usesSplitObservationHandoff", () => {
-	it("uses the split handoff for Codex Responses and the combined prompt for Anthropic", () => {
+	it("uses the split handoff on both OpenAI routes and the combined prompt for Anthropic", () => {
 		expect(usesSplitObservationHandoff("openai-codex-responses")).toBe(true);
+		expect(usesSplitObservationHandoff("openai-responses")).toBe(true);
 		expect(usesSplitObservationHandoff("anthropic-messages")).toBe(false);
 		expect(usesSplitObservationHandoff(undefined)).toBe(false);
 	});

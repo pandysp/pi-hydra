@@ -303,15 +303,19 @@ export function headActs(tools: string[] | undefined): boolean {
 
 /**
  * Whether the head's instruction and the rules for answering are sent as two
- * messages or one. Decided by measurement, not taste.
+ * messages or one, for heads without tools (the rules as a developer
+ * message). Decided by measurement, not taste.
  *
- * Splitting them helped on Codex Responses, where heads followed instructions
- * better and answered faster. On Anthropic it made no overall difference and
- * made Sonnet worse, and the ordering that might have fixed that is not
- * allowed there, so Anthropic keeps them together.
+ * Splitting them helped on both OpenAI routes: on Codex heads followed
+ * instructions better and answered faster, and with combined messages GPT-6
+ * heads on Codex and ChatGPT sign-in often took over the main assistant's task
+ * and called its tools instead of answering (docs/providers.md). On Anthropic
+ * splitting made no overall difference and made Sonnet worse, and the ordering
+ * that might have fixed that is not allowed there, so Anthropic keeps them
+ * together.
  */
 export function usesSplitObservationHandoff(api: string | undefined): boolean {
-	return api === "openai-codex-responses";
+	return api !== undefined && api !== "anthropic-messages";
 }
 
 export interface ObservationProtocolOptions {
