@@ -85,15 +85,12 @@ A head with tools must finish its checks and tool work before reporting. See [Co
 A head without tools returns one JSON object:
 
 ```json
-{"findings":[{"action":"print|steer","reason":"≤120 chars","message":"≤240 chars"}]}
+{"findings":[{"action":"steer","reason":"≤120 chars","message":"≤240 chars"}]}
 ```
 
 This head's instructions define what to check and how much to report. Return one entry per finding, or an empty array if there are none. Support each finding with a short quote or exact reference. If evidence is missing, say what is missing. A quote lets someone check the finding; it does not prove the finding is right.
 
-Choose an action for each finding:
-
-- `print` when only the user needs the note.
-- `steer` when the main assistant needs the feedback, even if it can wait.
+Use `steer` when the main assistant needs the feedback, even if it can wait. The user-only `print` route is deprecated and is no longer accepted from heads.
 
 See [Delivery](architecture.md#delivery) for how Hydra groups findings, handles old checks, and delivers messages during work, idle time, shutdown and after you cancel a run.
 
@@ -137,7 +134,7 @@ ACT WHEN: The user dismisses, contradicts, or ignores another head's finding.
 WORK: Sharpen that head's file by narrowing its focus, adding a boundary, or
 shortening its instruction. Edit at most one head and never your own.
 DONE WHEN: The edited head excludes the kind of finding the user rejected.
-DELIVER: Print the edit you made; complete with none when the act condition is
+DELIVER: Steer the edit you made; complete with none when the act condition is
 not met.
 ```
 
@@ -195,11 +192,6 @@ Ideas for heads to write yourself, grouped by the shape a head takes. The groupi
 - **Docs-keeper**: keeps a notes file current with decisions as they happen (the example in the README).
 - **Changelog**: appends user-facing changes as they land, so the notes exist by release time.
 - **Glossary**: maintains the project's terms as the domain language grows.
-
-**Reporter heads** print notes for you and never write into the agent's context:
-
-- **Narrator**: prints a running summary of a long autonomous run: what was decided and what was skipped.
-- **Assumption-flagger**: prints assumptions the agent acts on without stating them.
 
 **Red-team heads** attack the premises of the work. They are most useful during design and usually muted during execution:
 

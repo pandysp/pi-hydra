@@ -651,6 +651,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			);
 			decisions = [{ action: "noop", reason, message: "" }];
 		}
+		// Deprecated print ranking is retained with the internal delivery path.
 		const primaryDecision = decisions.reduce((selected, candidate) => {
 			const urgency: Record<Action, number> = { noop: 0, print: 1, note: 2, steer: 3 };
 			return urgency[candidate.action] > urgency[selected.action] ? candidate : selected;
@@ -1474,6 +1475,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				return;
 			}
 			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
+			// Includes deprecated print decisions from saved sessions.
 			const counts: Record<Action, number> = { noop: 0, print: 0, note: 0, steer: 0 };
 			let totalDuration = 0;
 			for (const call of calls) {

@@ -144,6 +144,7 @@ export function routeFeedback(
 	const record: DeliveryRecord = { head, delivery, message: decision.message };
 	const formatted = `[pi-hydra ${head}] ${decision.message}`;
 
+	// Deprecated: retained internally, but heads cannot request print.
 	if (delivery === "print") {
 		try {
 			gateway.notify(formatted, "info");

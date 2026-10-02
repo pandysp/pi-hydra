@@ -6,7 +6,7 @@
 
 ![A Pi session where the head picker adds a security head; while Pi builds a Flask app, that head catches debug mode and an open-redirect risk and steers the fixes into the conversation](docs/assets/demo.gif)
 
-Hydra is a [pi](https://pi.dev/) extension that checks work as it happens. You talk to the main assistant as usual. Helpers called **heads** each check something different. They can report a problem, stop unsafe work, or use allowed tools to help.
+Hydra is a [pi](https://pi.dev/) extension that checks work as it happens. You talk to the main assistant as usual. Helpers called **heads** each check something different. They can report a problem before the assistant's next model request, or use allowed tools to help.
 
 ```text
                          security head
@@ -38,7 +38,7 @@ The head receives Pi's real provider trajectory, not a summary. On healthy measu
 2. hydra captures that provider payload rather than rebuilding the context.
 3. At a review point, hydra appends a short handoff for each active head.
 4. Every head runs independently through its own Markdown instruction; a busy head may skip superseded intermediate snapshots.
-5. hydra validates the decision and either shows you a note, feeds it to the driver, or delivers nothing.
+5. hydra validates the decision and either feeds the finding to the driver or delivers nothing.
 6. Accepted observation calls, cache use, and cost are recorded in Pi's session and shown in the footer and `/hydra-stats`.
 
 Anthropic, OpenAI Codex, ChatGPT sign-in and the local ds4 provider have different handoffs and cache behavior. OpenAI API-key use is not supported yet. The system flow is in [Architecture](docs/architecture.md); provider mechanics, measurements, and economics have one canonical home in [Providers and measurements](docs/providers.md).
@@ -101,11 +101,11 @@ hydra can execute Pi's standard read, bash, edit, write, grep, find, and ls tool
 
 ## Decisions
 
-Heads choose who needs each finding: you, the main assistant, or neither. See [Choosing an action](docs/heads.md#decisions-when-findings-land) for the choices and [Delivery](docs/architecture.md#delivery) for when messages arrive.
+Heads send findings to the main assistant with `steer`, or report nothing. See [Choosing an action](docs/heads.md#decisions-when-findings-land) for the choices and [Delivery](docs/architecture.md#delivery) for when messages arrive.
 
 Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) only when the head cannot: a failed check, a change to the active heads, or an active head whose file disappeared or became invalid. Heads report their own file changes.
 
-[Issue #20](https://github.com/pandysp/pi-hydra/issues/20) explores how to show notes to users who only read the final answer.
+The user-only `print` route discussed in [issue #20](https://github.com/pandysp/pi-hydra/issues/20) is deprecated. Its internal code and saved history remain, but heads cannot choose it.
 
 ## Heads and subagents solve different problems
 
@@ -115,7 +115,7 @@ Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) 
 | Context | Reuses the driver's provider context | Builds separate context |
 | Timing | Reviews at the driver's checkpoints | Runs on its own clock |
 | Model | Must use the driver's model | May use another model |
-| Direction | Can steer or stop the driver | Returns a result to its parent |
+| Direction | Sends feedback before the driver's next model request | Returns a result to its parent |
 | Independence | Inherits the driver's framing | Can provide fresher eyes |
 
 Use a head when you want another perspective **during** the work. Use a subagent for isolated implementation, model diversity, or an independent context. They complement each other.

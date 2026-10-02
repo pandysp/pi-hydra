@@ -107,6 +107,27 @@ const complete = () => fauxAssistantMessage(fauxToolCall("hydra", {
 	action: "complete_observation", delivery: "none", message: "",
 }), { stopReason: "toolUse" });
 
+it("rejects deprecated print in the head tool loop and lets the head complete again", async () => {
+	let results: ToolResultMessage[] = [];
+	const h = await observation("read", () => [
+		fauxAssistantMessage(fauxToolCall("hydra", {
+			action: "complete_observation", delivery: "print", message: "PRIVATE PRINT",
+		}), { stopReason: "toolUse" }),
+		(context) => {
+			results = context.messages.filter((message): message is ToolResultMessage => message.role === "toolResult");
+			return complete();
+		},
+	]);
+
+	expect(results).toHaveLength(1);
+	expect(results[0]).toMatchObject({ toolName: "hydra", isError: true });
+	expect(h.calls[0]).toMatchObject({ action: "noop", iterations: 2 });
+	expect(h.faux.getPendingResponseCount()).toBe(0);
+	expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+	expect(h.pi.sendMessage).not.toHaveBeenCalled();
+	expect(h.notices.some(item => item.message.includes("PRIVATE PRINT"))).toBe(false);
+});
+
 it("lets an observation finish after more than 25 tool turns", async () => {
 	let reads: ToolResultMessage[] = [];
 	const h = await observation("read", ({ input }) => [

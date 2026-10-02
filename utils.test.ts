@@ -55,7 +55,7 @@ describe("parseDecision", () => {
 	});
 
 	it("extracts a decision embedded in prose", () => {
-		const text = 'Here is my verdict: {"action":"steer","reason":"bad","message":"stop"} — done.';
+		const text = 'Here is my verdict: {"action":"steer","reason":"bad","message":"stop"} — the placeholder is {name}.';
 		expect(parseDecision(text)).toEqual({ action: "steer", reason: "bad", message: "stop" });
 	});
 
@@ -69,12 +69,12 @@ describe("parseDecision", () => {
 		expect(parseDecision('{"action":"explode","reason":"r","message":"m"}')).toBeNull();
 	});
 
-	it("accepts print", () => {
-		expect(parseDecision('{"action":"print","reason":"fyi","message":"note"}')?.action).toBe("print");
+	it("rejects deprecated print from a head", () => {
+		expect(parseDecision('{"action":"print","reason":"fyi","message":"note"}')).toBeNull();
 	});
 
 	it("records a delivery with nothing to deliver as the noop it is", () => {
-		expect(parseDecision('{"action":"print","reason":"bad","message":""}')).toEqual({
+		expect(parseDecision('{"action":"steer","reason":"bad","message":""}')).toEqual({
 			action: "noop",
 			reason: "bad (empty message)",
 			message: "",
@@ -84,6 +84,21 @@ describe("parseDecision", () => {
 
 	it("rejects Hydra's own note route, which no head may choose", () => {
 		expect(parseDecision('{"action":"note","reason":"r","message":"m"}')).toBeNull();
+	});
+
+	it.each([
+		'{"findings":[{"action":"print","message":"P"},{"action":"steer","message":"S"}]}',
+		'Review: {"findings":[{"action":"print","message":"P"},{"action":"steer","message":"S"}]} — done.',
+		'[{"action":"print","message":"P"},{"action":"steer","message":"S"}]',
+		'{"action":"print","message":"P"} {"action":"steer","message":"S"}',
+		'{"action":"steer","message":"S"} {"action":"print","message":"P"}',
+	])("rejects invalid answers without extracting another decision: %s", (text) => {
+		expect(parseDecision(text)).toBeNull();
+	});
+
+	it("extracts one prose-wrapped decision with escaped quotes and unmatched braces in its message", () => {
+		const decision = { action: "steer", reason: "r", message: 'Use "}" here, not an opening brace {' };
+		expect(parseDecision(`Decision: ${JSON.stringify(decision)} — done.`)).toEqual(decision);
 	});
 
 	it("caps reason and message lengths", () => {
@@ -114,7 +129,7 @@ describe("decisionFromCompletion", () => {
 
 	it("enforces message cardinality instead of repairing malformed calls", () => {
 		expect(() => decisionFromCompletion("none", "nothing to report")).toThrow('delivery "none"');
-		expect(() => decisionFromCompletion("print", "   ")).toThrow('delivery "print"');
+		expect(() => decisionFromCompletion("steer", "   ")).toThrow('delivery "steer"');
 	});
 });
 
@@ -228,7 +243,7 @@ describe("enumerated steer-only judge completion", () => {
 		const prompt = buildEnumeratedJudgeObservationPrompt("security", "Fix security issues.", context);
 		for (const text of [envelope, prompt]) {
 			expect(text).toContain(
-				'{"findings":[{"action":"print|steer","reason":"≤120 chars","message":"≤240 chars"}]}',
+				'{"findings":[{"action":"steer","reason":"≤120 chars","message":"≤240 chars"}]}',
 			);
 			expect(text).toContain("empty findings array if there are none");
 			expect(text).toContain("You cannot use tools");
@@ -248,7 +263,7 @@ describe("enumerated steer-only judge completion", () => {
 		});
 	});
 
-	it("separates user-only findings from agent-directed findings", () => {
+	it("rejects an entire findings answer that includes deprecated print", () => {
 		expect(
 			parseEnumeratedDecision(
 				JSON.stringify({
@@ -259,19 +274,8 @@ describe("enumerated steer-only judge completion", () => {
 				}),
 			),
 		).toEqual({
-			decisions: [
-				{
-					action: "print",
-					reason: "user owns it",
-					message: "Rotate the external credential.",
-				},
-				{
-					action: "steer",
-					reason: "current defect",
-					message: "Run the migration before merging.",
-				},
-			],
-			error: null,
+			decisions: null,
+			error: 'finding 1 has invalid action "print"',
 		});
 	});
 
