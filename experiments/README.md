@@ -316,5 +316,4 @@ node experiments/split-handoff.mjs retry        # rerun calls that ended in a pr
 SPLIT_HANDOFF_LOG=/tmp/x.jsonl node experiments/split-handoff.mjs cell chatgpt gpt-6-sol low split 3
 ```
 
-`split-handoff-2026-10-02.jsonl` is the run behind [providers.md](../docs/providers.md#chatgpt-sign-in) (240 calls, full replies). Split: 66 of 72 wrong answers caught, 0 of 48 false alarms, 0 of 120 answers rejected. Combined: 34 of 72 caught, 0 of 48 false alarms, 51 of 120 rejected because the head called the main assistant's tool.
-
+`split-handoff-2026-10-02.jsonl` holds the run behind [providers.md](../docs/providers.md#chatgpt-sign-in), which reports its results: 240 calls with their full replies.
