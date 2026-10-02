@@ -1,23 +1,17 @@
 import type { Decision, DeliveryAction, DeliveryContext, DeliveryRecord, PersistedDelivery } from "./utils.ts";
 import { demoteStaleInterrupt } from "./utils.ts";
 
-type PendingRole = "user" | "custom";
 type PendingOrigin = "queued" | "idle-user";
 
 interface PendingDelivery {
 	id: number;
 	record: DeliveryRecord;
-	role: PendingRole;
+	// The user message the feedback was sent as. Messages that start no turn
+	// are recorded when sent, so only user messages wait here.
 	content: string;
-	customType?: string;
 	origin: PendingOrigin;
 }
 
-export interface DeliveryMessage {
-	role: PendingRole;
-	content: string;
-	customType?: string;
-}
 
 export class DeliveryLedger {
 	private readonly lastByHead = new Map<string, DeliveryRecord>();
@@ -31,8 +25,7 @@ export class DeliveryLedger {
 			pending: this.pending
 				.filter(
 					(item) =>
-						item.record.head === head &&
-						(item.record.delivery === "queue" || item.record.delivery === "steer"),
+						item.record.head === head && item.record.delivery === "steer",
 				)
 				.map((item) => ({ ...item.record })),
 		};
@@ -40,11 +33,11 @@ export class DeliveryLedger {
 
 	stage(
 		record: DeliveryRecord,
-		message: { role: PendingRole; content: string; customType?: string },
+		content: string,
 		origin: PendingOrigin,
 	): number {
 		const id = this.nextId++;
-		this.pending.push({ id, record: { ...record }, ...message, origin });
+		this.pending.push({ id, record: { ...record }, content, origin });
 		return id;
 	}
 
@@ -60,13 +53,8 @@ export class DeliveryLedger {
 		return { ...copy, timestamp: Date.now() };
 	}
 
-	consume(message: DeliveryMessage): PersistedDelivery | null {
-		const index = this.pending.findIndex(
-			(item) =>
-				item.role === message.role &&
-				item.content === message.content &&
-				(item.role !== "custom" || item.customType === message.customType),
-		);
+	consume(content: string): PersistedDelivery | null {
+		const index = this.pending.findIndex((item) => item.content === content);
 		if (index !== -1) {
 			const [{ record }] = this.pending.splice(index, 1);
 			return this.succeed(record);
@@ -74,9 +62,7 @@ export class DeliveryLedger {
 		// Feedback sent while the agent was idle leaves no trace in pi's queues,
 		// so there is nothing to match against. Seeing a different user message
 		// arrive instead is how we learn it never reached the driver.
-		if (message.role === "user") {
-			this.discardIdleUserDeliveries();
-		}
+		this.discardIdleUserDeliveries();
 		return null;
 	}
 
@@ -138,9 +124,9 @@ function persistSuccess(ledger: DeliveryLedger, gateway: DeliveryGateway, record
 export function consumeDeliveredMessage(
 	ledger: DeliveryLedger,
 	gateway: DeliveryGateway,
-	message: DeliveryMessage,
+	content: string,
 ): PersistedDelivery | null {
-	const entry = ledger.consume(message);
+	const entry = ledger.consume(content);
 	if (!entry) return null;
 	try {
 		gateway.persist(entry);
@@ -176,7 +162,7 @@ export function routeFeedback(
 	}
 
 	const idle = gateway.isIdle();
-	if (delivery === "queue" && idle) {
+	if (delivery === "queue") {
 		try {
 			gateway.sendMessage(
 				{
@@ -187,8 +173,10 @@ export function routeFeedback(
 				},
 				{ triggerTurn: false },
 			);
-			// Sent while idle, these land in the session straight away but never
-			// announce themselves, so an extension cannot wait to be told.
+			// A message that starts no turn never announces itself to extensions,
+			// so Hydra cannot wait to be told. pi adds it to the session at once
+			// when idle, or at the end of the current turn while busy, even when
+			// that run was cancelled.
 			persistSuccess(ledger, gateway, record);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);
@@ -197,24 +185,13 @@ export function routeFeedback(
 		return delivery;
 	}
 
-	const role = delivery === "queue" ? "custom" : "user";
 	const token = ledger.stage(
 		record,
-		{ role, content: formatted, customType: role === "custom" ? "hydra-feedback" : undefined },
+		formatted,
 		idle ? "idle-user" : "queued",
 	);
 	try {
-		if (delivery === "queue") {
-			gateway.sendMessage(
-				{
-					customType: "hydra-feedback",
-					content: formatted,
-					display: true,
-					details: { head, action: delivery, reason: decision.reason },
-				},
-				{ triggerTurn: false },
-			);
-		} else if (idle) {
+		if (idle) {
 			gateway.sendUserMessage(formatted);
 		} else if (delivery === "interrupt") {
 			gateway.abort();

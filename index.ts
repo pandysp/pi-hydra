@@ -236,14 +236,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	// The registry's pi effects, rebuilt per call so messages carry the
 	// caller's context; mirrors deliveryGateway below.
-	function registryGateway(ctx: ExtensionContext): HeadRegistryGateway {
+	function registryGateway(ctx: ExtensionContext, runSignal?: AbortSignal): HeadRegistryGateway {
 		return {
 			readDir: (dir) => readdirSync(dir),
 			readFile: (path) => readFileSync(path, "utf8"),
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
-			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message),
+			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message, runSignal),
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (heads) => pi.appendEntry<HydraConfig>("hydra-config", { heads }),
 			onActiveSetChanged: () => updateFooter(ctx),
@@ -329,7 +329,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let currentTurnIndex = 0;
 
 	const scheduler = new HeadScheduler<ObservationSeed>({
-		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration,
+		// Waiting reviews of a cancelled run don't start, so nothing new begins
+		// after Escape. That point only gets reviewed if the user writes again.
+		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration && !seed.runSignal?.aborted,
 		observe: async (seed, signal) => {
 			// What has already been delivered is looked up here, not when the
 			// observation was queued. A waiting observation can sit behind one
@@ -1185,18 +1187,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (event.message.role === "user") {
 			const content = plainMessageText(event.message.content);
 			if (content !== null) {
-				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), { role: "user", content });
+				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), content);
 			} else {
 				deliveryLedger.discardIdleUserDeliveries();
-			}
-		} else if (event.message.role === "custom" && event.message.customType === "hydra-feedback") {
-			const content = plainMessageText(event.message.content);
-			if (content !== null) {
-				consumeDeliveredMessage(deliveryLedger, deliveryGateway(ctx), {
-					role: "custom",
-					customType: event.message.customType,
-					content,
-				});
 			}
 		}
 		if (event.message.role !== "assistant") {
@@ -1296,10 +1289,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// would be lost. Who may do what is decided here instead: the driver
 	// manages heads, any head reports a decision, and only a head allowed the
 	// hydra tool may manage heads.
-	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext) {
+	function executeHeadManagement(params: ManageHeadsParams, ctx: ExtensionContext, runSignal?: AbortSignal) {
 		const name = params.head.trim();
 		const receipt = formatHeadManagementReceipt(params.operation, name, params.message);
-		const gateway = registryGateway(ctx);
+		const gateway = registryGateway(ctx, runSignal);
 		registry.discover(gateway, ctx.cwd);
 		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
 		const reply = (text: string, changed = false) => ({
@@ -1362,7 +1355,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			throw new Error(`Head "${job.head}" is not allowed to manage heads`);
 		}
 		const receipt = formatHeadManagementReceipt(params.operation, params.head, params.message);
-		const result = executeHeadManagement(params, ctx);
+		const result = executeHeadManagement(params, ctx, job.runSignal);
 		const changed = (result.details as { changed?: unknown }).changed === true;
 		if (!changed) {
 			return result;
