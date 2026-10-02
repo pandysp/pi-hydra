@@ -55,8 +55,8 @@ describe("stats store", () => {
 });
 
 describe("hit bands", () => {
-	it("leaves ChatGPT ungraded until its cache target is measured", () => {
-		expect(hitBandsFor("openai-responses")).toBeNull();
+	it("grades routes without a measured target (ChatGPT sign-in, ds4) against the default band, labelled as such", () => {
+		expect(hitBandsFor("openai-responses")).toEqual({ good: 97, fair: 90, target: "97%+ (not calibrated)" });
 		expect(hitBandsFor("openai-codex-responses")).toBe(HIT_BANDS.codex);
 		expect(hitBandsFor("anthropic-messages")).toBe(HIT_BANDS.default);
 		expect(hitBandsFor(undefined)).toBe(HIT_BANDS.default);

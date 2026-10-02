@@ -319,9 +319,17 @@ export function headActs(tools: string[] | undefined): boolean {
  * splitting made no overall difference and made Sonnet worse, and the ordering
  * that might have fixed that is not allowed there, so Anthropic keeps them
  * together.
+ *
+ * ds4 also keeps them together. For DeepSeek V4 Flash its server moves every
+ * system and developer message to the top of the prompt
+ * (render_deepseek_chat_prompt_text in antirez/ds4's ds4_server.c), so a
+ * split head's prompt stops matching the main assistant's right after the
+ * system prompt and re-reads the whole conversation on every check. Split
+ * heads there also called the main assistant's tools far more often
+ * (docs/providers.md#ds4).
  */
-export function usesSplitObservationHandoff(api: string | undefined): boolean {
-	return api !== undefined && api !== "anthropic-messages";
+export function usesSplitObservationHandoff(api: string | undefined, provider?: string): boolean {
+	return api !== undefined && api !== "anthropic-messages" && provider !== "ds4";
 }
 
 export interface ObservationProtocolOptions {

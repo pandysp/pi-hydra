@@ -15,8 +15,8 @@
         "fragment": "supported-provider-boundary"
       },
       "baseline": {
-        "codeHash": "2d89576bfc4ed678ec6a8589bb521394256d216bcac8d7d80fa6c3f28dbfbd87",
-        "docHash": "7fcb86a8166a29e44562d4509ef9e2e85c681026cf32e329225f8290e7a6c4d5"
+        "codeHash": "592cb3cef3504e046177521a3767edcc180c9a384291b5d7df92287fbc61e064",
+        "docHash": "d20985e484b526a7ec0970486e81f1babd63d0ef76b041bc8f00773175b95e9c"
       }
     },
     {
@@ -33,8 +33,8 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "02f3d7efeb5625f3a9b6bc56eafdf1cf5c2e79ac03b2377019959ec0515d3676",
-        "docHash": "2db388339d12b45041108a3f909e849d9e4b742213c7eba4db4b7f69308390e5"
+        "codeHash": "77acbdcc1436104d30600c8e1378dd19d381d5f0f21e40d1474f5b3e214a1676",
+        "docHash": "c21cd3aed8382f05257f4779fbf9b352cad24b01dab77458d41d9a093da547df"
       }
     },
     {
@@ -89,8 +89,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "914706a55489762d8d4547a312b5a7730a6a4906648c1aefd149a1bb21e0fc80",
-        "docHash": "805316923e3dcec306ae887b862216716879f5f6b929355575e9a721889ede83"
+        "codeHash": "7890dc640222ef06f21f876e7338c197bd090d25390783b628d481864567d3d3",
+        "docHash": "589eb5744a85845a92ef449758bb69ebdd281c900bcaf049b6aad535d781b578"
       }
     },
     {

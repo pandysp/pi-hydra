@@ -58,7 +58,7 @@ async function observation(
 		sessionManager: { getBranch: () => [], getSessionId: () => sessionId },
 		modelRegistry: {
 			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "offline-fixture-only" }),
-			getRegisteredProviderConfig: () => ({ api: faux.api, streamSimple: faux.streamSimple }),
+			streamSimple: faux.streamSimple,
 		},
 	} as unknown as ExtensionContext;
 	const fire = async (name: string, event: unknown) => {
@@ -92,7 +92,8 @@ async function observation(
 	await fire("session_start", { reason: "startup" });
 	await fire("agent_start", {});
 	await fire("before_provider_request", { payload: { input: [{ role: "user", content: "fixture" }] } });
-	const driverMessage = fauxAssistantMessage("Fixture driver response.");
+	// The main assistant's reply names the model that answered, as pi's do.
+	const driverMessage = { ...fauxAssistantMessage("Fixture driver response."), provider: faux.getModel().provider, model: faux.getModel().id };
 	await fire("message_start", { message: driverMessage });
 	await fire("agent_end", { messages: [driverMessage] });
 	await vi.waitFor(() => expect(calls).toHaveLength(1));

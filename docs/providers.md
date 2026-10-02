@@ -10,9 +10,10 @@ Observation is enabled only for provider/API pairs whose replay safety and cache
 
 - Anthropic with `anthropic-messages`;
 - OpenAI Codex with `openai-codex-responses`, validated on GPT-5.6;
-- OpenAI's official `openai-responses` endpoint with ChatGPT OAuth sign-in, tested on GPT-6.1 Sol.
+- OpenAI's official `openai-responses` endpoint with ChatGPT OAuth sign-in, tested on GPT-6.1 Sol;
+- the local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) provider with `openai-responses` (its default protocol), tested on DeepSeek V4 Flash.
 
-Older Codex and other ChatGPT models pass their respective runtime gates but their cache economics are unvalidated. The OpenAI API-key path shares serializer code but remains disabled until measured. Other pairs warn once and skip observation rather than risk full-price replay or driver breakage.
+Older Codex and other ChatGPT models pass their respective runtime gates but their cache economics are unvalidated, as do the other models pi-ds4 serves (DeepSeek V4.1, V4 Pro, GLM). pi-ds4's other protocols stay disabled. The OpenAI API-key path shares serializer code but remains disabled until measured. Other pairs warn once and skip observation rather than risk full-price replay or driver breakage.
 
 Heads always use the driver's model, tool schemas, and thinking configuration. Prompt caches are model-specific; choosing another model would forfeit the shared prefix. Replaying the captured request is not enough for thinking effort: on Anthropic models with mid-conversation effort, pi-ai sets the effort in a `system` message at the end of each request, and the head's own call writes the one at the end of its request. The merge therefore gives the head's effort messages the effort the captured request ends with, so the captured request decides, even if the setting or the model changed since. Hydra captures the request in its own `before_provider_request` handler: edits by extensions whose handlers run earlier are included, edits by handlers that run after Hydra's are not, for the effort as for the rest of the replay. That message comes after the cached prefix, so it costs no cache reads.
 
@@ -25,6 +26,8 @@ hydra captures the driver's request in `before_provider_request` and schedules a
 On Anthropic, probes verified that the cache entry becomes readable at response start with no distinguishable propagation delay: commit+0 observations on Haiku and Fable, with and without thinking, read the committed prefix. A mid-run observation therefore keeps the captured prefix byte-identical and appends only its fresh handoff.
 
 OpenAI Codex and ChatGPT sign-in use the same lifecycle trigger, but commit/read timing is looser. An observation reads whatever has committed and may pay the uncached remainder. Codex backend observations in July 2026 ranged from near-instant in full-stack traffic to a controlled read becoming available within 65 seconds; timing changes economics, not delivery safety.
+
+ds4 runs one request at a time on one GPU. A head's request sent while the main assistant's reply is streaming waits until that reply ends, and the main assistant's next request waits behind the heads' requests. See [ds4](#ds4) for what that costs.
 
 The first response of each run is skipped unconditionally. On later runs, the previous run-end observation covered the preceding state; in a fresh session, the first review arrives at an eligible later snapshot or at run end.
 
@@ -60,11 +63,26 @@ The first developer-envelope treatment cut extra observer turns from 67 to 3 whi
 
 The new `openai-responses` route uses the same append-only `input` merge as Codex, but only with OpenAI's official endpoint and an active OAuth login. It checks the resolved credential before dispatch and again between acting-head turns; a switch to an API key stops the observation. Its observation also passes the driver's session ID to Pi AI: copying `prompt_cache_key` in the body without the corresponding session routing header measured zero cache reads in a repeated session; with the session ID, the same probe read 1,792 tokens. Heads with and without tools get the split handoff described below.
 
-An October 1, 2026 GPT-6.1 Sol OAuth smoke test produced a real arithmetic finding delivered to the user, and an acting head read a file and completed via the `hydra` tool. Cache reads varied: one fresh-session judge observation read 1,664 tokens of its 2,274-token input, while other fresh-session observations read zero. In a continued session, judge observations read 1,792 tokens of 2,385 total, and an acting head read about 69% of its first call's input. The 1,664-read judge cost $0.00190 with zero cache writes; another fresh noop with zero cache reads or writes cost $0.00492. These are different prompts, not a controlled savings estimate. **Cache savings on a fresh observation are not guaranteed.** These few calls establish that reuse is possible, not a stable cost target; `/hydra-stats` shows the measured rate without grading it against Anthropic or Codex.
+An October 1, 2026 GPT-6.1 Sol OAuth smoke test produced a real arithmetic finding delivered to the user, and an acting head read a file and completed via the `hydra` tool. Cache reads varied: one fresh-session judge observation read 1,664 tokens of its 2,274-token input, while other fresh-session observations read zero. In a continued session, judge observations read 1,792 tokens of 2,385 total, and an acting head read about 69% of its first call's input. The 1,664-read judge cost $0.00190 with zero cache writes; another fresh noop with zero cache reads or writes cost $0.00492. These are different prompts, not a controlled savings estimate. **Cache savings on a fresh observation are not guaranteed.** These few calls establish that reuse is possible, not a stable cost target; `/hydra-stats` and the footer grade it against the default 97% band and label the target "not calibrated".
 
 Heads without tools get Codex's split handoff here too: the head's instructions in a user message, Hydra's rules in a developer message right after it. Measured October 2, 2026 on GPT-6 models (astra, sol, luna, 6.1-sol; gpt-6-terra is not available with a ChatGPT login) at low, medium and high effort, on both OpenAI routes: one arithmetic head and a transcript whose tool returned a wrong product, 3 wrong-answer and 2 correct-answer calls per cell, 240 calls sent through pi-ai with pi-hydra's own handoff builders and merge, scored with Hydra's `classifyJudgeResponse`. A catch had to be a valid `steer` or `interrupt` naming the correct product. The split caught 66 of 72 wrong answers, with no false alarm and no rejected answer. The combined message caught 34 of 72, and Hydra rejected 51 of its 120 answers because the head called the main assistant's tool instead of answering (mostly gpt-6-astra and gpt-6.1-sol, at every effort). Single cells are small: gpt-6.1-sol at low effort caught 1 of 3 with the split on this route. Script and full replies: [experiments/split-handoff.mjs](../experiments/split-handoff.mjs), [split-handoff-2026-10-02.jsonl](../experiments/split-handoff-2026-10-02.jsonl).
 
 Heads with tools get the same split. This is a transfer, not a measurement on this route: the July developer-envelope results on Codex above are for heads without tools, the July acting study below measured the acting design that splits on Codex together with contract changes, and the judge-head result here shows the same effect on both OpenAI routes. A smoke run confirmed the path works: on October 2, 2026, an acting head on gpt-6-astra through pi read a file with its `read` tool, finished through `hydra` and steered ([record](../experiments/split-handoff-acting-smoke-2026-10-02.jsonl)).
+
+In four live sessions on October 2, 2026 with GPT-6 Luna (two per OpenAI route, navigator and simplifier heads), a judge head still requested a tool in 1 of 29 checks, on Codex, with the split.
+
+### ds4
+
+pi-ds4 runs [antirez/ds4](https://github.com/antirez/ds4) locally and speaks `openai-responses`. The merge is the same append-only `input` merge as on the other OpenAI routes, with no session ID: ds4 matches requests by their content, and its server reuses the longest prefix it still holds in memory or in its disk cache. Calls cost $0, and Hydra leaves the credential to pi-ds4.
+
+Heads get Anthropic's form: one combined user message, with and without tools, and heads with tools finish with a JSON decision. ds4 builds the DeepSeek V4 Flash prompt by moving every system and developer message to the top (`render_deepseek_chat_prompt_text` in `ds4_server.c`), so the split form's developer message makes a head's prompt stop matching the main assistant's right after the system prompt. Measured October 2, 2026 (pi 1.0.0, pi-ds4 `db8806c`, ds4 `0aaea5a`, DeepSeek V4 Flash Q2, Apple M4 Max 128 GB), same coding task, navigator and simplifier heads without tools, each run starting with an empty ds4 disk cache:
+
+| Form | Read from cache per check | Prefilled per check | Hit ratio | Head requested a tool |
+|---|---|---|---|---|
+| Combined (5 turns) | 10,710 → 11,803 tokens, growing with the conversation | about 470–1,030 tokens: its instructions plus the few tokens since ds4's last saved point | 91.2–96.2%, steady | 0 of 12 checks |
+| Split (3 turns) | 10,709 tokens every time: the system prompt only | its instructions plus the conversation so far: 852 → 1,804 tokens | 92.6% → 85.6% | 4 of 8 checks |
+
+An earlier, longer run without emptying the cache first showed the same split pattern over 16 turns (prefill 671 → 4,204 tokens, hit ratio down to 72%, a tool requested in 23 of 34 checks); its combined counterpart ran into a full disk cache (see [Provider limits](#provider-limits)) and is not comparable.
 
 ## Completion channels
 
@@ -73,7 +91,7 @@ Heads without tools return the same [findings JSON](heads.md#decisions-when-find
 Heads with tools finish differently:
 
 - **OpenAI Codex and ChatGPT sign-in:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
-- **Anthropic:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. Finishing through a tool call measured slower and more expensive here.
+- **Anthropic and ds4:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. On Anthropic, finishing through a tool call measured slower and more expensive; ds4 uses Anthropic's form for the cache reason in [ds4](#ds4).
 
 On all supported routes, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
 
@@ -127,6 +145,14 @@ Healthy shared-mode Codex observations measured roughly 84%–87% cache hit. A J
 
 In the registered production-shaped wave of August 3, 2026, six driver runs compared the then-shipped enumerate-all-findings contract (ENUM) with a single-finding baseline (MAIN). Across cache-comparable observations, MAIN cost $0.0253 per observation and 52.1% of driver cost (103 observations); ENUM cost $0.0356 and 77.0% (108 observations). Including all charged cache misses and calls after failed driver turns raised those ratios to 66.2% and 93.3%. These establish cost only; the quality benchmark was still in progress. See [capstone producer results](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/OPENAI-CAPSTONE-PRODUCER-RESULTS.md).
 
+### ds4 cache hit and time
+
+Every ds4 call costs $0; the cost is time on the one GPU. In a live session on October 2, 2026 (same setup as [ds4](#ds4), on top of `f97158e`, with pi's codemode tool and three other extensions loaded), 10 of 10 head requests started with the main assistant's exact conversation. Heads without tools read 91.9–96.1% of their input from ds4's cache; a head with tools read 94.0–95.5% on its first turn, hit the cache on its second turn too, and finished with a JSON decision.
+
+The same task took 43 s without Hydra and 137 s with three heads (navigator and simplifier without tools, one head that reads files): 13 checks of 11–42 s each, including time waiting for the GPU. One head sent a steer, and the main assistant took two more turns than without heads. One run each, not a factor: head time grows with how much each head writes, at about 30 tokens per second.
+
+The per-check records of these runs and of the form comparison above are in [`experiments/ds4-heads-2026-10-02.jsonl`](../experiments/ds4-heads-2026-10-02.jsonl).
+
 ### Flue agents
 
 [flue-hydra](https://github.com/pandysp/flue-hydra) runs the same heads in Flue agents; its measurements live in its README.
@@ -143,10 +169,11 @@ An observation can be cheap while an always-on session is materially more expens
 - **OpenAI commit window:** an observation racing commit may pay its snapshot as fresh input; this degrades economics rather than correctness. ChatGPT sign-in showed fresh-session misses in the October smoke test.
 - **Codex fallback:** observer-scoped sessions pay the driver context once and may repay after idle expiry.
 - **Headless shutdown:** Pi may exit before a slow run-end observation finishes. `HYDRA_SHUTDOWN_GRACE_MS` defaults to 5 seconds; raise it for headless verification (`0` means do not wait).
+- **ds4 runs one request at a time:** heads and the main assistant take turns on one GPU, so every head check adds its own time to the session. Each switch between a head and the main assistant also writes the evicted conversation, about 170 MB, to ds4's disk cache (8 GB by default). In one measurement the cache was already full, and ds4 evicted each new entry before any request reused it: every request, the main assistant's included, re-read about 11,000 tokens.
 - **Multi-head run end:** heads run in parallel for low latency. On Anthropic each run-end fork may pay M's write rather than coordinating a follower free-ride; measured contention remained a single-digit share of observation spend.
 - **Long tools:** acting heads wind down at turn boundaries, but a long bash execution may outlive shutdown grace.
 - **Partial output:** heads judge complete captured requests, never an unfinished generation.
-- **Unverified paths:** OpenAI API-key transport, older Codex model economics, and provider behavior outside the measured pairs remain out of scope.
+- **Unverified paths:** OpenAI API-key transport, older Codex model economics, models pi-ds4 serves other than DeepSeek V4 Flash, and provider behavior outside the measured pairs remain out of scope.
 
 ## Verification procedures
 

@@ -27,6 +27,8 @@ hydra reviews at two lifecycle points.
 
 **Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped.
 
+Each captured request remembers the model that answered it, read from the answer: pi applies a model switch to the selection before a request it is already preparing goes out. A check is skipped if the selected model differs when it starts, so a check that waited behind a busy one does not replay one provider's request on another.
+
 The provider-specific timing and cache consequences are canonical in [Provider lifecycle](providers.md#provider-lifecycle).
 
 ## Prompt construction
@@ -43,8 +45,9 @@ Each prompt combines the head's instructions with Hydra's rules:
 | Anthropic | Head instructions and Hydra's rules in one user message | JSON, with or without tools |
 | OpenAI Codex | Head instructions in a user message; Hydra's rules in a developer message | JSON without tools; the `hydra` tool otherwise |
 | ChatGPT sign-in | As Codex | JSON without tools; the `hydra` tool otherwise |
+| ds4 (local) | As Anthropic | JSON, with or without tools |
 
-The rule for every head is "combined only on Anthropic": every other route, including a provider added later, gets the split unless a measurement says otherwise. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
+The rule for every head is "split unless measured otherwise": Anthropic and ds4 measured better combined, so every other route, including a provider added later, gets the split. ds4 [moves developer messages to the top of the prompt](providers.md#ds4), which breaks the split's cache match. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
 The rules for heads without tools describe what `print`, `steer` and `interrupt` do. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
@@ -56,7 +59,7 @@ The observation request keeps the driver's captured content prefix and appends a
 
 For an Anthropic mid-run observation, the captured prefix remains byte-identical and Hydra appends a fresh handoff. The complete request is therefore longer; it is not itself byte-identical to the driver request. At Anthropic run end and during acting loops, Hydra deliberately relocates the deepest message-level cache marker onto the appended tail while preserving content-prefix parity.
 
-Both OpenAI routes use an append-only `input` merge and no explicit marker relocation. See [Provider payload mechanics](providers.md#provider-payload-mechanics) for the exact differences.
+All `openai-responses` and Codex routes use an append-only `input` merge and no explicit marker relocation. See [Provider payload mechanics](providers.md#provider-payload-mechanics) for the exact differences.
 
 ## Heads are files
 
@@ -147,6 +150,7 @@ Codex shares the architecture above but has different handoff, session, transpor
 ## Limitations & roadmap
 
 - Only measured provider/API pairs observe; others warn and skip.
+- Heads send through pi's own request path (`modelRegistry.streamSimple`), so a provider's own code, such as pi-ds4 starting its server or an extension that shapes Anthropic requests, runs for heads as for the main assistant.
 - Heads use the driver's model and inherit its framing.
 - Long-running head tools cannot always be hard-aborted mid-execution.
 - Headless shutdown may need a longer `HYDRA_SHUTDOWN_GRACE_MS` for run-end observations.

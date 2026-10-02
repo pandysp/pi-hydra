@@ -173,6 +173,8 @@ describe("usesSplitObservationHandoff", () => {
 		expect(usesSplitObservationHandoff("openai-responses")).toBe(true);
 		expect(usesSplitObservationHandoff("anthropic-messages")).toBe(false);
 		expect(usesSplitObservationHandoff(undefined)).toBe(false);
+		expect(usesSplitObservationHandoff("openai-responses", "ds4")).toBe(false);
+		expect(usesSplitObservationHandoff("openai-responses", "openai")).toBe(true);
 	});
 });
 
