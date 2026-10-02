@@ -3,8 +3,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore, Type } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import { streamSimple as nativeAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
-import { streamSimple as nativeOpenAI } from "@earendil-works/pi-ai/api/openai-responses";
 import type { AssistantMessage, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, initTheme, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext, ExtensionError } from "@earendil-works/pi-coding-agent";
@@ -91,7 +89,6 @@ interface CaptureProbe {
 	lateWarmHook?: boolean;
 	finalTransform?: boolean;
 	driverOutputCap?: number;
-	directApi?: boolean;
 }
 
 interface ConsumerOptions {
@@ -188,7 +185,6 @@ async function consumer(options: ConsumerOptions = {}) {
 		// abort signal; Pi's warmer uses its own.
 		const driver = options?.signal !== undefined && options.signal === activeContext?.signal && options.sessionId === sm.getSessionId();
 		const prepared = { ...options, fetch: (input: string | URL | Request, init?: RequestInit) => fetchFixture(input, init, driver) };
-		if (probe.directApi) return openai ? nativeOpenAI(model, context, prepared) : nativeAnthropic(model, context, prepared);
 		return streamSimple(model, context, prepared);
 	}
 	if (openai) modelRuntime.registerProvider("openai", {
@@ -263,7 +259,6 @@ async function consumer(options: ConsumerOptions = {}) {
 		await session.waitForIdle();
 		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		session.dispose();
-		await modelRuntime.refresh({ allowNetwork: false });
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	const entries = (type: string) => sm.getBranch().filter(e => (e.type === "custom" || e.type === "custom_message") && e.customType === type);
@@ -471,7 +466,7 @@ describe("Hydra-only capture feasibility", () => {
 		{ name: "before response headers", options: { busy: true, warmDecision: "default", highEconomics: true, probe: { slowHeaders: true } } },
 		{ name: "before the next real request", options: { busy: true, delayNextRequest: true, warmDecision: "default", highEconomics: true }, precondition: warmBetweenTurnAndDriver },
 		{ name: "during a tool", options: { busy: true, warmDecision: "default", highEconomics: true }, beforeRelease: () => new Promise(resolve => setTimeout(resolve, 1400)) },
-		{ name: "after an earlier asynchronous handler", options: { slowFinalResponse: true, warmDecision: "warm", highEconomics: true, probe: { earlierAsyncCallback: true, directApi: true } } },
+		{ name: "after an earlier asynchronous handler", options: { slowFinalResponse: true, warmDecision: "warm", highEconomics: true, probe: { earlierAsyncCallback: true } } },
 		{ name: "on the retry of an overloaded request", options: { retryAfterMs: 10, slowFinalResponse: true, warmDecision: "warm", highEconomics: true } },
 	];
 	for (const scenario of scenarios) it(`preserves capture while warming ${scenario.name}`, async () => {
@@ -503,7 +498,7 @@ describe("Hydra-only capture feasibility", () => {
 	});
 
 	it("ignores an old aborted warm callback released after the next real request", async () => {
-		const h = await consumer({ busy: true, warmDecision: "default", highEconomics: true, probe: { lateWarmHook: true, directApi: true } });
+		const h = await consumer({ busy: true, warmDecision: "default", highEconomics: true, probe: { lateWarmHook: true } });
 		const driverGate = h.holdFinalDriver();
 		const running = h.session.prompt("Finish now.");
 		await h.entered.promise;
@@ -540,7 +535,7 @@ describe("Hydra-only capture feasibility", () => {
 	// Spec DoD: "Capture sees the effective final payload after later handlers."
 	// Hook-level designs capture at Hydra's place in the handler chain.
 	it("a later handler's replacement payload reaches the review", async () => {
-		const h = await consumer({ slowFinalResponse: true, warmDecision: "stop", highEconomics: true, probe: { finalTransform: true, directApi: true } });
+		const h = await consumer({ slowFinalResponse: true, warmDecision: "stop", highEconomics: true, probe: { finalTransform: true } });
 		await h.session.prompt("Finish now.");
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.foregroundPayloads.at(-1).metadata).toEqual({ user_id: "last-handler" });
@@ -548,7 +543,7 @@ describe("Hydra-only capture feasibility", () => {
 	});
 
 	it("does not mistake a legitimate one-token driver request for warming", async () => {
-		const h = await consumer({ warmDecision: "stop", highEconomics: true, probe: { driverOutputCap: 1, directApi: true } });
+		const h = await consumer({ warmDecision: "stop", highEconomics: true, probe: { driverOutputCap: 1 } });
 		await h.session.prompt("Finish now.");
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.foregroundPayloads[0].max_tokens).toBe(1);
@@ -562,7 +557,7 @@ describe("Hydra-only capture feasibility", () => {
 	});
 
 	it("preserves the original ChatGPT selected-model fixture, warming and shared prefix", async () => {
-		const h = await consumer({ warmDecision: "default", highEconomics: true, delayTurnEnd: true, openai: true, probe: { directApi: true } });
+		const h = await consumer({ warmDecision: "default", highEconomics: true, delayTurnEnd: true, openai: true, });
 		await h.session.prompt("Finish now.");
 		expect(h.session.model).toBe(h.model);
 		expect(JSON.stringify(h.modelRuntime.getModels("openai"))).toBe(h.modelBefore);
