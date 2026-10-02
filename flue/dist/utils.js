@@ -581,15 +581,28 @@ function lastMarkableBlock(message) {
     }
     return undefined;
 }
-/** The last block in the added messages that is allowed to carry a cache mark. */
-function lastMarkableBlockOfTail(tail) {
-    for (let i = tail.length - 1; i >= 0; i--) {
-        const block = lastMarkableBlock(tail[i]);
+/** The last block in these messages that is allowed to carry a cache mark. */
+function lastMarkableBlockOf(messages) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const block = lastMarkableBlock(messages[i]);
         if (block) {
             return block;
         }
     }
     return undefined;
+}
+/**
+ * Where the head's instruction starts: the first user message that is not the
+ * driver's tool results. Everything before it is the driver's last turn,
+ * everything after it is the head's own work.
+ */
+function headPromptIndex(tail) {
+    const index = tail.findIndex((message) => message.role === "user" &&
+        !(Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result")));
+    if (index === -1) {
+        throw new Error("observation tail has no head instruction");
+    }
+    return index;
 }
 /**
  * Adds the observation's own messages to the end of the driver's captured
@@ -603,9 +616,10 @@ function lastMarkableBlockOfTail(tail) {
  *
  * - Just the head's instruction. Nothing moves and the instruction is not
  *   cached. It is short and will not be read again.
- * - The agent's final message plus the instruction, at the end of a run. The
- *   mark moves onto the final message, so paying to store it also warms up the
- *   driver's own next turn.
+ * - The agent's final turn plus the instruction, at the end of a run. The mark
+ *   moves onto the end of that turn (its final message, or the results of the
+ *   tools it called), so paying to store it also warms up the driver's own
+ *   next turn.
  * - A whole tool loop. The mark moves to the last message of the loop, so each
  *   turn is paid for once and read cheaply afterwards rather than resent as new
  *   text every iteration. This mark deliberately does not carry the driver's
@@ -622,22 +636,18 @@ export function mergeObservationPayload(captured, tail, envelope) {
     // the code below is the only thing that decides where they go.
     const tailMessages = structuredClone(tail);
     stripMessageMarkers(tailMessages);
-    const anchored = tailMessages[0]?.role === "assistant";
-    const loopTurns = tailMessages.length > (anchored ? 2 : 1);
+    // Decided by the head's instruction, not by counting messages: pi-ai also
+    // adds empty system messages that only carry the thinking effort.
+    const promptIndex = headPromptIndex(tailMessages);
+    const loopTurns = tailMessages.slice(promptIndex + 1).some((message) => message.role === "assistant");
     const target = loopTurns
-        ? lastMarkableBlockOfTail(tailMessages)
-        : anchored
-            ? lastMarkableBlock(tailMessages[0])
-            : undefined;
+        ? lastMarkableBlockOf(tailMessages)
+        : lastMarkableBlockOf(tailMessages.slice(0, promptIndex));
     if (target) {
         const stripped = stripMessageMarkers(merged.messages);
         target.cache_control = loopTurns ? { type: "ephemeral" } : (stripped ?? { type: "ephemeral" });
     }
     if (envelope !== undefined) {
-        const promptIndex = tailMessages.findIndex((message) => message.role === "user");
-        if (promptIndex === -1) {
-            throw new Error("cannot insert observation envelope: tail has no user prompt");
-        }
         tailMessages.splice(promptIndex + 1, 0, {
             role: "system",
             content: [{ type: "text", text: envelope }],

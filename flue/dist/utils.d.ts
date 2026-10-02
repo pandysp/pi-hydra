@@ -288,9 +288,10 @@ export declare function isAnthropicPayload(value: unknown): value is AnthropicPa
  *
  * - Just the head's instruction. Nothing moves and the instruction is not
  *   cached. It is short and will not be read again.
- * - The agent's final message plus the instruction, at the end of a run. The
- *   mark moves onto the final message, so paying to store it also warms up the
- *   driver's own next turn.
+ * - The agent's final turn plus the instruction, at the end of a run. The mark
+ *   moves onto the end of that turn (its final message, or the results of the
+ *   tools it called), so paying to store it also warms up the driver's own
+ *   next turn.
  * - A whole tool loop. The mark moves to the last message of the loop, so each
  *   turn is paid for once and read cheaply afterwards rather than resent as new
  *   text every iteration. This mark deliberately does not carry the driver's

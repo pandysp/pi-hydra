@@ -175,7 +175,7 @@ Setup and checks are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Verifying cache parity
 
-Use `/hydra-debug` to dump driver/observation pairs. A mid-run Anthropic pair should match after removing the appended handoff. A run-end pair additionally carries the final assistant message and deliberate marker relocation, so compare content after removing the tail and cache markers. A Codex pair should match after truncating the observation `input` to the driver's input length.
+Use `/hydra-debug` to dump driver/observation pairs. Truncate the observation's `messages` (Anthropic) or `input` (OpenAI) to the driver's length; a mid-run pair then matches exactly. An Anthropic run-end pair also moves the driver's last cache marker onto the final assistant message, so compare it without cache markers.
 
 Exact commands and expected provider accounting live in [Verification procedures](providers.md#verification-procedures).
 

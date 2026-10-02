@@ -434,6 +434,70 @@ describe("mergeObservationPayload", () => {
 		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 	});
 
+	// Shapes taken from a real claude-sonnet-5-5 request: pi-ai adds an empty
+	// system message with the effort before each assistant turn and at the end.
+	const effort = (level: string): PayloadMessage => ({ role: "system", content: [], output_config: { effort: level } });
+
+	it("leaves captured markers untouched mid-run when pi-ai appends an effort message", () => {
+		const merged = mergeObservationPayload(capturedFixture(), [promptTail(), effort("high")]);
+		expect(blocks(merged.messages[1])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[2])[0].cache_control).toBeUndefined();
+	});
+
+	it("still marks M at run end when effort messages surround it", () => {
+		const tail: PayloadMessage[] = [
+			effort("low"),
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			effort("high"),
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail);
+		expect(blocks(merged.messages[3])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[1])[0].cache_control).toBeUndefined();
+		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+	});
+
+	it("marks the driver's tool results when its last turn ended in a tool call (Flue)", () => {
+		const tail: PayloadMessage[] = [
+			effort("high"),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "submit", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "stored" }] },
+			promptTail(),
+			effort("high"),
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail);
+		expect(blocks(merged.messages[4])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
+		expect(blocks(merged.messages[5])[0].cache_control).toBeUndefined();
+	});
+
+	it("does not treat a system update after the instruction as a head turn", () => {
+		const tail: PayloadMessage[] = [
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			{ role: "system", content: [{ type: "text", text: "prompt update" }] },
+			effort("high"),
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail);
+		expect(blocks(merged.messages[2])[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		expect(blocks(merged.messages[4])[0].cache_control).toBeUndefined();
+	});
+
+	it("advances the marker to the loop frontier when effort messages surround the loop", () => {
+		const tail: PayloadMessage[] = [
+			effort("low"),
+			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
+			promptTail(),
+			effort("high"),
+			{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [] }] },
+			effort("high"),
+		];
+		const merged = mergeObservationPayload(capturedFixture(), tail);
+		expect(blocks(merged.messages[7])[0].cache_control).toEqual({ type: "ephemeral" });
+		expect(merged.messages.flatMap((m) => blocks(m)).filter((block) => block.cache_control).length).toBe(1);
+	});
+
 	it("advances the marker to the loop frontier once tool turns are appended, dropping the TTL", () => {
 		const tail: PayloadMessage[] = [
 			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
@@ -478,8 +542,7 @@ describe("mergeObservationPayload", () => {
 	});
 
 	it("never increases the breakpoint count (the budget is four and the driver spends it)", () => {
-		const countMarkers = (payload: AnthropicPayload) =>
-			payload.messages.flatMap((m) => blocks(m)).filter((block) => block.cache_control !== undefined).length;
+		const countMarkers = (payload: AnthropicPayload) => JSON.stringify(payload).split('"cache_control"').length - 1;
 		const captured = capturedFixture();
 		const loopTail: PayloadMessage[] = [
 			{ role: "assistant", content: [{ type: "text", text: "final answer" }] },
@@ -532,10 +595,10 @@ describe("mergeObservationPayload", () => {
 		expect(blocks(merged.messages[3])[0].cache_control).toBeUndefined();
 	});
 
-	it("rejects a split handoff without a lens user message", () => {
-		expect(() =>
-			mergeObservationPayload(capturedFixture(), [{ role: "assistant", content: [{ type: "text", text: "M" }] }], "protocol"),
-		).toThrow("tail has no user prompt");
+	it("rejects a tail without the head's instruction", () => {
+		const tail: PayloadMessage[] = [{ role: "assistant", content: [{ type: "text", text: "M" }] }];
+		expect(() => mergeObservationPayload(capturedFixture(), tail, "protocol")).toThrow("no head instruction");
+		expect(() => mergeObservationPayload(capturedFixture(), tail)).toThrow("no head instruction");
 	});
 });
 
