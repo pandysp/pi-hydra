@@ -92,6 +92,8 @@ async function isCurrentChatGPTAuth(
 	return current?.source === "OAuth" && current.auth.apiKey === apiKey;
 }
 
+const modelIdentity = (provider: string, id: string): string => `${provider}/${id}`;
+
 type ChatGPTCredential = { apiKey: string; headers: ProviderHeaders | undefined };
 
 /**
@@ -155,6 +157,7 @@ interface ObservationSeed {
 	// The reviewed run's cancel signal, copied when the review is scheduled:
 	// ctx.signal always returns the current run's.
 	runSignal: AbortSignal | undefined;
+	model: string | null; // provider/id that answered the captured request
 }
 
 interface Observation extends ObservationSeed {
@@ -306,6 +309,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// has to be appended or is already inside the saved request.
 	let capturedPayload: unknown = null;
 	let responseTimestamp: number | null = null;
+	// The model that answered that request, read from the answer itself: pi
+	// applies a model switch to the selection before a request already being
+	// prepared is sent, so the selection at capture time can be the new model.
+	// A check waiting behind a busy one can start after a switch and must not
+	// replay the old provider's request on the new one.
+	let responseModel: string | null = null;
 	let capturedThisRun = false;
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
@@ -313,7 +322,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const scheduler = new HeadScheduler<ObservationSeed>({
 		// Waiting reviews of a cancelled run don't start, so nothing new begins
 		// after Escape. That point only gets reviewed if the user writes again.
-		shouldRun: (seed) => registry.isActive(seed.head) && seed.branchGeneration === branchGeneration && !seed.runSignal?.aborted,
+		// Nor do reviews whose request a different model answered.
+		shouldRun: (seed) =>
+			registry.isActive(seed.head) &&
+			seed.branchGeneration === branchGeneration &&
+			!seed.runSignal?.aborted &&
+			seed.ctx.model !== undefined &&
+			seed.model === modelIdentity(seed.ctx.model.provider, seed.ctx.model.id),
 		observe: async (seed, signal) => {
 			// What has already been delivered is looked up here, not when the
 			// observation was queued. A waiting observation can sit behind one
@@ -1035,6 +1050,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				kind,
 				branchGeneration,
 				runSignal: ctx.signal,
+				model: responseModel,
 			});
 		}
 	}
@@ -1098,12 +1114,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			// snapshot as current.
 			capturedPayload = null;
 			responseTimestamp = null;
+			responseModel = null;
 			return;
 		}
 		// Capture the driver's exact bytes; never modify them. Edits made after
 		// this handler (later handlers, transport wrappers) are not in the copy (#43).
 		capturedPayload = structuredClone(event.payload);
 		responseTimestamp = null;
+		responseModel = null;
 		capturedThisRun = true;
 	});
 
@@ -1133,7 +1151,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// recognizes it. Recorded even when no heads are active, since a head
 		// can be switched on part-way through.
 		if (capturedPayload && responseTimestamp === null) {
-			responseTimestamp = (event.message as AssistantMessage).timestamp ?? null;
+			const answer = event.message as AssistantMessage;
+			responseTimestamp = answer.timestamp ?? null;
+			responseModel = modelIdentity(answer.provider, answer.model);
 		}
 		if (registry.activeSet().length === 0 || !capturedPayload) {
 			return;

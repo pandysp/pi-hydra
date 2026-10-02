@@ -54,6 +54,8 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 	let idle = true;
 	const api = options.api ?? "anthropic-messages";
 	const model = { api, provider: api === "anthropic-messages" ? "anthropic" : api === "openai-responses" ? "openai" : "openai-codex", baseUrl: options.baseUrl ?? "https://api.openai.com/v1", headers: options.modelAuthHeader ? { Authorization: "Bearer sk-fake" } : undefined, id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
+	// The main assistant's replies name the model that answered, as pi's do.
+	const driverAnswer = (value: string): AssistantMessage => ({ ...answer([text(value)]), provider: model.provider, model: model.id });
 	const transport = vi.fn((model: Model<Api>, context: { messages: Message[] }, opts: { onPayload: (payload: unknown) => unknown }) => {
 		const built = model.api === "anthropic-messages" ? { messages: context.messages } : { input: context.messages };
 		payloads.push(opts.onPayload(built));
@@ -96,12 +98,12 @@ async function harness(options: { tools?: string; api?: "anthropic-messages" | "
 		responses.push(...results);
 		const messages = convertToLlm(sm.buildSessionContext().messages);
 		await emit({ type: "before_provider_request", payload: api === "anthropic-messages" ? { messages } : { input: messages } });
-		await emit({ type: "message_start", message: answer([text("Driver is working")]) });
+		await emit({ type: "message_start", message: driverAnswer("Driver is working") });
 	};
 	await emit({ type: "agent_start" });
 	// The first main assistant response is deliberately skipped by Hydra.
 	await emit({ type: "before_provider_request", payload: api === "anthropic-messages" ? { messages: [] } : { input: [] } });
-	await emit({ type: "message_start", message: answer([text("First driver response")]) });
+	await emit({ type: "message_start", message: driverAnswer("First driver response") });
 	cleanups.push(async () => {
 		await emit({ type: "session_shutdown", reason: "quit" });
 		rmSync(cwd, { recursive: true, force: true });
@@ -420,6 +422,29 @@ describe("observation loop stops", () => {
 				expect(payload.input.filter((item) => item.role === "developer")).toHaveLength(1);
 			}
 		}
+	});
+
+	it("skips a waiting check when the model changed since its request was captured", async () => {
+		const h = await harness({ api: "openai-codex-responses" });
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>(resolve => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		await h.observe(noop()); // waits behind the busy check, with Codex's request
+		(h.ctx as { model: Model<Api> }).model = { ...h.ctx.model!, api: "openai-responses", provider: "openai", baseUrl: "https://api.openai.com/v1" };
+		respond(noop());
+		await h.waitCalls(1);
+		await new Promise(resolve => setTimeout(resolve, 50));
+		expect(h.transport).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips a check whose request the old model answered after the model was switched", async () => {
+		const h = await harness({ api: "openai-codex-responses" });
+		// pi applies a switch to the selection while a request already being
+		// prepared still goes to the old model, so the capture sees the new one.
+		(h.ctx as { model: Model<Api> }).model = { ...h.ctx.model!, api: "openai-responses", provider: "openai", baseUrl: "https://api.openai.com/v1" };
+		await h.observe(noop());
+		await new Promise(resolve => setTimeout(resolve, 50));
+		expect(h.transport).not.toHaveBeenCalled();
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {

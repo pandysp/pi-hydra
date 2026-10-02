@@ -27,6 +27,8 @@ hydra reviews at two lifecycle points.
 
 **Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped.
 
+Each captured request remembers the model that answered it, read from the answer: pi applies a model switch to the selection before a request it is already preparing goes out. A check is skipped if the selected model differs when it starts, so a check that waited behind a busy one does not replay one provider's request on another.
+
 The provider-specific timing and cache consequences are canonical in [Provider lifecycle](providers.md#provider-lifecycle).
 
 ## Prompt construction
