@@ -193,6 +193,11 @@ interface FeedbackDetails {
 	lens?: string;
 }
 
+function sameExceptOutputCap(a: unknown, b: unknown): boolean {
+	const strip = (payload: unknown) => JSON.stringify(payload, (key, value) => (key === "max_tokens" || key === "max_output_tokens" ? undefined : value));
+	return strip(a) === strip(b);
+}
+
 export default function hydraExtension(pi: ExtensionAPI) {
 	pi.registerFlag("hydra-heads", {
 		description: "Initial hydra head set, comma-separated, or `none` (beats the saved session set)",
@@ -1157,6 +1162,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			// snapshot as current.
 			capturedPayload = null;
 			responseTimestamp = null;
+			return;
+		}
+		// SPIKE S3 (B, single rule): a request equal to the snapshot except
+		// for its output cap is a replay and never replaces it.
+		if (capturedPayload !== null && sameExceptOutputCap(capturedPayload, event.payload)) {
 			return;
 		}
 		// Capture the driver's exact bytes; never modify them.
