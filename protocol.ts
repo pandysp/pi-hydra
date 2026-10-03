@@ -103,7 +103,7 @@ export interface CompleteObservationParams {
 	delivery: ObservationDelivery;
 	message: string;
 	/** The head's end condition is met. Only heads added with ends_when act on it. */
-	done: boolean;
+	done?: true;
 }
 
 export type HydraToolParams = ManageHeadsParams | CompleteObservationParams;
@@ -181,7 +181,7 @@ export function validateHydraToolParams(value: RawHydraToolParams): HydraToolPar
 		action: value.action,
 		delivery: value.delivery,
 		message: value.message,
-		done: value.done === true,
+		...(value.done === true && { done: true }),
 	};
 }
 

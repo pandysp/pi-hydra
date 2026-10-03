@@ -630,7 +630,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 		const thinking = response.content.flatMap((block) => (block.type === "thinking" ? [block.thinking] : [])).join("\n");
 		let decisions = outcomeDecisions;
-		let done = outcome.done;
+		let done = outcome.done === true;
 		if (errorKind) {
 			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
 			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
@@ -647,7 +647,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			if (parsed) {
 				const { done: saysDone, ...decision } = parsed;
 				decisions = [decision];
-				done = saysDone;
+				done = saysDone === true;
 			} else {
 				decisions = null;
 			}
@@ -962,7 +962,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			errorKind: null,
 			attemptedTools: [],
 			loopStopReason,
-			done: toolState.done,
+			...(toolState.done && { done: true }),
 		};
 	}
 
@@ -1403,7 +1403,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			}
 			const decision = decisionFromCompletion(params.delivery, params.message);
 			state.completion = decision;
-			state.done = params.done;
+			state.done = params.done === true;
 			return {
 				content: [{ type: "text" as const, text: "Observation completed." }],
 				details: { action: params.action, changed: false },

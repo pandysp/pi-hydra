@@ -90,7 +90,7 @@ export function formatHeadManagementReceipt(operation: HeadOperation, head: stri
 }
 
 /** An Anthropic acting head's answer: its decision, and whether it says done. */
-export type ParsedDecision = Decision & { done: boolean };
+export type ParsedDecision = Decision & { done?: true };
 
 function asDecision(value: unknown): ParsedDecision | null {
 	if (typeof value !== "object" || value === null) {
@@ -103,16 +103,16 @@ function asDecision(value: unknown): ParsedDecision | null {
 	if (obj.done !== undefined && typeof obj.done !== "boolean") {
 		return null;
 	}
-	const done = obj.done === true;
+	const done = obj.done === true ? { done: true as const } : {};
 	const action = obj.action as Action;
 	const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
 	const message = typeof obj.message === "string" ? obj.message.trim().slice(0, 500) : "";
 	// A delivery with nothing to deliver is recorded as the noop it is, so
 	// stats never count a delivery that said nothing.
 	if (action !== "noop" && message === "") {
-		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "", done };
+		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "", ...done };
 	}
-	return { action, reason, message, done };
+	return { action, reason, message, ...done };
 }
 
 function tryParseDecision(text: string): ParsedDecision | null | undefined {
@@ -490,9 +490,8 @@ export interface EnumeratedDecisionResult {
 	decisions: Decision[] | null;
 	error: string | null;
 	/** The head says its end condition is met. Only heads with ends_when act on it. */
-	done: boolean;
+	done?: true;
 }
-
 
 /**
  * Groups a head's numbered findings for delivery. The deprecated print
@@ -505,28 +504,28 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	try {
 		value = JSON.parse((fenced ? fenced[1] : text).trim());
 	} catch {
-		return { decisions: null, error: "completion must be one JSON object", done: false };
+		return { decisions: null, error: "completion must be one JSON object" };
 	}
 	if (typeof value !== "object" || value === null || !Array.isArray((value as { findings?: unknown }).findings)) {
-		return { decisions: null, error: "completion requires a findings array", done: false };
+		return { decisions: null, error: "completion requires a findings array" };
 	}
 	const doneValue = (value as { done?: unknown }).done;
 	if (doneValue !== undefined && typeof doneValue !== "boolean") {
-		return { decisions: null, error: "done must be true or false", done: false };
+		return { decisions: null, error: "done must be true or false" };
 	}
-	const done = doneValue === true;
+	const done = doneValue === true ? { done: true as const } : {};
 	const findings: Decision[] = [];
 	for (const [index, item] of (value as { findings: unknown[] }).findings.entries()) {
 		if (typeof item !== "object" || item === null) {
-			return { decisions: null, error: `finding ${index + 1} must be an object`, done: false };
+			return { decisions: null, error: `finding ${index + 1} must be an object` };
 		}
 		const candidate = item as { action?: unknown; reason?: unknown; message?: unknown };
 		if (typeof candidate.action !== "string" || !(HEAD_DELIVERIES as readonly string[]).includes(candidate.action)) {
-			return { decisions: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}`, done: false };
+			return { decisions: null, error: `finding ${index + 1} has invalid action ${JSON.stringify(candidate.action)}` };
 		}
 		const message = typeof candidate.message === "string" ? candidate.message.trim().slice(0, 500) : "";
 		if (message.length === 0) {
-			return { decisions: null, error: `finding ${index + 1} requires a non-empty message`, done: false };
+			return { decisions: null, error: `finding ${index + 1} requires a non-empty message` };
 		}
 		findings.push({
 			action: candidate.action as (typeof HEAD_DELIVERIES)[number],
@@ -535,7 +534,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 		});
 	}
 	if (findings.length === 0) {
-		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null, done };
+		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null, ...done };
 	}
 	// Deprecated print grouping is retained, though heads cannot select it.
 	const batch = (action: "print" | "steer", selected: Decision[]): Decision => ({
@@ -558,7 +557,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	return {
 		decisions,
 		error: null,
-		done,
+		...done,
 	};
 }
 

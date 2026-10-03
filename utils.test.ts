@@ -47,7 +47,6 @@ describe("parseDecision", () => {
 			action: "steer",
 			reason: "r",
 			message: "m",
-			done: false,
 		});
 	});
 
@@ -57,7 +56,7 @@ describe("parseDecision", () => {
 
 	it("extracts a decision embedded in prose", () => {
 		const text = 'Here is my verdict: {"action":"steer","reason":"bad","message":"stop"} — the placeholder is {name}.';
-		expect(parseDecision(text)).toEqual({ action: "steer", reason: "bad", message: "stop", done: false });
+		expect(parseDecision(text)).toEqual({ action: "steer", reason: "bad", message: "stop" });
 	});
 
 	it("extracts a decision whose message contains braces", () => {
@@ -79,7 +78,6 @@ describe("parseDecision", () => {
 			action: "noop",
 			reason: "bad (empty message)",
 			message: "",
-			done: false,
 		});
 		expect(parseDecision('{"action":"steer","reason":"","message":"   "}')?.action).toBe("noop");
 	});
@@ -105,7 +103,7 @@ describe("parseDecision", () => {
 
 	it("extracts one prose-wrapped decision with escaped quotes and unmatched braces in its message", () => {
 		const decision = { action: "steer", reason: "r", message: 'Use "}" here, not an opening brace {' };
-		expect(parseDecision(`Decision: ${JSON.stringify(decision)} — done.`)).toEqual({ ...decision, done: false });
+		expect(parseDecision(`Decision: ${JSON.stringify(decision)} — done.`)).toEqual(decision);
 	});
 
 	it("caps reason and message lengths", () => {
@@ -272,7 +270,6 @@ describe("enumerated steer-only judge completion", () => {
 		expect(parseEnumeratedDecision('{"findings":[]}')).toEqual({
 			decisions: [{ action: "noop", reason: "no findings", message: "" }],
 			error: null,
-			done: false,
 		});
 	});
 
@@ -289,7 +286,6 @@ describe("enumerated steer-only judge completion", () => {
 		).toEqual({
 			decisions: null,
 			error: 'finding 1 has invalid action "print"',
-			done: false,
 		});
 	});
 
@@ -312,7 +308,6 @@ describe("enumerated steer-only judge completion", () => {
 				},
 			],
 			error: null,
-			done: false,
 		});
 	});
 

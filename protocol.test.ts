@@ -18,7 +18,7 @@ describe("hydra tool protocol", () => {
 					arguments: { action: "complete_observation", delivery: "steer", message: "Fix it." },
 				},
 			]),
-		).toEqual({ action: "complete_observation", delivery: "steer", message: "Fix it.", done: false });
+		).toEqual({ action: "complete_observation", delivery: "steer", message: "Fix it." });
 		expect(
 			completionFromHydraToolCalls([{ type: "toolCall", name: "bash", arguments: { command: "pwd" } }]),
 		).toBeNull();
@@ -77,7 +77,7 @@ describe("hydra tool protocol", () => {
 				delivery: "none",
 				message: "",
 			}),
-		).toEqual({ action: "complete_observation", delivery: "none", message: "", done: false });
+		).toEqual({ action: "complete_observation", delivery: "none", message: "" });
 		// Hydra's own note route is not a head's choice.
 		expect(() =>
 			validateHydraToolParams({ action: "complete_observation", delivery: "note" as never, message: "follow-up" }),
