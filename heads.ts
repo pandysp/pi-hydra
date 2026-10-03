@@ -278,7 +278,10 @@ export class HeadRegistry {
 	 * checked the call against the rules (names, lifetimes, active state).
 	 */
 	addHead(gateway: HeadRegistryGateway, name: string, added: AddedHead) {
-		this.added.set(name, added);
+		// A plain add of a head file has nothing to remember beyond its name.
+		if (added.withoutFile !== undefined || added.endsWhen !== undefined) {
+			this.added.set(name, added);
+		}
 		if (!this.setHeadSet(gateway, [...this.activeHeads, name])) {
 			throw new Error(`hydra: could not activate "${name}"`);
 		}
@@ -305,8 +308,13 @@ export class HeadRegistry {
 		return true;
 	}
 
-	/** Takes one head out of the active set; removing the last one empties it on purpose. */
+	/**
+	 * Takes one head out of the active set; removing the last one empties it
+	 * on purpose. A head that ends while a diagnostic holds the set also
+	 * leaves the set the diagnostic returns to, so it does not come back.
+	 */
 	removeHead(gateway: HeadRegistryGateway, name: string) {
+		this.productHeads = this.productHeads.filter((product) => product !== name);
 		const remaining = this.activeHeads.filter((active) => active !== name);
 		if (remaining.length > 0) {
 			this.setHeadSet(gateway, remaining);

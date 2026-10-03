@@ -651,7 +651,12 @@ export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "
  * from a head file of the same name. Repairing could, for example, turn a
  * broken tool list into "all tools".
  */
-export function savedAddedHeads(config: { added?: unknown }): { added: Record<string, AddedHead>; damaged: string[] } {
+export function savedAddedHeads(config: { heads?: unknown; added?: unknown }): { added: Record<string, AddedHead>; damaged: string[] } {
+	// A record that is there but not a record says nothing about any saved
+	// head, so none of them can be trusted to be a plain head file.
+	if (config.added !== undefined && plainObject(config.added) === null) {
+		return { added: {}, damaged: savedHeadList(config) ?? [] };
+	}
 	const added: Record<string, AddedHead> = {};
 	const damaged: string[] = [];
 	for (const [name, value] of Object.entries(plainObject(config.added) ?? {})) {

@@ -814,6 +814,53 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
+	it.each(["resume", "going back and forth"])("a plain add of a head file survives %s, with nothing extra saved", async (mode) => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" });
+		expect(h.configs().at(-1)).toEqual({ heads: ["critic"] });
+		const target = mode === "resume" ? await harness({ resume: { cwd: h.cwd, sm: h.sm } }) : h;
+		if (mode !== "resume") {
+			const leaf = h.sm.getLeafId()!;
+			h.sm.branch(h.root);
+			await h.emit({ type: "session_tree" } as ExtensionEvent);
+			h.sm.branch(leaf);
+			await h.emit({ type: "session_tree" } as ExtensionEvent);
+		}
+		await target.observe(noop());
+		await target.waitCalls(1);
+		expect(target.notify).not.toHaveBeenCalledWith(expect.anything(), "warning");
+	});
+
+	it.each([null, [], "broken"])("a saved record of added heads that is %j restores none of the saved heads, not even from a head file", async (added) => {
+		const setup = await harness({ heads: [] });
+		const sm = SessionManager.inMemory(setup.cwd);
+		sm.appendCustomEntry("hydra-config", { heads: ["critic"], added });
+		const h = await harness({ resume: { cwd: setup.cwd, sm } });
+		expect(h.notify).toHaveBeenCalledWith("hydra: saved head is damaged and was not restored: critic", "warning");
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("a head that says done while a diagnostic head runs does not come back when the diagnostic ends", async () => {
+		const h = await harness({ heads: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic", ends_when: "DONE" });
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>((resolve) => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")![1] as unknown as { handler: (args: string, ctx: unknown) => Promise<void> };
+		await command.handler("test", h.ctx);
+		respond(findings({ findings: [], done: true }));
+		await h.waitCalls(1);
+		expect(h.steers().some((message) => message.includes("has ended"))).toBe(true);
+		await h.observe(answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"));
+		await h.waitCalls(2);
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		await h.observe(noop());
+		await settle();
+		expect(h.calls().map((call) => call.head)).toEqual(["critic", "test"]);
+	});
+
 	it.each([
 		["no end", { withoutFile: { instructions: "x" } }],
 		["tools that are not a list", { withoutFile: { instructions: "x", tools: "read" }, endsWhen: "y" }],
