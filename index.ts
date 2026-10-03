@@ -1367,6 +1367,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				throw new Error(`"${name}" is still finishing a check. Wait until it has finished, or use a different name.`);
 			}
 			if (lifetime.kind === "once") {
+				// A head may still be checking after the user cancelled the run it
+				// reviews. Its one-off would start in the next run, which the user
+				// never asked for.
+				if (runSignal?.aborted) {
+					throw new Error("The run this check reviews was cancelled, so a one-off head cannot start from it.");
+				}
 				const head = registry.get(name);
 				heldOneOffs.set(
 					name,

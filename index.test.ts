@@ -788,6 +788,28 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
+	it("a head still checking after the user cancelled cannot order a one-off; the head is told, and nothing starts in the next run", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: "hydra" });
+		const run = new AbortController();
+		(h.ctx as { signal?: AbortSignal }).signal = run.signal;
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(
+			new Promise<AssistantMessage>((resolve) => { respond = resolve; }),
+			answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"),
+		);
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		run.abort();
+		await h.emit({ type: "agent_end", messages: [answer([], "aborted")] });
+		respond(answer([tool("hydra", { action: "manage_heads", operation: "add", head: "late-one", lifetime: "once", instructions: "OLD TASK", tools: [], message: "check the old task" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads[1])).toContain("The run this check reviews was cancelled, so a one-off head cannot start from it.");
+		(h.ctx as { signal?: AbortSignal }).signal = new AbortController().signal;
+		await h.emit({ type: "agent_start" });
+		await h.observe(noop());
+		await settle();
+		expect(h.calls().map((call) => call.head)).toEqual(["critic"]);
+	});
+
 	it("refuses to add a head again while its previous check is still running, so an old done cannot end the new one", async () => {
 		const h = await harness({ heads: [] });
 		await addWatcher(h);
