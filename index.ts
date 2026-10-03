@@ -331,6 +331,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
 
+	// One-off checks scheduled and not yet finished or skipped. Adding a head
+	// is refused while a check under its name is unfinished, so the name
+	// stands for that one check until it leaves this set.
+	const unfinishedOneOffs = new Set<string>();
 	const scheduler = new HeadScheduler<ObservationSeed>({
 		// Waiting reviews of a cancelled run don't start, so nothing new begins
 		// after Escape. That point only gets reviewed if the user writes again.
@@ -343,6 +347,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				: seed.ctx.model === undefined || seed.model !== modelIdentity(seed.ctx.model.provider, seed.ctx.model.id) ? "the model was switched"
 				: null;
 			if (blocked !== null && seed.oneOff) {
+				unfinishedOneOffs.delete(seed.head);
 				notifyUser(seed.ctx, `hydra: one-off head "${seed.head}" did not start: ${blocked}`, "warning");
 			}
 			return blocked === null && (seed.oneOff || registry.isActive(seed.head));
@@ -357,7 +362,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				...seed,
 				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.endsWhen),
 			};
-			await observe(job, signal);
+			try {
+				await observe(job, signal);
+			} finally {
+				if (seed.oneOff) unfinishedOneOffs.delete(seed.head);
+			}
 		},
 		onError: (seed, error) => notifyUser(seed.ctx, `hydra: observe error: ${errorText(error)}`, "error"),
 	});
@@ -1246,25 +1255,22 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// will not reach the cache until the user types again. The observation
 	// carries that message itself. Runs that produced nothing worth reviewing,
 	// such as a bare command or an immediate cancel, schedule nothing.
-	// One-off checks started and not yet waited for. pi -p (print or json
-	// mode) ends the session once the main assistant stops, and a message only gets a turn while
-	// agent_end is still running. So a headless run waits here for the
-	// one-offs it asked for; their feedback then wakes the main assistant, as
-	// it does in an interactive session, which stays open anyway.
-	const unfinishedOneOffs = new Set<string>();
-
+	// pi -p (print or json mode) ends the session once the main assistant
+	// stops, and a message only gets a turn while agent_end is still running.
+	// So a headless run waits here for the one-off checks still unfinished;
+	// their feedback then wakes the main assistant, as it does in the TUI and
+	// RPC, which stay open anyway. A cancelled run's feedback never starts a
+	// turn, so cancelling also ends the wait.
 	pi.on("agent_end", async (event, ctx) => {
 		scheduleRunEnd(event, ctx);
-		const oneOffs = [...unfinishedOneOffs];
-		unfinishedOneOffs.clear();
-		// Only print and json mode end the session once the main assistant
-		// stops; TUI and RPC stay open. A cancelled run's feedback never starts
-		// a turn, so there is nothing to wait for.
 		const endsWhenIdle = ctx.mode === "print" || ctx.mode === "json";
-		if (!endsWhenIdle || oneOffs.length === 0 || ctx.signal?.aborted) {
+		const runSignal = ctx.signal;
+		if (!endsWhenIdle || unfinishedOneOffs.size === 0 || runSignal?.aborted) {
 			return;
 		}
-		if (!(await scheduler.settled(oneOffs, ONE_OFF_HEADLESS_WAIT_MS))) {
+		const oneOffs = [...unfinishedOneOffs];
+		const finished = await scheduler.settled(oneOffs, ONE_OFF_HEADLESS_WAIT_MS, runSignal);
+		if (!finished && !runSignal?.aborted) {
 			notifyUser(ctx, `hydra: one-off head ${oneOffs.join(", ")} did not finish within ${ONE_OFF_HEADLESS_WAIT_MS / 60000} minutes; this headless run ends without waiting for its feedback`, "warning");
 		}
 	});

@@ -831,6 +831,40 @@ describe("heads with an end: once and ends_when", () => {
 		await h.waitCalls(1);
 	});
 
+	it("a print-mode run stops waiting as soon as it is cancelled, since the feedback could no longer start a turn", async () => {
+		const h = await harness({ heads: [] });
+		const runSignal = new AbortController();
+		(h.ctx as { signal?: AbortSignal }).signal = runSignal.signal;
+		const check = await startPendingOneOff(h, "print");
+		const run = check.endRun();
+		await settle();
+		expect(run.ended).toBe(false);
+		runSignal.abort();
+		await run.done;
+		expect(h.notify).not.toHaveBeenCalledWith(expect.stringContaining("did not finish"), "warning");
+		check.respond(noop());
+		await h.waitCalls(1);
+	});
+
+	it("a print-mode run does not wait for an ongoing head that reuses the name of a finished one-off", async () => {
+		const h = await harness({ heads: [] });
+		(h.ctx as { mode: string }).mode = "print";
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic", lifetime: "once" });
+		await h.observe(noop());
+		await h.waitCalls(1);
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" });
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>((resolve) => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(2));
+		let ended = false;
+		const end = h.emit({ type: "agent_end", messages: [answer([text("Committed.")])] }).then(() => { ended = true; });
+		await settle();
+		expect(ended).toBe(true);
+		respond(noop());
+		await end;
+		await h.waitCalls(2);
+	});
+
 	it("a print-mode run stops waiting for a stuck one-off after ten minutes and says so", async () => {
 		const h = await harness({ heads: [] });
 		const check = await startPendingOneOff(h, "print");

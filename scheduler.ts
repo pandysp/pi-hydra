@@ -96,10 +96,10 @@ export class HeadScheduler<Seed extends { head: string }> {
 	}
 
 	/**
-	 * Waits until these heads have no check running, for at most waitMs.
-	 * Resolves true when they all finished in time.
+	 * Waits until these heads have no check running, for at most waitMs, or
+	 * until the signal aborts. Resolves true when they all finished.
 	 */
-	async settled(heads: Iterable<string>, waitMs: number): Promise<boolean> {
+	async settled(heads: Iterable<string>, waitMs: number, signal?: AbortSignal): Promise<boolean> {
 		const running = [...heads].flatMap((head) => this.runners.get(head)?.running ?? []);
 		if (running.length === 0) {
 			return true;
@@ -109,13 +109,17 @@ export class HeadScheduler<Seed extends { head: string }> {
 		// finished. allSettled, not all: a rejected runner must not skip the
 		// timer clear or the caller's own work after the wait.
 		let timer: ReturnType<typeof setTimeout> | undefined;
-		const timeout = new Promise<false>((resolve) => {
+		let onAbort: (() => void) | undefined;
+		const giveUp = new Promise<false>((resolve) => {
 			timer = setTimeout(() => resolve(false), waitMs);
+			onAbort = () => resolve(false);
+			signal?.addEventListener("abort", onAbort, { once: true });
 		});
 		try {
-			return await Promise.race([Promise.allSettled(running).then(() => true), timeout]);
+			return await Promise.race([Promise.allSettled(running).then(() => true), giveUp]);
 		} finally {
 			clearTimeout(timer);
+			if (onAbort) signal?.removeEventListener("abort", onAbort);
 		}
 	}
 
