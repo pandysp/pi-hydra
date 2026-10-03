@@ -1,5 +1,5 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { HEAD_LIFETIMES, isValidHeadName, OBSERVATION_DELIVERIES, OBSERVER_DELIVERY_GUIDANCE } from "./utils.ts";
+import { EXECUTABLE_TOOL_NAMES, HEAD_LIFETIMES, isValidHeadName, OBSERVATION_DELIVERIES, OBSERVER_DELIVERY_GUIDANCE } from "./utils.ts";
 import type { HeadLifetimeName, ObservationDelivery } from "./utils.ts";
 
 /**
@@ -47,7 +47,7 @@ export const hydraToolParameters = Type.Object(
 		tools: Type.Optional(
 			Type.Array(Type.String(), {
 				description:
-					"manage_heads add with instructions only: tools that head may use for its work. Omit for all tools; [] for none (it only judges). Every head can always report back.",
+					`manage_heads add with instructions only: tools that head may use for its work, from exactly these names: ${EXECUTABLE_TOOL_NAMES.join(", ")}. Omit for all of them; [] for none (it only judges). Every head can always report back.`,
 			}),
 		),
 		delivery: Type.Optional(
