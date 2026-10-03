@@ -332,6 +332,26 @@ describe("one error notice per head and error type", () => {
 		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /) }), { triggerTurn: false });
 	});
 
+	it("a head already checking when the user cancels keeps working, edits included, and its message does not wake the main assistant", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: "write,hydra" });
+		const run = new AbortController();
+		(h.ctx as { signal?: AbortSignal }).signal = run.signal;
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(
+			new Promise<AssistantMessage>((resolve) => { respond = resolve; }),
+			answer([tool("hydra", { action: "complete_observation", delivery: "steer", message: "WROTE A FILE" })], "toolUse"),
+		);
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		run.abort();
+		await h.emit({ type: "agent_end", messages: [answer([], "aborted")] });
+		respond(answer([tool("write", { path: "after-cancel.txt", content: "written after cancel" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(readFileSync(join(h.cwd, "after-cancel.txt"), "utf8")).toBe("written after cancel");
+		expect(h.calls()[0].toolsUsed).toEqual(["write"]);
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.anything(), { triggerTurn: false });
+	});
+
 	it("does not inject a response arriving after cancellation", async () => {
 		const h = await harness();
 		let finish!: (response: AssistantMessage) => void;
