@@ -498,6 +498,16 @@ describe("observation loop stops", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
+	it("a one-off whose request the old model answered does not start after the model was switched, and says so", async () => {
+		const h = await harness({ heads: [], api: "openai-codex-responses" });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: [] });
+		(h.ctx as { model: Model<Api> }).model = { ...h.ctx.model!, api: "openai-responses", provider: "openai", baseUrl: "https://api.openai.com/v1" };
+		await h.observe(noop());
+		await new Promise(resolve => setTimeout(resolve, 50));
+		expect(h.transport).not.toHaveBeenCalled();
+		expect(h.notify).toHaveBeenCalledWith('hydra: one-off head "single" did not start: the model was switched', "warning");
+	});
+
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {
 		const h = await harness({ api: "openai-codex-responses", tools: "read" });
 		writeFileSync(join(h.cwd, "work.txt"), "content");
