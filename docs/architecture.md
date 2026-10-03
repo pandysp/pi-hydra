@@ -72,7 +72,7 @@ A reusable head is fully defined by one Markdown file. A head added without a fi
 
 Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
 
-The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to a point before any saved set applies the same launch default (flag, else autostart) instead of keeping the heads of the branch left behind. Full authoring behavior belongs in [Writing heads](heads.md).
+The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to another point in the conversation starts from no heads, then applies that point's saved set, or the launch default (flag, else autostart) when it has none. Nothing of the branch left behind survives: saved heads that no longer exist, a damaged saved head or a flag that matches nothing leave fewer heads, with a warning, not the old ones. Full authoring behavior belongs in [Writing heads](heads.md).
 
 ## Per-head scheduling
 

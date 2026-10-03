@@ -61,7 +61,7 @@ Several heads observe at once: each active head gets its own observation in para
 
 Adding a head is refused while a diagnostic head holds the active set, or while a check under the same name is still waiting or running, for example right after removing that head; the error says to try again once it has finished.
 
-Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Moving to a point in the conversation from before any saved set gives the same starting heads back. Saved state never leaks across sessions; autostart is only the cold-start default.
+Precedence at session start: an explicit `--hydra-heads` flag wins; otherwise a resumed session restores its saved set; otherwise the heads marked `autostart: true` form the set. Moving to another point in the conversation gives that point's saved heads, or the same starting heads when nothing was saved there; never heads from where you came from. A saved head that no longer exists or whose saved entry is damaged is left out with a warning. Saved state never leaks across sessions; autostart is only the cold-start default.
 
 ## Heads for a moment
 

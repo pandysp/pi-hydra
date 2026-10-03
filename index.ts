@@ -32,7 +32,7 @@ import type {
 } from "./utils.ts";
 import { consumeDeliveredMessage, DeliveryLedger, routeFeedback } from "./delivery.ts";
 import type { DeliveryGateway } from "./delivery.ts";
-import { DIAGNOSTIC_PROMPTS, EXECUTABLE_TOOL_NAMES, HeadRegistry } from "./heads.ts";
+import { DIAGNOSTIC_PROMPTS, HeadRegistry } from "./heads.ts";
 import type { HeadRegistryGateway } from "./heads.ts";
 import type { PersistedDelivery } from "./utils.ts";
 import {
@@ -54,6 +54,7 @@ import {
 	buildAnthropicObservationPrompt,
 	classifyCodexShareLoss,
 	decisionFromCompletion,
+	EXECUTABLE_TOOL_NAMES,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
@@ -438,6 +439,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		deliveryLedger.restore(deliveries);
 		// Another branch's conversation may not contain the notice.
 		reportedErrors.clear();
+		registry.resetForBranch();
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
 		}

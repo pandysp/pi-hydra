@@ -37,7 +37,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { heads?: string[]; resume?: { cwd: string; sm: SessionManager }; tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
+async function harness(options: { flag?: string; autostart?: boolean; heads?: string[]; resume?: { cwd: string; sm: SessionManager }; tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
 	boundary.transport = options.transport ?? "websocket";
 	let currentOAuth = options.oauth ?? true;
 	let authChecks = 0;
@@ -45,7 +45,7 @@ async function harness(options: { heads?: string[]; resume?: { cwd: string; sm: 
 	const cwd = options.resume?.cwd ?? mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
-	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\ntools: ${options.tools ?? "[]"}\n---\nFollow these test instructions.\n`);
+	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\nautostart: ${options.autostart ?? false}\ntools: ${options.tools ?? "[]"}\n---\nFollow these test instructions.\n`);
 	const sm = options.resume?.sm ?? SessionManager.inMemory(cwd);
 	const root = options.resume ? sm.getBranch()[0].id : sm.appendCustomEntry("hydra-config", { heads: options.heads ?? ["critic"] });
 	const handlers = new Map<string, Handler>();
@@ -83,7 +83,7 @@ async function harness(options: { heads?: string[]; resume?: { cwd: string; sm: 
 	const pi = {
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		registerFlag: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), registerMessageRenderer: vi.fn(),
-		getFlag: () => undefined,
+		getFlag: () => options.flag,
 		appendEntry: (type: string, data: unknown) => sm.appendCustomEntry(type, data),
 		// Delivery itself is Pi's; consumer.test.ts covers it in a real session.
 		sendMessage: vi.fn(),
@@ -814,18 +814,69 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
-	it("does not restore a saved head the add call could not have produced", async () => {
+	it.each([
+		["no end", { withoutFile: { instructions: "x" } }],
+		["tools that are not a list", { withoutFile: { instructions: "x", tools: "read" }, endsWhen: "y" }],
+		["a tool Hydra cannot run", { withoutFile: { instructions: "x", tools: ["imaginary-mcp"] }, endsWhen: "y" }],
+	])("does not restore a saved head with %s, not even from a head file of the same name, and says so", async (_case, saved) => {
 		const setup = await harness({ heads: [] });
 		const sm = SessionManager.inMemory(setup.cwd);
-		sm.appendCustomEntry("hydra-config", {
-			heads: ["no-end", "bad-tools"],
-			added: {
-				"no-end": { withoutFile: { instructions: "x" } },
-				"bad-tools": { withoutFile: { instructions: "x", tools: "read" }, endsWhen: "y" },
-			},
-		});
+		sm.appendCustomEntry("hydra-config", { heads: ["critic"], added: { critic: saved } });
 		const h = await harness({ resume: { cwd: setup.cwd, sm } });
-		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("saved head no longer exists: no-end, bad-tools"), "warning");
+		expect(h.notify).toHaveBeenCalledWith("hydra: saved head is damaged and was not restored: critic", "warning");
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["autostart", { autostart: true }, undefined],
+		["a launch flag", { flag: "critic" }, { heads: ["critic"] }],
+	] as const)("going back to before any saved set with %s gives the starting head without the end condition added later", async (_case, launch, saved) => {
+		const setup = await harness({ heads: [] });
+		const sm = SessionManager.inMemory(setup.cwd);
+		const beforeConfig = sm.appendCustomEntry("anchor", {});
+		const h = await harness({ resume: { cwd: setup.cwd, sm }, ...launch });
+		await h.hydraTool({ action: "manage_heads", operation: "remove", head: "critic" });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic", ends_when: "OLD BRANCH CONDITION" });
+		sm.branch(beforeConfig);
+		await h.emit({ type: "session_tree" } as ExtensionEvent);
+		// Autostart heads are never saved; a flag-chosen set is.
+		expect(h.configs().at(-1)).toEqual(saved);
+		await h.emit({ type: "agent_start" });
+		await h.observe();
+		await h.observe(findings({ findings: [], done: true }));
+		await h.waitCalls(1);
+		expect(JSON.stringify(h.payloads)).not.toContain("OLD BRANCH CONDITION");
+		expect(h.steers().some((message) => message.includes("has ended"))).toBe(false);
+	});
+
+	it("going back to before any saved set with a launch flag that matches nothing leaves no head from the branch left behind", async () => {
+		const setup = await harness({ heads: [] });
+		const sm = SessionManager.inMemory(setup.cwd);
+		const beforeConfig = sm.appendCustomEntry("anchor", {});
+		const h = await harness({ resume: { cwd: setup.cwd, sm }, flag: "missing" });
+		await addWatcher(h);
+		sm.branch(beforeConfig);
+		await h.emit({ type: "session_tree" } as ExtensionEvent);
+		expect(h.notify).toHaveBeenLastCalledWith("hydra: --hydra-heads matched nothing; observing with no heads", "warning");
+		await h.emit({ type: "agent_start" });
+		await h.observe();
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("going back to a saved set whose heads all no longer exist leaves no head from the branch left behind", async () => {
+		const h = await harness();
+		const missing = h.sm.appendCustomEntry("hydra-config", { heads: ["absent"] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" });
+		await addWatcher(h);
+		h.sm.branch(missing);
+		await h.emit({ type: "session_tree" } as ExtensionEvent);
+		expect(h.notify).toHaveBeenCalledWith("hydra: saved head no longer exists: absent", "warning");
+		await h.emit({ type: "agent_start" });
+		await h.observe();
 		await h.observe(noop());
 		await settle();
 		expect(h.transport).not.toHaveBeenCalled();

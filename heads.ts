@@ -13,7 +13,7 @@
  * the gateway, built per call in index.ts.
  */
 import { dirname, join } from "node:path";
-import { parseHeadFile, sanitizeHeadSet, savedAddedHeads, savedHeadList } from "./utils.ts";
+import { EXECUTABLE_TOOL_NAMES, parseHeadFile, sanitizeHeadSet, savedAddedHeads, savedHeadList } from "./utils.ts";
 import type { AddedHead, HeadDefinition, HydraConfig } from "./utils.ts";
 
 // Diagnostic heads force a fixed decision so the delivery pipeline can be
@@ -22,12 +22,6 @@ import type { AddedHead, HeadDefinition, HydraConfig } from "./utils.ts";
 export const DIAGNOSTIC_PROMPTS = {
 	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "steer", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
 } as const;
-
-// What hydra can execute for a head: the seven standard tools plus its own.
-// A `tools:` entry outside this set can never run (hydra has no execute for
-// other extensions' tools or MCP), so discovery warns about it; the head
-// still loads, since the rest of its list works.
-export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
 
 // "call" is a head added by a hydra call without a file. It exists only while
 // it is active; the saved config is what brings it back on resume.
@@ -131,6 +125,8 @@ export class HeadRegistry {
 				gateway.warnOnce(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`);
 				continue;
 			}
+			// An entry outside EXECUTABLE_TOOL_NAMES can never run, so discovery
+			// warns about it; the head still loads, since the rest of its list works.
 			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
 			if (unexecutable.length > 0) {
 				gateway.warnOnce(
@@ -332,20 +328,25 @@ export class HeadRegistry {
 		if (saved === null) {
 			return;
 		}
-		// This branch's saved heads replace whatever the last branch had.
-		this.added = new Map(Object.entries(savedAddedHeads(config)));
-		if (saved.length === 0) {
-			// A deliberately emptied set is respected on restore.
-			this.adoptHeadSet([]);
-			return;
+		const { added, damaged } = savedAddedHeads(config);
+		if (damaged.length > 0) {
+			gateway.notify(`hydra: saved head is damaged and was not restored: ${damaged.join(", ")}`, "warning");
 		}
-		const next = sanitizeHeadSet(saved, this.catalog);
+		this.added = new Map(Object.entries(added));
+		const next = sanitizeHeadSet(saved.filter((name) => !damaged.includes(name)), this.catalog);
 		if (next.unknown.length > 0) {
 			gateway.notify(`hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
 		}
-		if (next.heads.length > 0) {
-			this.adoptHeadSet(next.heads);
-		}
+		this.adoptHeadSet(next.heads);
+	}
+
+	/**
+	 * Another point in the conversation starts from no heads; its saved set or
+	 * the launch default is applied after. Nothing of the branch left behind
+	 * survives, not even when what follows matches no head.
+	 */
+	resetForBranch() {
+		this.adoptHeadSet([]);
 	}
 
 	// Cold-start default: the heads whose files say autostart. Consulted only

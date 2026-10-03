@@ -33,8 +33,8 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "77acbdcc1436104d30600c8e1378dd19d381d5f0f21e40d1474f5b3e214a1676",
-        "docHash": "c21cd3aed8382f05257f4779fbf9b352cad24b01dab77458d41d9a093da547df"
+        "codeHash": "ee51f6d1e95bed35305d6a151f1394d7b81b780afcfa6b4132b8a9be15a4481e",
+        "docHash": "1e9f57833b24f7cbf34b4a508eaa3c46a390f644fcbad460a957c9710cd2a224"
       }
     },
     {
@@ -89,8 +89,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "19365a5e010adbcf96c77a403817f9037ba82b45a4dced9a15151ff24bc67344",
-        "docHash": "3db0e9e90a3e2b5fb064376899fa29fb0fb63d7bd1a2d0f5d3e80823e784c16c"
+        "codeHash": "37e3ce98d32bda7c5cc2ff593a8a9664cd16a3616041c5b3694265429f89c9a8",
+        "docHash": "f26b5ea50d8f55b8a132ccc6bf259852b28b7b0aa2091605756f817e02022c20"
       }
     },
     {
@@ -145,8 +145,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "9918c496867f4fe2b0de0af908cf857b19d8b3433b361f7ff5c5fef7c02a2cc3",
-        "docHash": "00c44326bdf131c84fb333de2ed7a3102c1b1c4753c1e4ddf40ec71849b3ac9a"
+        "codeHash": "bda5b762be57a5f441d572c65ddf734513971359574438f3a35fc0fe95cc019e",
+        "docHash": "e1ce4972ccffd0a0fd4e97cae1e0c1b0e5512f03c1d0c5eb2327bc37eb6145d4"
       }
     },
     {
@@ -169,7 +169,7 @@
       },
       "baseline": {
         "codeHash": "435fa542a665d3a386c98e051e963d93e21b8b5545baaaae565f66510c392a21",
-        "docHash": "aaf9538550d409a6fcb6f5c4eddb0da378e827e653ae1f141dbeb88e315cb1c3"
+        "docHash": "a2c8bafb92df9a663898c6f797c0f18beb015f36c726b679379c435bed8a68ee"
       }
     },
     {
@@ -196,7 +196,7 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "be04f637d16f7e21f5e7a6fcde17c5d8486c3143fab8ec2387ea70ffc905b0e5",
+        "codeHash": "731643d5346f5085439f00c295a18b65d023c73ade257a01522ec8ada2810992",
         "docHash": "127389d6f3e7a093435718de019dbb1914ea12e5d1c4e78d830f0f12a95af601"
       }
     }

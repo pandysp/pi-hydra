@@ -641,37 +641,51 @@ export interface AddedHead {
 	endsWhen?: string;
 }
 
+// What hydra can execute for a head: the seven standard tools plus its own.
+// Hydra has no execute for other extensions' tools or MCP.
+export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+
 /**
  * The saved `added` record. An entry the add call could not have produced is
- * skipped rather than repaired, so its head counts as missing and the caller
- * says so; repairing it could, for example, turn a broken tool list into "all
- * tools".
+ * damaged: it is not repaired, and its head is not restored at all, not even
+ * from a head file of the same name. Repairing could, for example, turn a
+ * broken tool list into "all tools".
  */
-export function savedAddedHeads(config: { added?: unknown }): Record<string, AddedHead> {
-	const record = (value: unknown) => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null);
-	const text = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value : null);
+export function savedAddedHeads(config: { added?: unknown }): { added: Record<string, AddedHead>; damaged: string[] } {
 	const added: Record<string, AddedHead> = {};
-	for (const [name, value] of Object.entries(record(config.added) ?? {})) {
-		const entry = record(value);
-		if (!isValidHeadName(name) || entry === null) continue;
-		const head: AddedHead = {};
-		if (entry.endsWhen !== undefined) {
-			const endsWhen = text(entry.endsWhen);
-			if (endsWhen === null) continue;
-			head.endsWhen = endsWhen;
-		}
-		if (entry.withoutFile !== undefined) {
-			const withoutFile = record(entry.withoutFile);
-			const instructions = text(withoutFile?.instructions);
-			const tools = withoutFile?.tools;
-			const toolsValid = tools === undefined || (Array.isArray(tools) && tools.every((tool) => typeof tool === "string"));
-			// A head without a file always has an end; one without is not something an add call makes.
-			if (instructions === null || !toolsValid || head.endsWhen === undefined) continue;
-			head.withoutFile = { instructions, tools: tools as string[] | undefined };
-		}
-		if (head.withoutFile || head.endsWhen !== undefined) added[name] = head;
+	const damaged: string[] = [];
+	for (const [name, value] of Object.entries(plainObject(config.added) ?? {})) {
+		const head = isValidHeadName(name) ? savedAddedHead(value) : null;
+		if (head === null) damaged.push(name);
+		else added[name] = head;
 	}
-	return added;
+	return { added, damaged };
+}
+
+function plainObject(value: unknown): Record<string, unknown> | null {
+	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function savedAddedHead(value: unknown): AddedHead | null {
+	const entry = plainObject(value);
+	const text = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value : null);
+	if (entry === null) return null;
+	const head: AddedHead = {};
+	if (entry.endsWhen !== undefined) {
+		const endsWhen = text(entry.endsWhen);
+		if (endsWhen === null) return null;
+		head.endsWhen = endsWhen;
+	}
+	if (entry.withoutFile !== undefined) {
+		const withoutFile = plainObject(entry.withoutFile);
+		const instructions = text(withoutFile?.instructions);
+		const tools = withoutFile?.tools;
+		const toolsValid = tools === undefined || (Array.isArray(tools) && tools.every((tool) => EXECUTABLE_TOOL_NAMES.includes(tool)));
+		// A head without a file always has an end; one without is not something an add call makes.
+		if (instructions === null || !toolsValid || head.endsWhen === undefined) return null;
+		head.withoutFile = { instructions, tools: tools as string[] | undefined };
+	}
+	return head.withoutFile || head.endsWhen !== undefined ? head : null;
 }
 
 export function savedHeadList(config: { heads?: unknown; lenses?: unknown; lens?: unknown }): string[] | null {
