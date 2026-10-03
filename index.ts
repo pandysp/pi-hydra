@@ -22,7 +22,7 @@ import {
 	getAgentDir,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentEndEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type {
 	Action,
@@ -75,6 +75,11 @@ import {
 // Headless runs (`pi -p`) quit as soon as the agent stops, which would cut off
 // an observation still waiting on a slow model. 0 means quit without waiting.
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
+// How long a headless run waits at its end for a one-off check it asked for.
+// Checks have no time limit of their own, so a stuck one must not hold the
+// run open forever. Longer than the shutdown grace, which only lets
+// unrequested reviews finish their record.
+const ONE_OFF_HEADLESS_WAIT_MS = 10 * 60 * 1000;
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -1070,7 +1075,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			dropHeldOneOffs(ctx, "its run was cancelled");
 			return;
 		}
-		const seed = (head: string, instruction: string, tools: string[] | undefined, oneOff: boolean) =>
+		const seed = (head: string, instruction: string, tools: string[] | undefined, oneOff: boolean) => {
+			if (oneOff) unfinishedOneOffs.add(head);
 			scheduler.schedule({
 				endsWhen: oneOff ? undefined : registry.endsWhen(head),
 				ctx,
@@ -1086,6 +1092,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				runSignal: ctx.signal,
 				model: responseModel,
 			});
+		};
 		if (includeActive) {
 			for (const name of registry.activeSet()) {
 				seed(name, registry.get(name)?.prompt ?? "", registry.headTools(name), false);
@@ -1239,7 +1246,30 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// will not reach the cache until the user types again. The observation
 	// carries that message itself. Runs that produced nothing worth reviewing,
 	// such as a bare command or an immediate cancel, schedule nothing.
-	pi.on("agent_end", (event, ctx) => {
+	// One-off checks started and not yet waited for. pi -p (print or json
+	// mode) ends the session once the main assistant stops, and a message only gets a turn while
+	// agent_end is still running. So a headless run waits here for the
+	// one-offs it asked for; their feedback then wakes the main assistant, as
+	// it does in an interactive session, which stays open anyway.
+	const unfinishedOneOffs = new Set<string>();
+
+	pi.on("agent_end", async (event, ctx) => {
+		scheduleRunEnd(event, ctx);
+		const oneOffs = [...unfinishedOneOffs];
+		unfinishedOneOffs.clear();
+		// Only print and json mode end the session once the main assistant
+		// stops; TUI and RPC stay open. A cancelled run's feedback never starts
+		// a turn, so there is nothing to wait for.
+		const endsWhenIdle = ctx.mode === "print" || ctx.mode === "json";
+		if (!endsWhenIdle || oneOffs.length === 0 || ctx.signal?.aborted) {
+			return;
+		}
+		if (!(await scheduler.settled(oneOffs, ONE_OFF_HEADLESS_WAIT_MS))) {
+			notifyUser(ctx, `hydra: one-off head ${oneOffs.join(", ")} did not finish within ${ONE_OFF_HEADLESS_WAIT_MS / 60000} minutes; this headless run ends without waiting for its feedback`, "warning");
+		}
+	});
+
+	function scheduleRunEnd(event: AgentEndEvent, ctx: ExtensionContext) {
 		// The one error that is known to mean hydra has broken the driver.
 		// What the backend actually evicts is not visible from here, so any
 		// such error from the driver, whatever caused it, ends session sharing
@@ -1267,7 +1297,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			return;
 		}
 		scheduleObservations(ctx, "run-end", assistant);
-	});
+	}
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		shuttingDown = true;

@@ -788,6 +788,65 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
+	const startPendingOneOff = async (h: Awaited<ReturnType<typeof harness>>, mode: "tui" | "rpc" | "json" | "print") => {
+		(h.ctx as { mode: string }).mode = mode;
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: [] });
+		let respond!: (response: AssistantMessage) => void;
+		await h.observe(new Promise<AssistantMessage>((resolve) => { respond = resolve; }));
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+		return {
+			respond,
+			endRun: () => {
+				const run = { ended: false, done: h.emit({ type: "agent_end", messages: [answer([text("I will wait for the check.")])] }) };
+				run.done.then(() => { run.ended = true; });
+				return run;
+			},
+		};
+	};
+
+	it.each(["print", "json"] as const)("a %s-mode run waits at its end for a one-off it asked for, so the feedback still wakes the main assistant", async (mode) => {
+		const h = await harness({ heads: [] });
+		const check = await startPendingOneOff(h, mode);
+		const run = check.endRun();
+		await settle();
+		expect(run.ended).toBe(false);
+		check.respond(findings({ findings: [{ action: "steer", reason: "r", message: "EDGE-CASE" }] }));
+		await run.done;
+		expect(h.steers()).toEqual(["[pi-hydra single] EDGE-CASE"]);
+	});
+
+	it.each([
+		["a TUI run, which stays open anyway", "tui", false],
+		["an RPC run, which stays open anyway", "rpc", false],
+		["a cancelled print-mode run, whose feedback never starts a turn", "print", true],
+	] as const)("%s does not wait at its end for a one-off", async (_case, mode, cancelled) => {
+		const h = await harness({ heads: [] });
+		const runSignal = new AbortController();
+		(h.ctx as { signal?: AbortSignal }).signal = runSignal.signal;
+		const check = await startPendingOneOff(h, mode);
+		if (cancelled) runSignal.abort();
+		const run = check.endRun();
+		await run.done;
+		check.respond(noop());
+		await h.waitCalls(1);
+	});
+
+	it("a print-mode run stops waiting for a stuck one-off after ten minutes and says so", async () => {
+		const h = await harness({ heads: [] });
+		const check = await startPendingOneOff(h, "print");
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const run = check.endRun();
+			await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+			await run.done;
+			expect(h.notify).toHaveBeenCalledWith("hydra: one-off head single did not finish within 10 minutes; this headless run ends without waiting for its feedback", "warning");
+		} finally {
+			vi.useRealTimers();
+		}
+		check.respond(noop());
+		await h.waitCalls(1);
+	});
+
 	it("a head still checking after the user cancelled cannot order a one-off; the head is told, and nothing starts in the next run", async () => {
 		const h = await harness({ api: "openai-codex-responses", tools: "hydra" });
 		const run = new AbortController();

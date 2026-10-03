@@ -33,8 +33,8 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "ee51f6d1e95bed35305d6a151f1394d7b81b780afcfa6b4132b8a9be15a4481e",
-        "docHash": "104017a0ec4e0c53dcd2a19d0c09eef7cdec6d785f3597b4b80b97f77691ac9c"
+        "codeHash": "2c6aac1000062997dae417f5d004bd2b9140ce14324e573f8843f668f80ec7af",
+        "docHash": "ed574827bfcb6df8abc86e5371688649217d4efadd48e93406b61d0a64834963"
       }
     },
     {
@@ -107,7 +107,7 @@
         "fragment": "per-head-scheduling"
       },
       "baseline": {
-        "codeHash": "94324bf9c0cf5669e02e60089468c8428be4251b4e1f0dd0ecaa969f48a6477f",
+        "codeHash": "ed4569428579ab8b7b72f4155896711fcec545e8fe6c9f740f85bb6fbe041de1",
         "docHash": "3842490b0c71a8387e26efa0bd02ab52e0c0f4f55bf9600ea03178b4a2a94731"
       }
     },

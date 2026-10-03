@@ -95,27 +95,35 @@ export class HeadScheduler<Seed extends { head: string }> {
 		}
 	}
 
-	// The only place the whole extension is canceled. Observations already
-	// running get a bounded chance to finish first.
-	async shutdown(graceMs: number): Promise<void> {
-		const running = [...this.runners.values()].flatMap((runner) => runner.running ?? []);
-		if (running.length > 0) {
-			// Clear the timer once the race settles: a pending timeout keeps
-			// the headless process alive for the full grace after the
-			// observations already finished. allSettled, not all: a rejected
-			// runner must not skip the timer clear, the abort, or the caller's
-			// own shutdown work (pi's cached observer WebSocket is released
-			// after this call returns).
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const timeout = new Promise<void>((resolve) => {
-				timer = setTimeout(resolve, graceMs);
-			});
-			try {
-				await Promise.race([Promise.allSettled(running), timeout]);
-			} finally {
-				clearTimeout(timer);
-			}
+	/**
+	 * Waits until these heads have no check running, for at most waitMs.
+	 * Resolves true when they all finished in time.
+	 */
+	async settled(heads: Iterable<string>, waitMs: number): Promise<boolean> {
+		const running = [...heads].flatMap((head) => this.runners.get(head)?.running ?? []);
+		if (running.length === 0) {
+			return true;
 		}
+		// Clear the timer once the race settles: a pending timeout keeps a
+		// headless process alive for the full wait after the checks already
+		// finished. allSettled, not all: a rejected runner must not skip the
+		// timer clear or the caller's own work after the wait.
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<false>((resolve) => {
+			timer = setTimeout(() => resolve(false), waitMs);
+		});
+		try {
+			return await Promise.race([Promise.allSettled(running).then(() => true), timeout]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	// The only place the whole extension is canceled. Observations already
+	// running get a bounded chance to finish first; pi's cached observer
+	// WebSocket is released after this call returns.
+	async shutdown(graceMs: number): Promise<void> {
+		await this.settled(this.runners.keys(), graceMs);
 		this.lifecycleAbort.abort();
 	}
 }
