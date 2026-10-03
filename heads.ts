@@ -13,8 +13,8 @@
  * the gateway, built per call in index.ts.
  */
 import { dirname, join } from "node:path";
-import { parseHeadFile, sanitizeHeadSet, savedHeadList } from "./utils.ts";
-import type { HeadDefinition, HydraConfig } from "./utils.ts";
+import { EXECUTABLE_TOOL_NAMES, parseHeadFile, sanitizeHeadSet, savedAddedHeads, savedHeadList } from "./utils.ts";
+import type { AddedHead, HeadDefinition, HydraConfig } from "./utils.ts";
 
 // Diagnostic heads force a fixed decision so the delivery pipeline can be
 // smoke-tested end-to-end. Accepted by /hydra-heads but hidden from its
@@ -23,13 +23,10 @@ export const DIAGNOSTIC_PROMPTS = {
 	test: `<system-reminder>Developer integration test for the hydra framework. This is not a real review. Call the hydra tool exactly once with action "complete_observation", delivery "steer", and message "hydra test head fired (e2e pipeline verified)". Do nothing else.</system-reminder>`,
 } as const;
 
-// What hydra can execute for a head: the seven standard tools plus its own.
-// A `tools:` entry outside this set can never run (hydra has no execute for
-// other extensions' tools or MCP), so discovery warns about it; the head
-// still loads, since the rest of its list works.
-const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+// "call" is a head added by a hydra call without a file. It exists only while
+// it is active; the saved config is what brings it back on resume.
+export type DiscoveredHead = HeadDefinition & { source: "user" | "project" | "call" };
 
-export type DiscoveredHead = HeadDefinition & { source: "user" | "project" };
 
 export interface HeadRegistryGateway {
 	/** readdirSync semantics: throws, with the error's `code` preserved. */
@@ -44,7 +41,7 @@ export interface HeadRegistryGateway {
 	steer(head: string, message: string): void;
 	/** Deduped warning; the dedup set is shared with the engine in index.ts. */
 	warnOnce(message: string): void;
-	persistConfig(heads: string[]): void;
+	persistConfig(config: HydraConfig): void;
 	/** The active set changed; index.ts refreshes the footer. */
 	onActiveSetChanged(): void;
 }
@@ -53,6 +50,9 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
 
 export class HeadRegistry {
 	private heads = new Map<string, DiscoveredHead>();
+	// What add calls said about active heads: instructions for a head without
+	// a file, an end condition, or both. Entries leave with their head.
+	private added = new Map<string, AddedHead>();
 	// The active head set: one observation fans out per head, in parallel.
 	// Either a single diagnostic head or any number of product heads; the
 	// two never mix, since the diagnostics' one-shot revert restores
@@ -125,6 +125,8 @@ export class HeadRegistry {
 				gateway.warnOnce(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`);
 				continue;
 			}
+			// An entry outside EXECUTABLE_TOOL_NAMES can never run, so discovery
+			// warns about it; the head still loads, since the rest of its list works.
 			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
 			if (unexecutable.length > 0) {
 				gateway.warnOnce(
@@ -150,6 +152,11 @@ export class HeadRegistry {
 			merged.set(name, head);
 		}
 		this.heads = merged;
+		for (const name of this.added.keys()) {
+			if (this.added.get(name)?.withoutFile && merged.has(name)) {
+				gateway.warnOnce(`hydra: head file "${name}" is ignored while the head of that name added without a file is active`);
+			}
+		}
 
 		// Announce project heads once per distinct discovery result, not on
 		// every rediscovery (which runs at each agent_start and tool call).
@@ -188,19 +195,40 @@ export class HeadRegistry {
 	}
 
 	exists(name: string): boolean {
-		return this.heads.has(name) || name in DIAGNOSTIC_PROMPTS;
+		return this.heads.has(name) || this.withoutFile(name) !== undefined || name in DIAGNOSTIC_PROMPTS;
 	}
 
 	names(): string[] {
-		return [...this.heads.keys()].sort();
+		const withoutFile = [...this.added.keys()].filter((name) => this.withoutFile(name) !== undefined);
+		return [...new Set([...this.heads.keys(), ...withoutFile])].sort();
 	}
 
+	// A head added without a file wins over a file that appears later under
+	// its name, until it leaves the active set.
 	get(name: string): DiscoveredHead | undefined {
-		return this.heads.get(name);
+		return this.withoutFile(name) ?? this.heads.get(name);
+	}
+
+	private withoutFile(name: string): DiscoveredHead | undefined {
+		const call = this.added.get(name)?.withoutFile;
+		if (!call) return undefined;
+		const firstLine = call.instructions.split("\n")[0];
+		return {
+			name,
+			description: `no file: ${firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine}`,
+			tools: call.tools,
+			prompt: call.instructions,
+			source: "call",
+		};
 	}
 
 	list(): DiscoveredHead[] {
-		return [...this.heads.values()];
+		return this.names().map((name) => this.get(name)).filter((head): head is DiscoveredHead => head !== undefined);
+	}
+
+	/** The condition after which this active head ends itself, if it has one. */
+	endsWhen(name: string): string | undefined {
+		return this.added.get(name)?.endsWhen;
 	}
 
 	isActive(name: string): boolean {
@@ -217,7 +245,7 @@ export class HeadRegistry {
 		if (name in DIAGNOSTIC_PROMPTS) {
 			return [];
 		}
-		return this.heads.get(name)?.tools;
+		return this.get(name)?.tools;
 	}
 
 	// Records the last set that had no diagnostic head in it, which is what a
@@ -229,6 +257,33 @@ export class HeadRegistry {
 		this.activeHeads = headsList;
 		if (!headsList.some((name) => name in DIAGNOSTIC_PROMPTS)) {
 			this.productHeads = headsList;
+		}
+		// What an add call said lives only while its head is in the set (or
+		// waits behind a diagnostic to come back).
+		const kept = new Set([...this.activeHeads, ...this.productHeads]);
+		for (const name of [...this.added.keys()]) {
+			if (!kept.has(name)) this.added.delete(name);
+		}
+	}
+
+	private savedConfig(): HydraConfig {
+		const added = this.activeHeads.filter((name) => this.added.has(name));
+		return added.length === 0
+			? { heads: this.activeHeads }
+			: { heads: this.activeHeads, added: Object.fromEntries(added.map((name) => [name, this.added.get(name) as AddedHead])) };
+	}
+
+	/**
+	 * Activates one head as an add call describes it. The caller has already
+	 * checked the call against the rules (names, lifetimes, active state).
+	 */
+	addHead(gateway: HeadRegistryGateway, name: string, added: AddedHead) {
+		// A plain add of a head file has nothing to remember beyond its name.
+		if (added.withoutFile !== undefined || added.endsWhen !== undefined) {
+			this.added.set(name, added);
+		}
+		if (!this.setHeadSet(gateway, [...this.activeHeads, name])) {
+			throw new Error(`hydra: could not activate "${name}"`);
 		}
 	}
 
@@ -248,16 +303,31 @@ export class HeadRegistry {
 			return false;
 		}
 		this.adoptHeadSet(next.heads);
-		gateway.persistConfig(this.activeHeads);
+		gateway.persistConfig(this.savedConfig());
 		gateway.onActiveSetChanged();
 		return true;
+	}
+
+	/**
+	 * Takes one head out of the active set; removing the last one empties it
+	 * on purpose. A head that ends while a diagnostic holds the set also
+	 * leaves the set the diagnostic returns to, so it does not come back.
+	 */
+	removeHead(gateway: HeadRegistryGateway, name: string) {
+		this.productHeads = this.productHeads.filter((product) => product !== name);
+		const remaining = this.activeHeads.filter((active) => active !== name);
+		if (remaining.length > 0) {
+			this.setHeadSet(gateway, remaining);
+		} else {
+			this.clearHeadSet(gateway);
+		}
 	}
 
 	// The deliberate "observe nothing" state; distinct from setHeadSet, which
 	// refuses to empty the set by accident (e.g. a typo'd name).
 	clearHeadSet(gateway: HeadRegistryGateway) {
 		this.adoptHeadSet([]);
-		gateway.persistConfig(this.activeHeads);
+		gateway.persistConfig(this.savedConfig());
 		gateway.onActiveSetChanged();
 	}
 
@@ -266,18 +336,25 @@ export class HeadRegistry {
 		if (saved === null) {
 			return;
 		}
-		if (saved.length === 0) {
-			// A deliberately emptied set is respected on restore.
-			this.adoptHeadSet([]);
-			return;
+		const { added, damaged } = savedAddedHeads(config);
+		if (damaged.length > 0) {
+			gateway.notify(`hydra: saved head is damaged and was not restored: ${damaged.join(", ")}`, "warning");
 		}
-		const next = sanitizeHeadSet(saved, this.catalog);
+		this.added = new Map(Object.entries(added));
+		const next = sanitizeHeadSet(saved.filter((name) => !damaged.includes(name)), this.catalog);
 		if (next.unknown.length > 0) {
 			gateway.notify(`hydra: saved head no longer exists: ${next.unknown.join(", ")}`, "warning");
 		}
-		if (next.heads.length > 0) {
-			this.adoptHeadSet(next.heads);
-		}
+		this.adoptHeadSet(next.heads);
+	}
+
+	/**
+	 * Another point in the conversation starts from no heads; its saved set or
+	 * the launch default is applied after. Nothing of the branch left behind
+	 * survives, not even when what follows matches no head.
+	 */
+	resetForBranch() {
+		this.adoptHeadSet([]);
 	}
 
 	// Cold-start default: the heads whose files say autostart. Consulted only
@@ -298,7 +375,7 @@ export class HeadRegistry {
 	revertDiagnosticAfterFire(gateway: HeadRegistryGateway, head: string) {
 		if (head in DIAGNOSTIC_PROMPTS && this.activeHeads.length === 1 && this.activeHeads[0] === head) {
 			this.activeHeads = this.productHeads;
-			gateway.persistConfig(this.activeHeads);
+			gateway.persistConfig(this.savedConfig());
 			gateway.announce(
 				`hydra: diagnostic head "${head}" fired once; reverting to ${this.productHeads.join("+") || "no heads"}`,
 			);

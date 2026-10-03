@@ -33,8 +33,8 @@
         "fragment": "commit-point-observation"
       },
       "baseline": {
-        "codeHash": "77acbdcc1436104d30600c8e1378dd19d381d5f0f21e40d1474f5b3e214a1676",
-        "docHash": "c21cd3aed8382f05257f4779fbf9b352cad24b01dab77458d41d9a093da547df"
+        "codeHash": "f158320520f83da51055676d1b5a450c7c34dffaa9c4ee6909a6d726fd6d67ba",
+        "docHash": "d234f8a03100e0991522d04be6f71a4cb0a1054a16c6df3ad8bbc1d7de1d92bb"
       }
     },
     {
@@ -56,8 +56,8 @@
         "fragment": "tools-acting-heads"
       },
       "baseline": {
-        "codeHash": "67e0669796d37b507e71ad1d7d91617c62dccc29a1416c7b3ce9bc04c1e22ff1",
-        "docHash": "ed999169f2d1034a4600cd7c0fa8044b5dd08ab3644e160f58a9fe13a2c5d4c5"
+        "codeHash": "8911028dfd085e04a5d40d519930c0296fcbdf0daf3ebf9f24f03f5255c5dc64",
+        "docHash": "0c2a9aa4c72ecc4928393335308f47e32ccbe030009d0a17731d80920f6e3522"
       }
     },
     {
@@ -89,8 +89,8 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "19365a5e010adbcf96c77a403817f9037ba82b45a4dced9a15151ff24bc67344",
-        "docHash": "3db0e9e90a3e2b5fb064376899fa29fb0fb63d7bd1a2d0f5d3e80823e784c16c"
+        "codeHash": "37e3ce98d32bda7c5cc2ff593a8a9664cd16a3616041c5b3694265429f89c9a8",
+        "docHash": "f26b5ea50d8f55b8a132ccc6bf259852b28b7b0aa2091605756f817e02022c20"
       }
     },
     {
@@ -107,8 +107,8 @@
         "fragment": "per-head-scheduling"
       },
       "baseline": {
-        "codeHash": "78cef2181dfc55aeecb1db477b08d9914cb65b4775ae97439dc34f423c80104d",
-        "docHash": "9ce9257e715742c07becb845e18d396753d2e143f3bff8f89f4c22dd3110d5b8"
+        "codeHash": "4bcdfd1a9e388d4ab691a48755257abe75ba14a064a8873575f431b78e516331",
+        "docHash": "3842490b0c71a8387e26efa0bd02ab52e0c0f4f55bf9600ea03178b4a2a94731"
       }
     },
     {
@@ -117,7 +117,7 @@
         {
           "path": "protocol.ts",
           "start": "export const hydraToolParameters",
-          "end": "export interface ManageHeadsParams"
+          "end": "/** Where an added head's instructions come from"
         },
         {
           "path": "delivery.ts",
@@ -145,8 +145,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "9918c496867f4fe2b0de0af908cf857b19d8b3433b361f7ff5c5fef7c02a2cc3",
-        "docHash": "00c44326bdf131c84fb333de2ed7a3102c1b1c4753c1e4ddf40ec71849b3ac9a"
+        "codeHash": "c627681646e8da4536cd871b3f57540d096fadc1233161b87226ffaf6cd36169",
+        "docHash": "e1ce4972ccffd0a0fd4e97cae1e0c1b0e5512f03c1d0c5eb2327bc37eb6145d4"
       }
     },
     {
@@ -168,8 +168,8 @@
         "fragment": "heads-are-files"
       },
       "baseline": {
-        "codeHash": "f4f6cff3052368fc96c4fecc95c1bc1972cc8198e5f84e51ba363116ffdadf60",
-        "docHash": "3015e06f93af8ad78e5d97c2af4c2fe2654c4407a48e465c1222395ec952744d"
+        "codeHash": "435fa542a665d3a386c98e051e963d93e21b8b5545baaaae565f66510c392a21",
+        "docHash": "a2c8bafb92df9a663898c6f797c0f18beb015f36c726b679379c435bed8a68ee"
       }
     },
     {
@@ -196,8 +196,8 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "e10747b5ec8a5f07a86067d1a8e5e155362401a9cbbfdea1e1bbb5eb45ea92e4",
-        "docHash": "2b2788dd5b3703ab8d7e7d66a42277bc28e4f9de486f1e1609ab4bdca69d0c1e"
+        "codeHash": "731643d5346f5085439f00c295a18b65d023c73ade257a01522ec8ada2810992",
+        "docHash": "127389d6f3e7a093435718de019dbb1914ea12e5d1c4e78d830f0f12a95af601"
       }
     }
   ]

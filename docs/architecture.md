@@ -23,9 +23,9 @@ This document explains the system. Detailed provider behavior, economics, dates,
 
 hydra reviews at two lifecycle points.
 
-**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped unconditionally. Usually the preceding state was already reviewed at the previous run end. After a cancelled run it was not, and the next eligible snapshot or run end reviews it along with the rest. A fresh session likewise receives its first review at an eligible later snapshot or run end.
+**Mid-run (`message_start`).** The captured request already contains the conversation through the latest tool results. On Anthropic, response start is the verified point where that request is immediately cache-readable. OpenAI uses the same lifecycle trigger, but its commit/read timing is looser. The first response of every run is skipped for active heads, also when none were active yet, so a head added later in the run does not lose its first check. Usually the preceding state was already reviewed at the previous run end. After a cancelled run it was not, and the next eligible snapshot or run end reviews it along with the rest. A fresh session likewise receives its first review at an eligible later snapshot or run end. One-off heads (`lifetime: "once"`) are held until the next review point, including the first response of a run, so their single check sees the request that asked for it; a run end serves as that point when no response follows. One-offs still held when their run is cancelled, the conversation switches branches or the session ends are dropped with a warning. A head still checking a cancelled run cannot add a one-off; the add call fails.
 
-**Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped.
+**Run end (`agent_end`).** No later driver request has carried the final assistant message yet, so hydra passes that message through Pi's own provider serialization and appends it before the head handoff. This keeps the observation current rather than one assistant message behind. A run the user cancelled gets no new review: its last message is not a final answer. Reviews still waiting for it do not start. Reviews already running for it finish and are saved, but feedback that would start a driver turn, including Hydra's own notices, is added to the conversation without one, so it cannot restart work the user just stopped. In print and json mode (`pi -p`), the session ends as soon as the main assistant stops, and a message only gets a turn while `agent_end` is still running. So a run there waits at its end, for at most 10 minutes, for the one-off checks it asked for; their feedback then wakes the main assistant, as it does in the TUI. A check that takes longer is reported with a warning. Cancelling the run ends the wait, since its feedback could no longer start a turn. Ongoing heads are not waited for.
 
 Each captured request remembers the model that answered it, read from the answer: pi applies a model switch to the selection before a request it is already preparing goes out. A check is skipped if the selected model differs when it starts, so a check that waited behind a busy one does not replay one provider's request on another.
 
@@ -49,6 +49,8 @@ Each prompt combines the head's instructions with Hydra's rules:
 
 The rule for every head is "split unless measured otherwise": Anthropic and ds4 measured better combined, so every other route, including a provider added later, gets the split. ds4 [moves developer messages to the top of the prompt](providers.md#ds4), which breaks the split's cache match. On all supported routes the head's instructions start with `HEAD INSTRUCTIONS:`. Without that label, Codex heads took their own instructions, sent as a separate user message, for the user's latest request.
 
+A head added with `ends_when` is also told its condition and how to report `done`. No other head's handoff mentions `done`; the field still appears in the shared `hydra` tool definition, which has to stay identical for cache reuse.
+
 The rules for heads without tools describe what `steer` does. pi uses its own description; a host whose delivery differs passes its own, as [flue-hydra](https://github.com/pandysp/flue-hydra) does for Flue agents.
 
 The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to check evidence and consider work that may have moved on. They do not set a number of findings or favor silence. We have not measured whether the new wording reduces wrong or outdated findings.
@@ -63,14 +65,14 @@ All `openai-responses` and Codex routes use an append-only `input` merge and no 
 
 ## Heads are files
 
-A head is fully defined by one Markdown file. Discovery reads:
+A reusable head is fully defined by one Markdown file. A head added without a file is defined by its add call instead: Hydra keeps its instructions and tools only while it is active, and saves them with the active set. Discovery reads:
 
 - `~/.pi/agent/hydra/*.md` for user heads;
 - the nearest ancestor `.pi/hydra/*.md` for project heads.
 
-Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored.
+Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
 
-The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Full authoring behavior belongs in [Writing heads](heads.md).
+The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to another point in the conversation starts from no heads, then applies that point's saved set, or the launch default (flag, else autostart) when it has none. Nothing of the branch left behind survives: saved heads that no longer exist, a damaged saved head or a flag that matches nothing leave fewer heads, with a warning, not the old ones. Full authoring behavior belongs in [Writing heads](heads.md).
 
 ## Per-head scheduling
 
@@ -82,7 +84,7 @@ quality:  running independently
 docs:     running independently
 ```
 
-An in-flight observation runs to completion unless lifecycle shutdown aborts it. A waiting snapshot of a run the user cancelled is dropped instead of started. Scheduling is per head, so a long acting loop does not occupy another head's scheduler lane.
+An in-flight observation runs to completion unless lifecycle shutdown aborts it. A waiting snapshot of a run the user cancelled is dropped instead of started. A one-off check uses the same lanes without joining the active set; Hydra refuses a second one under a name whose lane still has a check waiting or running, so one can never replace the other. A one-off that cannot start says so. Scheduling is per head, so a long acting loop does not occupy another head's scheduler lane.
 
 ## Acting heads
 
@@ -109,7 +111,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 
@@ -129,8 +131,8 @@ Each head gets at most one error notice for each error type until the conversati
 
 hydra has no external database. It stores three custom entry types in Pi's session log:
 
-- `hydra-config` — explicitly saved active-head changes (autostart alone is not persisted);
-- `hydra-call` — usage, action, timing, tools, the head's answer and any error;
+- `hydra-config` — explicitly saved active-head changes (autostart alone is not persisted), with the instructions and tools of active heads added without a file and the end conditions of heads added with `ends_when`;
+- `hydra-call` — usage, action, timing, tools, the head's answer and any error, and `doneIgnored` when a head without an end condition said `done`;
 - `hydra-delivery` — successful delivery receipts.
 
 Messages Hydra sends for a head are saved like that head's steers; the entries above are not model-visible. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.

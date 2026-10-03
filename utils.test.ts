@@ -82,6 +82,11 @@ describe("parseDecision", () => {
 		expect(parseDecision('{"action":"steer","reason":"","message":"   "}')?.action).toBe("noop");
 	});
 
+	it("reads done from an acting head's decision, and rejects a done that is not true or false", () => {
+		expect(parseDecision('{"action":"noop","reason":"","message":"","done":true}')).toMatchObject({ action: "noop", done: true });
+		expect(parseDecision('{"action":"noop","reason":"","message":"","done":"yes"}')).toBeNull();
+	});
+
 	it("rejects Hydra's own note route, which no head may choose", () => {
 		expect(parseDecision('{"action":"note","reason":"r","message":"m"}')).toBeNull();
 	});
@@ -254,6 +259,11 @@ describe("enumerated steer-only judge completion", () => {
 		expect(envelope).not.toContain("Fix security issues.");
 		expect(prompt).toContain("HEAD INSTRUCTIONS: Fix security issues.");
 		expect(prompt).toContain('"recipient":"agent"');
+	});
+
+	it("reads done next to the findings, and rejects a done that is not true or false", () => {
+		expect(parseEnumeratedDecision('{"findings":[],"done":true}')).toMatchObject({ error: null, done: true });
+		expect(parseEnumeratedDecision('{"findings":[],"done":"yes"}')).toMatchObject({ decisions: null, error: "done must be true or false" });
 	});
 
 	it("parses an empty findings list as noop", () => {
