@@ -15,7 +15,12 @@
 	},
 	"license": "MIT",
 	"type": "module",
-	"private": true,
+	"files": [
+		"*.ts",
+		"!*.test.ts",
+		"heads/",
+		"CHANGELOG.md"
+	],
 	"pi": {
 		"image": "https://raw.githubusercontent.com/pandysp/pi-hydra/main/docs/assets/demo.gif",
 		"extensions": [

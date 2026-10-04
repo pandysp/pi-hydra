@@ -48,13 +48,13 @@ Anthropic, OpenAI Codex, ChatGPT sign-in and the local ds4 provider have differe
 You need [pi](https://pi.dev/) with an Anthropic, OpenAI Codex, ChatGPT sign-in or local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) model. The runtime gate is provider/API based; validated model coverage and economics are listed in [Supported provider boundary](docs/providers.md#supported-provider-boundary).
 
 ```bash
-pi install git:github.com/pandysp/pi-hydra
+pi install npm:pi-hydra
 mkdir -p ~/.pi/agent/hydra
-cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
+cp ~/.pi/agent/npm/node_modules/pi-hydra/heads/*.md ~/.pi/agent/hydra/
 pi
 ```
 
-The example `quality` head is marked `autostart`, so it is active at the first eligible observation point of a fresh session. For team-wide installation, `pi install -l` records the package in the repository's `.pi/settings.json`. Development setup is in [CONTRIBUTING.md](CONTRIBUTING.md).
+The copy gives you the example heads. None of them starts on its own: pick the ones you want with `/hydra-heads`. To have a head start in every new session, add `autostart: true` to the header of its file in `~/.pi/agent/hydra/`. For team-wide installation, `pi install -l npm:pi-hydra` records the package in the repository's `.pi/settings.json`. Development setup is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Choose heads at any time:
 
@@ -146,6 +146,7 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 - **Between-call review:** a single long generation is not judged token by token. Findings act at checkpoints.
 - **Variable overhead:** multiple always-on heads can cost more in aggregate than the driver.
 - **Tool defaults:** a head with omitted `tools:` receives all hydra-supported standard tools; use `tools: []` when review alone is intended.
+- **Advice can pass for the user's words:** a head's steer reaches the main assistant where your own messages do. When Pi summarizes a long conversation, the summary can list a head's advice as what you asked for, and the main assistant then follows it as your request ([#31](https://github.com/pandysp/pi-hydra/issues/31)).
 
 ## Where this is going
 
