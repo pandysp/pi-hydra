@@ -1,4 +1,4 @@
 # AGENTS.md
 
-Read [VISION.md](VISION.md) before deciding whether a change fits pi-hydra, and [CONTRIBUTING.md](CONTRIBUTING.md) before live tests, PRs and releases.
-This file intentionally does not repeat them or user-global instructions.
+Read [VISION.md](VISION.md) to decide whether a change belongs in pi-hydra. Read [CONTRIBUTING.md](CONTRIBUTING.md) before tests against a real model, pull requests and releases.
+Keep this file a pointer, so each rule lives in one place.
