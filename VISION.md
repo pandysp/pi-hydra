@@ -15,5 +15,3 @@ pi-hydra gives a Pi session extra perspectives while the work happens, from the 
 
 - It does not become a subagent framework. Delegated work with its own context belongs to subagents ([heads and subagents](README.md#heads-and-subagents-solve-different-problems)).
 - It does not add provider paths without a cache measurement.
-- It does not add a second way to reach an outcome the user or the main assistant already reaches in one ordinary step.
-- It does not hide failures behind fallbacks or quiet defaults.
