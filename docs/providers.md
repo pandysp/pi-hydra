@@ -229,7 +229,7 @@ jq -r 'select(.type=="message" and .message.role=="assistant") | .message.usage 
 
 ### Verifying the Codex tripwire
 
-This intentionally breaks one request. Use only a throwaway session:
+Run this only if you change transport logic. It intentionally breaks one request. Use only a throwaway session:
 
 ```bash
 cd /tmp/scratch-project
