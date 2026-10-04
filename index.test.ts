@@ -1207,15 +1207,13 @@ describe("heads and the main assistant's tools", () => {
 	const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 	// The main assistant's tools under pi's defaults: grep, find and ls are off.
 	const piDefaults = ["read", "bash", "edit", "write", "hydra"];
-	const notes = (h: Awaited<ReturnType<typeof harness>>) =>
-		vi.mocked(h.pi.sendMessage).mock.calls.map(([message]) => message as { customType: string; content: string });
 
 	it("turns off a head whose listed tool the main assistant lacks, with the fix, before any check, and saves that", async () => {
 		const h = await harness({ tools: "read, grep", activeTools: piDefaults });
 		const off = "hydra: head critic is off: the main assistant doesn't have grep. To fix: add \"+grep\" to defaultTools in settings.json and run /reload.";
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining(off), "warning");
 		// Before pi's first system message only the user is told (consumer.test.ts shows the note later).
-		expect(notes(h)).toEqual([]);
+		expect(vi.mocked(h.pi.sendMessage)).not.toHaveBeenCalled();
 		expect(vi.mocked(h.pi.sendUserMessage)).not.toHaveBeenCalled();
 		await h.observe(noop());
 		await settle();
