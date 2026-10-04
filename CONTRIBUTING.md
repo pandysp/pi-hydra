@@ -34,7 +34,7 @@ npm test
 This updates `package.json` and `package-lock.json`. Commit both only when updating
 the baseline; use a disposable checkout for a compatibility-only check.
 
-If you installed hydra via the README quickstart, run `pi remove git:github.com/pandysp/pi-hydra` first; the git package and the symlink are separate load paths, and keeping both loads hydra twice.
+If you installed hydra via the README quickstart, run `pi remove npm:pi-hydra` first (or `pi remove git:github.com/pandysp/pi-hydra` for an older git install); the installed package and the symlink are separate load paths, and keeping both loads hydra twice.
 
 Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra stops existing (no commands, no flags, no observations). Before sending a PR:
 
