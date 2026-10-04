@@ -667,7 +667,7 @@ export interface HeadToolMismatch {
 /**
  * A head can only call tools the main assistant's request declares, because
  * its request replays that one (VISION.md, prompt caching). A tool it knows
- * only by name it never calls (docs/heads.md#tools-acting-heads). So a head
+ * only by name it never calls (docs/heads.md#tools). So a head
  * that needs a tool the main assistant lacks must not run at all.
  *
  * Returns null when the head can run. Heads without tools never mismatch.

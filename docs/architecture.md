@@ -15,7 +15,7 @@ This document explains the system. Detailed provider behavior, economics, dates,
 3. `agent_end` schedules a final observation carrying the last assistant message.
 4. The per-head scheduler runs each active head independently.
 5. The observation engine chooses a provider- and mode-specific handoff.
-6. Judge-only heads make one provider call; acting heads use Pi's own agent loop.
+6. Judging heads make one provider call; heads with tools use Pi's own agent loop.
 7. Decisions pass through the delivery layer and become a driver-directed steer or noop.
 8. Calls, configuration, and delivery receipts are persisted as Pi session entries.
 
@@ -57,9 +57,9 @@ The [shared feedback rules](heads.md#decisions-when-findings-land) ask heads to 
 
 ## Payload merge
 
-The observation request keeps the driver's captured content prefix and appends a fresh tail containing the final assistant message when needed, the specialist handoff, and any acting-loop turns.
+The observation request keeps the driver's captured content prefix and appends a fresh tail containing the final assistant message when needed, the specialist handoff, and any tool-loop turns.
 
-For an Anthropic mid-run observation, the captured prefix remains byte-identical and Hydra appends a fresh handoff. The complete request is therefore longer; it is not itself byte-identical to the driver request. At Anthropic run end and during acting loops, Hydra deliberately relocates the deepest message-level cache marker onto the appended tail while preserving content-prefix parity.
+For an Anthropic mid-run observation, the captured prefix remains byte-identical and Hydra appends a fresh handoff. The complete request is therefore longer; it is not itself byte-identical to the driver request. At Anthropic run end and during tool loops, Hydra deliberately relocates the deepest message-level cache marker onto the appended tail while preserving content-prefix parity.
 
 All `openai-responses` and Codex routes use an append-only `input` merge and no explicit marker relocation. See [Provider payload mechanics](providers.md#provider-payload-mechanics) for the exact differences.
 
@@ -70,7 +70,7 @@ A reusable head is fully defined by one Markdown file. A head added without a fi
 - `~/.pi/agent/hydra/*.md` for user heads;
 - the nearest ancestor `.pi/hydra/*.md` for project heads.
 
-Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told with a note](#messages-hydra-sends-for-a-head). Before each run Hydra also turns off heads that can't use their tools ([Tools](heads.md#tools-acting-heads)). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
+Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told with a note](#messages-hydra-sends-for-a-head). Before each run Hydra also turns off heads that can't use their tools ([Tools](heads.md#tools)). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
 
 The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to another point in the conversation starts from no heads, then applies that point's saved set, or the launch default (flag, else autostart) when it has none. Nothing of the branch left behind survives: saved heads that no longer exist, a damaged saved head or a flag that matches nothing leave fewer heads, with a warning, not the old ones. Full authoring behavior belongs in [Writing heads](heads.md).
 
@@ -84,11 +84,11 @@ quality:  running independently
 docs:     running independently
 ```
 
-An in-flight observation runs to completion unless lifecycle shutdown aborts it. A waiting snapshot of a run the user cancelled is dropped instead of started. A one-off check uses the same lanes without joining the active set; Hydra refuses a second one under a name whose lane still has a check waiting or running, so one can never replace the other. A one-off that cannot start says so. Scheduling is per head, so a long acting loop does not occupy another head's scheduler lane.
+An in-flight observation runs to completion unless lifecycle shutdown aborts it. A waiting snapshot of a run the user cancelled is dropped instead of started. A one-off check uses the same lanes without joining the active set; Hydra refuses a second one under a name whose lane still has a check waiting or running, so one can never replace the other. A one-off that cannot start says so. Scheduling is per head, so a long tool loop does not occupy another head's scheduler lane.
 
-## Acting heads
+## Heads with tools
 
-Head files control [which tools a head may use](heads.md#tools-acting-heads).
+Head files control [which tools a head may use](heads.md#tools): reading heads and writing heads both work as described here.
 
 Heads without tools make one model call; heads with tools use Pi's `runAgentLoop`. See [Failed checks](#failed-checks) for errors and retries. Each model call keeps the copied part of the main assistant's request unchanged. Whether the provider reads it from cache depends on the provider.
 
@@ -111,7 +111,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or Hydra turned it off because its file disappeared or became invalid, or because the main assistant lacks a tool it needs ([Tools](heads.md#tools-acting-heads)). The first two go out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless they come from a review of a cancelled run (see above). A head Hydra turned off goes out as a `note`: that usually happens as a run starts, where a steer would start a second prompt, and it needs no answer. Before pi's first system message Hydra sends no note at all, only the user's warning ([why](providers.md#anthropic)). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or Hydra turned it off because its file disappeared or became invalid, or because the main assistant lacks a tool it needs ([Tools](heads.md#tools)). The first two go out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless they come from a review of a cancelled run (see above). A head Hydra turned off goes out as a `note`: that usually happens as a run starts, where a steer would start a second prompt, and it needs no answer. Before pi's first system message Hydra sends no note at all, only the user's warning ([why](providers.md#anthropic)). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 

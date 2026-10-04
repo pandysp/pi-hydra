@@ -328,7 +328,7 @@ Live pi sessions on the local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) prov
 
 Live pi sessions (pi 1.0.1, all extensions loaded) with one head, `finder`, whose file had `tools: read, grep, find, ls` and the job to find which file under `src/` contains `ZEBRA-42`. The main assistant either had pi's default tools, so no `grep`, `find` or `ls`, or was started with `--tools` including them. Two runs per cell, on Opus 5.5 and gpt-6-astra.
 
-`name-only-tools-2026-10-04.jsonl` holds the head's check from each run: the main assistant's tools, the tools the head used, and its answer. Without the tools, the head never called them and gave up (4/4). With them, it used `grep` and found the file (4/4). In the gpt-6-astra runs with the tools, `--tools` also left out `hydra`, so the head could not finish its check and Hydra recorded it as a noop; its answer still names the file. [heads.md](../docs/heads.md#tools-acting-heads) reports the result.
+`name-only-tools-2026-10-04.jsonl` holds the head's check from each run: the main assistant's tools, the tools the head used, and its answer. Without the tools, the head never called them and gave up (4/4). With them, it used `grep` and found the file (4/4). In the gpt-6-astra runs with the tools, `--tools` also left out `hydra`, so the head could not finish its check and Hydra recorded it as a noop; its answer still names the file. [heads.md](../docs/heads.md#tools) reports the result.
 
 ## A note before pi's first system message (October 2026)
 

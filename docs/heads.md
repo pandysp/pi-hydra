@@ -22,7 +22,7 @@ Frontmatter keys:
 |---|---|---|
 | `name` | yes | the head's identity; what `/hydra-heads` and the `hydra` tool refer to. Files without a name are skipped with a warning. |
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
-| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means the same tools as the main assistant; `tools: []` means none (the head judges, never acts). See [Tools](#tools-acting-heads). |
+| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means the same tools as the main assistant; `tools: []` means none (the head judges, never acts). See [Tools](#tools). |
 | `autostart` | no | `true` joins the active set at session start; `false` is the same as leaving it out. Any other value makes the file invalid. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
@@ -77,9 +77,19 @@ A head with `ends_when` is told the condition at every check. When it holds, the
 
 A head without a file must have an end: `once` or `ends_when`. The `hydra` tool rejects any other combination it cannot honor with an error that says why, and changes nothing.
 
-## Tools: acting heads
+## Tools
 
 A head can use pi's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
+
+A head's tools decide what it can do:
+
+| Kind | `tools:` | What it can do |
+|---|---|---|
+| **Judging head** | `[]` | Judge what's in the conversation. One model call, no tools. |
+| **Reading head** | only `read`, `grep`, `find`, `ls` | Also read and search the project's files, without changing anything. pi turns `grep`, `find` and `ls` off by default, so add `"+grep", "+find", "+ls"` to `defaultTools` in pi's `settings.json`. |
+| **Writing head** | at least one of `write`, `edit`, `bash` | Also change files or run commands. `bash` counts because it can do anything. |
+
+`hydra` doesn't change the kind: it lets a head turn heads on and off ([Heads that manage heads](#heads-that-manage-heads)), so `read, grep, hydra` is a reading head that may also manage heads. A head without a `tools:` line gets the main assistant's tools, so with pi's defaults (`read`, `bash`, `edit`, `write`) it is a writing head.
 
 `tools:` limits what a head can run; for a head without a file, the add call's `tools` does the same. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. A head without a `tools:` line gets the same tools as the main assistant, and nothing more. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors and retries.
 
@@ -96,10 +106,10 @@ So Hydra doesn't run a head that can't use its tools. Before each run and whenev
 
 A head can use `manage_heads` only if its `tools` includes `hydra`, or it has no list and the main assistant has `hydra`.
 
-Authoring guidance for heads that act:
+Authoring guidance for heads with tools:
 
 1. **Say what to do.** State the head's purpose, when it should act, what work to do, and who needs the result. `PURPOSE / ACT WHEN / WORK / DELIVER` is a useful outline, not special syntax. Prefer clear rules over a growing list of exceptions.
-2. **Report what the main assistant needs, not routine work.** Hydra does not announce a head's writes; each acting head is told to report changes the main assistant needs to know about and to keep routine notes, logs or scores to itself.
+2. **Report what the main assistant needs, not routine work.** Hydra does not announce a head's writes; each head with tools is told to report changes the main assistant needs to know about and to keep routine notes, logs or scores to itself.
 3. **Prefer write/edit over bash for file changes.** Pi coordinates `write` and `edit` calls from the head and main assistant. Bash changes bypass that protection. Use bash only to read files unless you accept that risk.
 4. **No turn or cost limit.** Hydra does not stop a head just because it has made a set number of model or tool calls. Model-call counts and cost are shown in `/hydra-stats`. Finishing the check, turning the head off, closing the session, or unsafe cache sharing still stops it. Provider and tool limits still apply.
 
@@ -135,7 +145,7 @@ The **foreman** ([`heads/foreman.md`](../heads/foreman.md)) reads the task and s
 
 The **tuner** ([`heads/tuner.md`](../heads/tuner.md)) reads your reactions and maintains the head files: a head whose findings get dismissed is sharpened for every future session.
 
-The examples use the [management rules](#tools-acting-heads) described above. A foreman can activate the tuner when needed.
+The examples use the [management rules](#tools) described above. A foreman can activate the tuner when needed.
 
 ## Example heads (minimal overlap)
 
@@ -170,7 +180,7 @@ The five review examples are designed to catch different things rather than repe
 
 Ideas for heads to write yourself, grouped by the shape a head takes. The grouping is loose. Many good heads fit none of these shapes.
 
-**Watchdog heads** judge against a standard the head file carries. Most run judge-only (`tools: []`) and stay quiet until the standard is violated:
+**Watchdog heads** judge against a standard the head file carries. Most are judging heads (`tools: []`) and stay quiet until the standard is violated:
 
 - **Observability**: logging, monitoring, traceability, whether an incident at 3am could be diagnosed from what the code emits. Long-running services and anything with an on-call rotation.
 - **Testing**: coverage gaps, untested edge cases, error handling paths. Pre-merge and complex business logic.

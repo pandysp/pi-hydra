@@ -95,7 +95,8 @@ Tool permissions are intentionally explicit in their meaning:
 
 - omit `tools:` to give the head the same tools as the main assistant;
 - list names to narrow access, such as `tools: read, grep`;
-- use `tools: []` for a judge-only head with no executable tools.
+- use `tools: []` for a judging head with no executable tools;
+- use `tools: read, grep, find, ls` for a reading head, which can search the project but change nothing; it needs `grep`, `find` and `ls` switched on in pi ([Tools](docs/heads.md#tools)).
 
 The main assistant can also add a head for a moment, without a file: for one check (`lifetime: "once"`) or until a condition is met (`ends_when`). See [Heads for a moment](docs/heads.md#heads-for-a-moment).
 
@@ -145,7 +146,7 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 - **Measured providers only:** unverified provider/API pairs are skipped rather than risk unsafe or full-price replay.
 - **Between-call review:** a single long generation is not judged token by token. Findings act at checkpoints.
 - **Variable overhead:** multiple always-on heads can cost more in aggregate than the driver.
-- **Tool defaults:** a head with omitted `tools:` receives the main assistant's tools; use `tools: []` when review alone is intended. A head that lists a tool the main assistant lacks doesn't run ([Tools](docs/heads.md#tools-acting-heads)).
+- **Tool defaults:** a head with omitted `tools:` receives the main assistant's tools; use `tools: []` when review alone is intended. A head that lists a tool the main assistant lacks doesn't run ([Tools](docs/heads.md#tools)).
 - **Advice can pass for the user's words:** a head's steer reaches the main assistant where your own messages do. When Pi summarizes a long conversation, the summary can list a head's advice as what you asked for, and the main assistant then follows it as your request ([#31](https://github.com/pandysp/pi-hydra/issues/31)).
 
 ## History

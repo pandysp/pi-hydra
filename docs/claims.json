@@ -53,11 +53,11 @@
       ],
       "doc": {
         "path": "docs/heads.md",
-        "fragment": "tools-acting-heads"
+        "fragment": "tools"
       },
       "baseline": {
         "codeHash": "8911028dfd085e04a5d40d519930c0296fcbdf0daf3ebf9f24f03f5255c5dc64",
-        "docHash": "d47fcfcc3d6dac61676a7e79434e0148ad0a89e0f63c3a9684e14c2976a45bc0"
+        "docHash": "9a686558bb98ece7b0fbef240e652fba059dd644a9c3ae115542c73d741cf625"
       }
     },
     {
@@ -108,7 +108,7 @@
       },
       "baseline": {
         "codeHash": "4bcdfd1a9e388d4ab691a48755257abe75ba14a064a8873575f431b78e516331",
-        "docHash": "3842490b0c71a8387e26efa0bd02ab52e0c0f4f55bf9600ea03178b4a2a94731"
+        "docHash": "23a26e124ed70e958cdb6a2d26effdd7edd8a829a3c3d898b3e531833f05b006"
       }
     },
     {
@@ -146,7 +146,7 @@
       },
       "baseline": {
         "codeHash": "47c7354f3668d99977c92160bfa0a8cbb3b8a1a4db189e2624198c902624298e",
-        "docHash": "20d24e7e72fb769077f1e989a822c8b2ed33c52d708a6e066fb81877389698ec"
+        "docHash": "3637b80ce9e31ec68dc7568d44475d4717ef0b4424a6cae7dd240c00615873d3"
       }
     },
     {
@@ -169,7 +169,7 @@
       },
       "baseline": {
         "codeHash": "2780d33ac6c0f79cdfbcb41d9b6dcad390558d9f2bdfb602abddb55fc1c4e5b2",
-        "docHash": "9fa74367260d69da3f97440358dd96002645597240d1b96145cce48094016cc8"
+        "docHash": "7ab4b0ebe68280a6ac825a7ecdc2672f1562e4d3fdd22fcb432fdbe7394f1536"
       }
     },
     {
