@@ -20,6 +20,10 @@ export type Action = "noop" | DeliveryAction;
 export const OBSERVATION_DELIVERIES = ["none", ...HEAD_DELIVERIES] as const;
 export type ObservationDelivery = (typeof OBSERVATION_DELIVERIES)[number];
 export const HEAD_OPERATIONS = ["add", "remove"] as const;
+// How long an added head lives: ongoing checks after every response until it
+// is removed or its end condition is met; once makes exactly one check.
+export const HEAD_LIFETIMES = ["ongoing", "once"] as const;
+export type HeadLifetimeName = (typeof HEAD_LIFETIMES)[number];
 export type HeadOperation = (typeof HEAD_OPERATIONS)[number];
 
 
@@ -73,7 +77,7 @@ export function decisionFromCompletion(delivery: ObservationDelivery, message: s
  * written here so a head cannot misreport it; the head only supplies the
  * reason.
  */
-export function formatHeadManagementReceipt(operation: HeadOperation, head: string, message: string): string {
+export function formatHeadManagementReceipt(operation: HeadOperation, head: string, message: string, lifetime?: string): string {
 	const name = head.trim();
 	const explanation = message.trim();
 	if (name.length === 0) {
@@ -82,29 +86,36 @@ export function formatHeadManagementReceipt(operation: HeadOperation, head: stri
 	if (explanation.length === 0) {
 		throw new Error("manage_heads requires a non-empty message explaining the change");
 	}
-	return `${operation === "add" ? "Added" : "Removed"} ${name} — ${explanation}`;
+	return `${operation === "add" ? "Added" : "Removed"} ${name}${lifetime ? ` ${lifetime}` : ""} — ${explanation}`;
 }
 
-function asDecision(value: unknown): Decision | null {
+/** An Anthropic acting head's answer: its decision, and whether it says done. */
+export type ParsedDecision = Decision & { done?: true };
+
+function asDecision(value: unknown): ParsedDecision | null {
 	if (typeof value !== "object" || value === null) {
 		return null;
 	}
-	const obj = value as { action?: unknown; reason?: unknown; message?: unknown };
+	const obj = value as { action?: unknown; reason?: unknown; message?: unknown; done?: unknown };
 	if (typeof obj.action !== "string" || !(HEAD_ACTIONS as readonly string[]).includes(obj.action)) {
 		return null;
 	}
+	if (obj.done !== undefined && typeof obj.done !== "boolean") {
+		return null;
+	}
+	const done = obj.done === true ? { done: true as const } : {};
 	const action = obj.action as Action;
 	const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
 	const message = typeof obj.message === "string" ? obj.message.trim().slice(0, 500) : "";
 	// A delivery with nothing to deliver is recorded as the noop it is, so
 	// stats never count a delivery that said nothing.
 	if (action !== "noop" && message === "") {
-		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "" };
+		return { action: "noop", reason: reason ? `${reason} (empty message)` : "empty message", message: "", ...done };
 	}
-	return { action, reason, message };
+	return { action, reason, message, ...done };
 }
 
-function tryParseDecision(text: string): Decision | null | undefined {
+function tryParseDecision(text: string): ParsedDecision | null | undefined {
 	try {
 		return asDecision(JSON.parse(text));
 	} catch (error) {
@@ -117,7 +128,7 @@ function tryParseDecision(text: string): Decision | null | undefined {
  * Anthropic heads hand back a small blob of JSON. OpenAI heads call the hydra
  * tool instead, so this is not used there.
  */
-export function parseDecision(text: string): Decision | null {
+export function parseDecision(text: string): ParsedDecision | null {
 	const cleaned = text
 		.replace(/^```(?:json)?\s*\n?/i, "")
 		.replace(/\n?```\s*$/, "")
@@ -130,7 +141,7 @@ export function parseDecision(text: string): Decision | null {
 	// decision from an invalid answer, or pick one of several decisions.
 	let start = cleaned.indexOf("{");
 	if (start === -1) return null;
-	let decision: Decision | undefined;
+	let decision: ParsedDecision | undefined;
 	let depth = 0;
 	let quoted = false;
 	let escaped = false;
@@ -234,6 +245,8 @@ export interface HeadDefinition {
  */
 export interface HydraConfig {
 	heads: string[];
+	/** What the add call said about active heads without a file or with an end condition. */
+	added?: Record<string, AddedHead>;
 	lenses?: string[];
 	lens?: string;
 }
@@ -338,6 +351,14 @@ export interface ObservationProtocolOptions {
 	activeHeads?: readonly string[];
 	/** What has already been delivered, so a head does not repeat it. */
 	deliveryContext?: DeliveryContext;
+	/** The condition after which this head ends itself, if it has one. */
+	endsWhen?: string;
+}
+
+// Only heads with an end condition are told about done; for every other head
+// the word appears nowhere, so it cannot be mistaken for "this check is over".
+function endConditionNote(endsWhen: string | undefined, how: string): string {
+	return endsWhen === undefined ? "" : ` This head ends when: ${endsWhen}. If that is true now, ${how}; otherwise leave done out.`;
 }
 
 const STEER_ONLY_DECISION_SHAPE =
@@ -427,11 +448,11 @@ function enumeratedDeliveryContext(context: DeliveryContext): string {
 
 // `deliveryGuidance` says what steer does on the host running the head;
 // a host whose delivery differs from pi's passes its own so heads are not told otherwise.
-function enumeratedDecisionProtocol(head: string, deliveryGuidance: string): string {
+function enumeratedDecisionProtocol(head: string, deliveryGuidance: string, endsWhen: string | undefined): string {
 	return `Reply with one JSON object, nothing else:
 ${ENUMERATED_DECISION_SHAPE}
 
-Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none. ${deliveryGuidance} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
+Return one entry for each finding you choose to report under this head's instructions, or an empty findings array if there are none.${endConditionNote(endsWhen, 'add "done": true to the JSON object')} ${deliveryGuidance} You cannot use tools, even if their definitions are visible. You get one model call, with no retry or further turn. Do not start message with [pi-hydra ${head}].`;
 }
 
 /** The answering rules plus what has already been delivered, sent separately. */
@@ -439,12 +460,13 @@ export function buildEnumeratedJudgeObservationEnvelope(
 	head: string,
 	context: DeliveryContext,
 	deliveryGuidance: string = OBSERVER_DELIVERY_GUIDANCE,
+	endsWhen?: string,
 ): string {
 	return `${OBSERVER_GUIDANCE} The previous user message contains all instructions for the ${head} head.
 
 ${enumeratedDeliveryContext(context)}
 
-${enumeratedDecisionProtocol(head, deliveryGuidance)}`;
+${enumeratedDecisionProtocol(head, deliveryGuidance, endsWhen)}`;
 }
 
 /** The same, folded into one message with the instruction. */
@@ -453,6 +475,7 @@ export function buildEnumeratedJudgeObservationPrompt(
 	instruction: string,
 	context: DeliveryContext,
 	deliveryGuidance: string = OBSERVER_DELIVERY_GUIDANCE,
+	endsWhen?: string,
 ): string {
 	return `<system-reminder>${OBSERVER_GUIDANCE}
 
@@ -460,14 +483,15 @@ ${headInstructions(instruction)}
 
 ${enumeratedDeliveryContext(context)}
 
-${enumeratedDecisionProtocol(head, deliveryGuidance)}</system-reminder>`;
+${enumeratedDecisionProtocol(head, deliveryGuidance, endsWhen)}</system-reminder>`;
 }
 
 export interface EnumeratedDecisionResult {
 	decisions: Decision[] | null;
 	error: string | null;
+	/** The head says its end condition is met. Only heads with ends_when act on it. */
+	done?: true;
 }
-
 
 /**
  * Groups a head's numbered findings for delivery. The deprecated print
@@ -485,6 +509,11 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	if (typeof value !== "object" || value === null || !Array.isArray((value as { findings?: unknown }).findings)) {
 		return { decisions: null, error: "completion requires a findings array" };
 	}
+	const doneValue = (value as { done?: unknown }).done;
+	if (doneValue !== undefined && typeof doneValue !== "boolean") {
+		return { decisions: null, error: "done must be true or false" };
+	}
+	const done = doneValue === true ? { done: true as const } : {};
 	const findings: Decision[] = [];
 	for (const [index, item] of (value as { findings: unknown[] }).findings.entries()) {
 		if (typeof item !== "object" || item === null) {
@@ -505,7 +534,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 		});
 	}
 	if (findings.length === 0) {
-		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null };
+		return { decisions: [{ action: "noop", reason: "no findings", message: "" }], error: null, ...done };
 	}
 	// Deprecated print grouping is retained, though heads cannot select it.
 	const batch = (action: "print" | "steer", selected: Decision[]): Decision => ({
@@ -528,6 +557,7 @@ export function parseEnumeratedDecision(text: string): EnumeratedDecisionResult 
 	return {
 		decisions,
 		error: null,
+		...done,
 	};
 }
 
@@ -553,10 +583,10 @@ export function buildAnthropicObservationPrompt(
 
 ${headInstructions(instruction)}
 
-When done, reply with one JSON object, nothing else:
+When finished, reply with one JSON object, nothing else:
 ${STEER_ONLY_DECISION_SHAPE}
 
-Use noop when there is nothing to report. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}].</system-reminder>`;
+Use noop when there is nothing to report.${endConditionNote(options.endsWhen, 'add "done": true to the JSON object')} ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}].</system-reminder>`;
 }
 
 /**
@@ -574,7 +604,7 @@ export function buildObservationEnvelope(
 function toolCompletionGuidance(head: string, tools: string[] | undefined, options: ObservationProtocolOptions): string {
 	return `${hydraSnapshot(tools, options.activeHeads)} You may use ${toolAllowance(tools)} to check facts or do the work this head's instructions ask for. The main assistant does not see your tool calls or their results. The hydra action complete_observation is always available. manage_heads is available only if hydra is among your allowed tools. ${REPORTING_GUIDANCE}${actingDeliveryContext(options.deliveryContext)}
 
-${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters. ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
+${MANAGEMENT_NOTE} When finished, call hydra exactly once with action "complete_observation", with no other tool calls in that turn. Use delivery "none" and message "" when there is nothing to report. Otherwise, message must contain your feedback; keep it short, ideally under 240 characters.${endConditionNote(options.endsWhen, "also pass done: true")} ${OBSERVER_DELIVERY_GUIDANCE} Do not start message with [pi-hydra ${head}]. Successfully removing your own head ends this check; do not call complete_observation afterward.`;
 }
 
 export interface HeadCatalog {
@@ -605,6 +635,64 @@ export function sanitizeHeadSet(requested: string[], catalog: HeadCatalog): { he
  * nothing was saved at all, which is a different thing and is treated
  * differently by the caller.
  */
+/** What an add call can carry beyond the head's name. */
+export interface AddedHead {
+	withoutFile?: { instructions: string; tools: string[] | undefined };
+	endsWhen?: string;
+}
+
+// What hydra can execute for a head: the seven standard tools plus its own.
+// Hydra has no execute for other extensions' tools or MCP.
+export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+
+/**
+ * The saved `added` record. An entry the add call could not have produced is
+ * damaged: it is not repaired, and its head is not restored at all, not even
+ * from a head file of the same name. Repairing could, for example, turn a
+ * broken tool list into "all tools".
+ */
+export function savedAddedHeads(config: { heads?: unknown; added?: unknown }): { added: Record<string, AddedHead>; damaged: string[] } {
+	// A record that is there but not a record says nothing about any saved
+	// head, so none of them can be trusted to be a plain head file.
+	if (config.added !== undefined && plainObject(config.added) === null) {
+		return { added: {}, damaged: savedHeadList(config) ?? [] };
+	}
+	const added: Record<string, AddedHead> = {};
+	const damaged: string[] = [];
+	for (const [name, value] of Object.entries(plainObject(config.added) ?? {})) {
+		const head = isValidHeadName(name) ? savedAddedHead(value) : null;
+		if (head === null) damaged.push(name);
+		else added[name] = head;
+	}
+	return { added, damaged };
+}
+
+function plainObject(value: unknown): Record<string, unknown> | null {
+	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function savedAddedHead(value: unknown): AddedHead | null {
+	const entry = plainObject(value);
+	const text = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value : null);
+	if (entry === null) return null;
+	const head: AddedHead = {};
+	if (entry.endsWhen !== undefined) {
+		const endsWhen = text(entry.endsWhen);
+		if (endsWhen === null) return null;
+		head.endsWhen = endsWhen;
+	}
+	if (entry.withoutFile !== undefined) {
+		const withoutFile = plainObject(entry.withoutFile);
+		const instructions = text(withoutFile?.instructions);
+		const tools = withoutFile?.tools;
+		const toolsValid = tools === undefined || (Array.isArray(tools) && tools.every((tool) => EXECUTABLE_TOOL_NAMES.includes(tool)));
+		// A head without a file always has an end; one without is not something an add call makes.
+		if (instructions === null || !toolsValid || head.endsWhen === undefined) return null;
+		head.withoutFile = { instructions, tools: tools as string[] | undefined };
+	}
+	return head.withoutFile || head.endsWhen !== undefined ? head : null;
+}
+
 export function savedHeadList(config: { heads?: unknown; lenses?: unknown; lens?: unknown }): string[] | null {
 	if (Array.isArray(config.heads)) {
 		return config.heads.filter((name): name is string => typeof name === "string");

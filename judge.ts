@@ -19,6 +19,8 @@ export interface JudgeResult {
 	// Saved as written in the log, never sent into the conversation.
 	parseError: string | null;
 	attemptedTools: string[];
+	/** The head says its end condition is met. Only heads with ends_when act on it. */
+	done?: true;
 }
 
 function boundedName(name: string): string {
@@ -42,6 +44,7 @@ export function classifyJudgeResponse(response: AssistantMessage): JudgeResult {
 		errorKind: parsed.error ? "malformed-findings" : null,
 		parseError: parsed.error,
 		attemptedTools,
+		...(parsed.done && { done: true }),
 	};
 }
 

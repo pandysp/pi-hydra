@@ -5,7 +5,7 @@ exports[`shared observer guidance > Anthropic acting uses the shared contract 1`
 
 HEAD INSTRUCTIONS: HEAD BODY
 
-When done, reply with one JSON object, nothing else:
+When finished, reply with one JSON object, nothing else:
 {"action":"noop|steer","reason":"≤120 chars","message":"≤240 chars, empty if noop"}
 
 Use noop when there is nothing to report. Use "steer" when the main assistant needs the feedback, even if it can wait. The message reaches it before its next model request without stopping its work. Do not start message with [pi-hydra quality].</system-reminder>"

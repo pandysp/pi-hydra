@@ -54,6 +54,8 @@ export interface HydraCall {
 	// Acting heads only: model turns in the tool loop and the tools executed.
 	iterations?: number;
 	toolsUsed?: string[];
+	// The head said done but has no end condition, so it kept running.
+	doneIgnored?: true;
 }
 
 // What counts as healthy depends on the provider: around 97% on Anthropic,

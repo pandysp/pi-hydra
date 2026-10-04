@@ -93,6 +93,8 @@ Heads with tools finish differently:
 - **OpenAI Codex and ChatGPT sign-in:** call `hydra` once with `complete_observation`. Hydra rejects a completion call if there are other tool calls in that turn.
 - **Anthropic and ds4:** return a short JSON decision after the tool work, with `action: "noop"` when there is nothing to report. On Anthropic, finishing through a tool call measured slower and more expensive; ds4 uses Anthropic's form for the cache reason in [ds4](#ds4).
 
+A head added with `ends_when` reports that its condition is met with `done: true` in `complete_observation`, or `"done": true` in its JSON decision or findings.
+
 On all supported routes, heads use real tools for work and head management. A head that successfully removes itself is finished; it makes no further completion call. Hydra cannot check whether the head did every intended check.
 
 The measurements below used the July 2026 instructions, before the September wording changes. They do not measure the quality of the current wording.
@@ -168,7 +170,7 @@ An observation can be cheap while an always-on session is materially more expens
 - **Anthropic cold start:** the first observation may fall below the 97% target because the handoff is large relative to a tiny initial context.
 - **OpenAI commit window:** an observation racing commit may pay its snapshot as fresh input; this degrades economics rather than correctness. ChatGPT sign-in showed fresh-session misses in the October smoke test.
 - **Codex fallback:** observer-scoped sessions pay the driver context once and may repay after idle expiry.
-- **Headless shutdown:** Pi may exit before a slow run-end observation finishes. `HYDRA_SHUTDOWN_GRACE_MS` defaults to 5 seconds; raise it for headless verification (`0` means do not wait).
+- **Headless shutdown:** Pi may exit before a slow run-end observation finishes. `HYDRA_SHUTDOWN_GRACE_MS` defaults to 5 seconds; raise it for headless verification (`0` means do not wait). One-off checks the run asked for are the exception: the run [waits for them at its end](architecture.md#commit-point-observation).
 - **ds4 runs one request at a time:** heads and the main assistant take turns on one GPU, so every head check adds its own time to the session. Each switch between a head and the main assistant also writes the evicted conversation, about 170 MB, to ds4's disk cache (8 GB by default). In one measurement the cache was already full, and ds4 evicted each new entry before any request reused it: every request, the main assistant's included, re-read about 11,000 tokens.
 - **Multi-head run end:** heads run in parallel for low latency. On Anthropic each run-end fork may pay M's write rather than coordinating a follower free-ride; measured contention remained a single-digit share of observation spend.
 - **Long tools:** acting heads wind down at turn boundaries, but a long bash execution may outlive shutdown grace.

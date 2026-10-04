@@ -97,13 +97,15 @@ Tool permissions are intentionally explicit in their meaning:
 - list names to narrow access, such as `tools: read, grep`;
 - use `tools: []` for a judge-only head with no executable tools.
 
+The main assistant can also add a head for a moment, without a file: for one check (`lifetime: "once"`) or until a condition is met (`ends_when`). See [Heads for a moment](docs/heads.md#heads-for-a-moment).
+
 hydra can execute Pi's standard read, bash, edit, write, grep, find, and ls tools plus its own `hydra` tool. It cannot execute arbitrary MCP or other-extension tools. See [Writing heads](docs/heads.md) for the complete format and examples.
 
 ## Decisions
 
 Heads send findings to the main assistant with `steer`, or report nothing. See [Choosing an action](docs/heads.md#decisions-when-findings-land) for the choices and [Delivery](docs/architecture.md#delivery) for when messages arrive.
 
-Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) only when the head cannot: a failed check, a change to the active heads, or an active head whose file disappeared or became invalid. Heads report their own file changes.
+Hydra [speaks for a head](docs/architecture.md#messages-hydra-sends-for-a-head) only when the head cannot. Heads report their own file changes.
 
 The user-only `print` route discussed in [issue #20](https://github.com/pandysp/pi-hydra/issues/20) is deprecated. Its internal code and saved history remain, but heads cannot choose it.
 
