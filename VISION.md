@@ -6,7 +6,7 @@ Hydra adds heads to a Pi session: extra model calls that review the work while i
 
 - Heads read the real request. Hydra passes it on as it is and does not rebuild or summarize it. A change to what heads and the main assistant share, such as the `hydra` tool definition, stops the provider's prompt cache from reusing earlier requests. Such a change has to be worth that extra cost.
 - Add as little as possible. Before you add a field, flag, setting or file, check whether something that exists already does the job.
-- Report every failure. Hydra rejects bad input and says why. It tells the user about anything it drops or skips.
+- Report every failure. Hydra rejects bad input and says why. When it cannot do what it was asked to do, it should tell the user.
 - Heads only advise. A head sends feedback or nothing, and it never stops the main assistant from working. Its messages should never read as if the user wrote them. Today they sometimes can ([#31](https://github.com/pandysp/pi-hydra/issues/31)).
 
 ## Out of scope
