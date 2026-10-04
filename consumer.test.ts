@@ -43,6 +43,9 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
+// The default first check steers with this message; later checks find nothing.
+const STEER = "FIXTURE-STEER";
+
 // busy: the driver calls the checkpoint tool before its final answer, twice
 // for true or the given number of times; the last call holds until released.
 async function consumer(busy: boolean | number, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void) {
@@ -64,7 +67,6 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	const entered = deferred();
 	const finalDriver = deferred();
 	let pauseFinalDriver = false;
-	let repeatFailure = false;
 	let observerHold: Promise<void> | null = null;
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 		const request = new Request(input, init);
@@ -74,7 +76,7 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			observerPayloads.push(payload);
 			await observerHold;
 			if (observerPayloads.length === 1 && firstObserverResponse) return response(firstObserverResponse);
-			if (observerPayloads.length === 1 || repeatFailure) return response([{ type: "toolCall", id: "blocked-write", name: "write", arguments: { path: "observer.txt", content: "PRIVATE-ARGUMENT" } }]);
+			if (observerPayloads.length === 1) return response([{ type: "text", text: `{"findings":[{"action":"steer","reason":"check","message":"${STEER}"}]}` }]);
 			return response([{ type: "text", text: '{"findings":[]}' }]);
 		}
 		driverPayloads.push(payload);
@@ -128,25 +130,23 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	});
 	const entries = (type: string) => sm.getBranch().filter(e => (e.type === "custom" || e.type === "custom_message") && e.customType === type);
 	return { cwd, pi, session, sm, driverPayloads, observerPayloads, hold, entered, errors, entries,
-		repeatFailure: () => { repeatFailure = true; },
 		holdObserver: (until: Promise<void>) => { observerHold = until; },
 		holdFinalDriver: () => { pauseFinalDriver = true; return finalDriver; },
 	};
 }
 
-const NOTICE = "automatic notice: A head without tools";
 const saved = (h: { sm: SessionManager }, phrase: string) =>
 	h.sm.getBranch().filter(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes(phrase));
 const seenIn = (payload: any, phrase: string) =>
 	payload.messages.filter((message: any) => message.role === "user" && JSON.stringify(message.content).includes(phrase));
 
 describe("Pi consumer context and session", () => {
-	it("a busy error notice is a head steer: saved and read by the next model request", async () => {
+	it("a steer during a busy run is saved and read by the next model request", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
 		await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
-		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(expect.stringMatching(/^\[pi-hydra critic\] automatic notice: /), { deliverAs: "steer" });
+		expect(h.pi.sendUserMessage).toHaveBeenCalledWith(`[pi-hydra critic] ${STEER}`, { deliverAs: "steer" });
 		expect(h.session.isStreaming).toBe(true);
 		expect(h.driverPayloads).toHaveLength(2);
 		h.hold.resolve();
@@ -154,39 +154,34 @@ describe("Pi consumer context and session", () => {
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.observerPayloads[0].tools).toEqual(h.driverPayloads[1].tools);
 		expect(h.observerPayloads[0].tool_choice).toEqual(h.driverPayloads[1].tool_choice);
-		expect(seenIn(h.driverPayloads[2], NOTICE)).toHaveLength(1);
-		expect(JSON.stringify(h.driverPayloads[2])).not.toContain("PRIVATE-ARGUMENT");
-		// The head's next check reads the notice, so it can correct itself.
+		expect(seenIn(h.driverPayloads[2], STEER)).toHaveLength(1);
+		// The head's next check reads its own steer.
 		expect(h.observerPayloads.length).toBeGreaterThan(1);
-		expect(JSON.stringify(h.observerPayloads.slice(1))).toContain(NOTICE);
-		expect(existsSync(join(h.cwd, "observer.txt"))).toBe(false);
+		expect(JSON.stringify(h.observerPayloads.slice(1))).toContain(STEER);
 		const restored = SessionManager.open(h.sm.getSessionFile()!);
-		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(NOTICE);
+		expect(JSON.stringify(restored.buildSessionContext().messages)).toContain(STEER);
 		expect(h.errors).toEqual([]);
 	});
 
-	it("a late error notice wakes the idle main assistant once; the repeat is not sent", async () => {
-		const h = await consumer(false);
-		h.repeatFailure();
-		const gate = deferred();
-		h.holdObserver(gate.promise);
-		await h.session.prompt("Finish now.");
-		await vi.waitFor(() => expect(h.observerPayloads).toHaveLength(1));
-		expect(h.session.isIdle).toBe(true);
-		gate.resolve();
-		await vi.waitFor(() => expect(h.driverPayloads, JSON.stringify({ messages: h.session.messages, errors: h.errors })).toHaveLength(2));
-		expect(seenIn(h.driverPayloads[1], NOTICE)).toHaveLength(1);
-		expect(JSON.stringify(h.driverPayloads[1])).not.toContain("PRIVATE-ARGUMENT");
-		// The woken run ends with its own check, which fails the same way.
-		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(2));
-		await h.session.waitForIdle();
-		expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(saved(h, NOTICE)).toHaveLength(1);
-		expect(h.driverPayloads).toHaveLength(2);
+	it("a failed check from a head without tools runs nothing and sends nothing", async () => {
+		const blocked: AssistantMessage["content"] = [{ type: "toolCall", id: "blocked-write", name: "write", arguments: { path: "observer.txt", content: "PRIVATE-ARGUMENT" } }];
+		const h = await consumer(true, blocked);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		h.hold.resolve();
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expect(existsSync(join(h.cwd, "observer.txt"))).toBe(false);
+		expect((h.entries("hydra-call")[0] as any).data).toMatchObject({ action: "noop", judgeErrorKind: "blocked-tool-request", attemptedTools: ["write"] });
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(JSON.stringify(h.driverPayloads)).not.toContain("PRIVATE-ARGUMENT");
+		expect(h.driverPayloads).toHaveLength(3);
 		expect(h.errors).toEqual([]);
 	});
 
-	it("an error notice during the final response is read on one additional model call", async () => {
+	it("a steer during the final response is read on one additional model call", async () => {
 		const h = await consumer(true);
 		const observer = deferred();
 		h.holdObserver(observer.promise);
@@ -206,8 +201,8 @@ describe("Pi consumer context and session", () => {
 		await running;
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.driverPayloads).toHaveLength(4);
-		expect(seenIn(h.driverPayloads[3], NOTICE)).toHaveLength(1);
-		expect(saved(h, NOTICE)).toHaveLength(1);
+		expect(seenIn(h.driverPayloads[3], STEER)).toHaveLength(1);
+		expect(saved(h, STEER)).toHaveLength(1);
 		expect(h.errors).toEqual([]);
 	});
 
@@ -283,7 +278,7 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("an error notice finishing during shutdown is saved without a main assistant turn", async () => {
+	it("a steer finishing during shutdown is saved without a main assistant turn", async () => {
 		const h = await consumer(false);
 		const gate = deferred();
 		h.holdObserver(gate.promise);
@@ -293,13 +288,13 @@ describe("Pi consumer context and session", () => {
 		gate.resolve();
 		await shutdown;
 		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
-		expect(JSON.stringify(h.entries("hydra-feedback"))).toContain(NOTICE);
+		expect(JSON.stringify(h.entries("hydra-feedback"))).toContain(STEER);
 		expect(h.driverPayloads).toHaveLength(1);
 		expect(h.session.isIdle).toBe(true);
 		expect(h.errors).toEqual([]);
 	});
 
-	it("does not carry a queued error notice into another branch after abort", async () => {
+	it("does not carry a queued steer into another branch after abort", async () => {
 		const h = await consumer(true);
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
@@ -311,8 +306,8 @@ describe("Pi consumer context and session", () => {
 		await h.session.navigateTree(firstUser.id);
 		await h.session.prompt("New branch.");
 		await h.session.waitForIdle();
-		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain(NOTICE);
-		expect(saved(h, NOTICE)).toHaveLength(0);
+		expect(JSON.stringify(h.driverPayloads.slice(2))).not.toContain(STEER);
+		expect(saved(h, STEER)).toHaveLength(0);
 		expect(h.errors).toEqual([]);
 	});
 

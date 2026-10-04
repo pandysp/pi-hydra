@@ -111,7 +111,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: its check failed, it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 
@@ -123,9 +123,9 @@ A head with tools receives Pi's normal tool errors and can try again within its 
 
 A head without tools gets no retry or further model call. Tool requests never run, even if they come with valid-looking JSON. One invalid finding makes Hydra reject the entire answer. Invalid or empty answers, unfinished or cut-short responses, provider errors and responses the provider reports as stopped are failed checks. An answer containing only thinking is still empty. Hydra records these failures as `noop`, not as a deliberate choice to say nothing. If Hydra cancels the check or switches conversation branches before it finishes, it drops the result instead.
 
-Only two failures produce an error notice, sent as the head's steer so its next check sees it: a tool request, or a completed, nonempty answer that does not match the required findings JSON. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain; they produce no such notice. The notice explains the mistake without repeating rejected arguments, answer text or thinking. Other failures stay in the error log; Hydra does not guess why they happened.
+A failed check sends nothing to the main assistant. Hydra warns you with the error type, saves it with the check, and `/hydra-stats` counts failed checks by type. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain. The saved record never includes rejected tool arguments; Hydra does not guess why a check failed.
 
-Each head gets at most one error notice for each error type until the conversation switches branches, so a failure that repeats every check does not flood the conversation. Every failed head check is still logged. A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
+A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
 
 ## State and observability
 
@@ -172,7 +172,7 @@ There is no build step; Pi loads the TypeScript through jiti.
 | `scheduler.ts` | Conflating per-head scheduler |
 | `stats.ts` | Observation log and session-entry parsing |
 | `protocol.ts` | Hydra tool wire contract |
-| `judge.ts` | Check answers from heads without tools and track their error notices |
+| `judge.ts` | Check answers from heads without tools and name how a failed one failed |
 | `delivery.ts` | Delivery ledger and routing |
 | `utils.ts` | Shared types and pure prompt, parsing, guard, and payload logic |
 

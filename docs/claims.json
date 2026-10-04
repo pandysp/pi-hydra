@@ -57,7 +57,7 @@
       },
       "baseline": {
         "codeHash": "8911028dfd085e04a5d40d519930c0296fcbdf0daf3ebf9f24f03f5255c5dc64",
-        "docHash": "0c2a9aa4c72ecc4928393335308f47e32ccbe030009d0a17731d80920f6e3522"
+        "docHash": "8370f74e130bcc43a9b45efb039cfe1bbc129c4dfed1afeddbea13be322ed89a"
       }
     },
     {
@@ -131,7 +131,7 @@
         },
         {
           "path": "index.ts",
-          "start": "function reportJudgeFailure(",
+          "start": "function steerForHead(",
           "end": "// One observation per active head"
         },
         {
@@ -145,8 +145,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "c627681646e8da4536cd871b3f57540d096fadc1233161b87226ffaf6cd36169",
-        "docHash": "e1ce4972ccffd0a0fd4e97cae1e0c1b0e5512f03c1d0c5eb2327bc37eb6145d4"
+        "codeHash": "768022b054cfec915735cac342c63144e98ce6f9df3b4505ec45cf181c3cf5a7",
+        "docHash": "717952bbdaadf0e544734d82d7d1c89df2e6a21aef74cbdc4639077f9eb62ada"
       }
     },
     {
@@ -196,7 +196,7 @@
         "fragment": "state-and-observability"
       },
       "baseline": {
-        "codeHash": "731643d5346f5085439f00c295a18b65d023c73ade257a01522ec8ada2810992",
+        "codeHash": "ce847ae28199de744cf6ab83f2a4a387ebdaa28b75d20c7acccb4927bb0e0bac",
         "docHash": "127389d6f3e7a093435718de019dbb1914ea12e5d1c4e78d830f0f12a95af601"
       }
     }
