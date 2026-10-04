@@ -34,7 +34,7 @@ npm test
 This updates `package.json` and `package-lock.json`. Commit both only when updating
 the baseline; use a disposable checkout for a compatibility-only check.
 
-If you installed hydra via the README quickstart, run `pi remove git:github.com/pandysp/pi-hydra` first; the git package and the symlink are separate load paths, and keeping both loads hydra twice.
+If you installed hydra via the README quickstart, run `pi remove npm:pi-hydra` first (or `pi remove git:github.com/pandysp/pi-hydra` for an older git install); the installed package and the symlink are separate load paths, and keeping both loads hydra twice.
 
 Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra stops existing (no commands, no flags, no observations). Before sending a PR:
 
@@ -68,7 +68,8 @@ Smoke-test delivery with the hidden diagnostic head: `/hydra-heads test` forces 
 ## Branches and research
 
 Start product changes from `main` and open PRs against `main`. Keep each PR
-focused: `pi install git:…` installs this branch, so users get what is on it.
+focused: `main` is what the next release publishes, and `pi install git:…`
+installs it directly.
 
 Research lives on `openai-cache-clean`. Bring individual product changes into
 separate PRs from `main`; never merge the whole research branch. See its
@@ -77,8 +78,20 @@ for research-specific instructions.
 
 ## Keep the shipped package small
 
-- Keep experiments and retired code out of the shipped root modules.
+- Every root `.ts` file except tests ships to npm (`files` in `package.json`), so keep experiments and retired code out of the root modules.
 - Commit generated files only when a test or manifest uses them; keep other
   research outputs in the research archive.
 - Save evidence linked from docs in the repository or research archive,
   not just in scratch folders that will be deleted.
+
+## Releasing
+
+Pushing a `v<version>` tag publishes to npm from GitHub Actions, with a
+provenance record; no token is involved.
+
+1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version and
+   set the same version in `package.json`. Merge that to `main`.
+2. Tag the merge commit and push the tag: `git tag v0.1.1 && git push origin v0.1.1`.
+3. The `publish` job in `ci.yml` checks that the tag matches `package.json`,
+   runs the checks and tests, and publishes. Confirm with
+   `npm view pi-hydra _npmUser`, which names GitHub Actions.

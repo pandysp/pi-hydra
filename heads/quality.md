@@ -1,7 +1,6 @@
 ---
 name: quality
 description: Correctness risks, missing verification, dangerous assumptions
-autostart: true
 tools: []
 ---
 Review through a QUALITY lens. Focus on correctness risks, missing

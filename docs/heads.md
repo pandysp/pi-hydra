@@ -38,13 +38,7 @@ A project head with the same name as a user head wins, like project agents and p
 
 Head files are re-read at the start of every agent run and on every `hydra` tool call. Changes apply to observations scheduled after that discovery point without reloading Pi: tune a noisy head before the next run, or follow a write with a `hydra` call when it must take effect during the current run. Duplicate names within one directory warn and keep the first file. If a file behind an active head disappears, the head is dropped from the active set with a notice, never silently.
 
-There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, api-design, and navigator reviewers, plus the foreman and tuner below); copy what you want:
-
-```bash
-mkdir -p ~/.pi/agent/hydra && cp ~/.pi/agent/git/github.com/pandysp/pi-hydra/heads/*.md ~/.pi/agent/hydra/
-```
-
-(That path is where `pi install` keeps the clone; from your own checkout, `cp heads/*.md ~/.pi/agent/hydra/`.)
+There are no built-in product heads; the extension has only hidden one-shot diagnostics for delivery smoke tests. The [`heads/`](../heads) directory in this repo holds ready-to-use examples (the quality, security, simplifier, api-design, and navigator reviewers, plus the foreman and tuner below); the [quick start](../README.md#quick-start) copies them into `~/.pi/agent/hydra/`.
 
 Or skip the copy and tell your agent what you want watched. The `hydra` tool teaches it both ways: a head without a file for help needed now, and a head file, which you can read, edit, and delete, for a head worth reusing.
 
