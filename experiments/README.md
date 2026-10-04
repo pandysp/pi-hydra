@@ -335,3 +335,7 @@ Live pi sessions (pi 1.0.1, all extensions loaded) with one head, `finder`, whos
 Interactive pi sessions on Opus 5.5 (pi 1.0.1, all extensions loaded, driven through tmux): a first prompt, then `/reload`, then a second prompt. The runs vary two things: whether Hydra's "head is off" note sat before pi's first system message (a head blocked at session start), and whether `"+grep"` was added to `defaultTools` before `/reload`. `note-addgrep-fixed` is the same as `note-addgrep` with Hydra holding back that note.
 
 `note-before-system-message-2026-10-04.jsonl` holds the main assistant's cache usage per request for each run. Only the note followed by the tool change lost the cache on the second request; [providers.md](../docs/providers.md#anthropic) reports the result.
+
+## A changed hydra tool description (October 2026)
+
+Two pi sessions on Opus 5.5 (pi 1.0.1, all extensions loaded): one prompt with Hydra from `main`, then `--continue` right away with either this branch, whose `hydra` tool description changed, or `main` again. `hydra-description-change-2026-10-04.jsonl` holds the main assistant's cache usage per request. The changed description cost a cache write of about 1,450 tokens on the resumed request, not a cache miss; [providers.md](../docs/providers.md#anthropic) reports the result.

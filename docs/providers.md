@@ -51,6 +51,8 @@ Only text, `tool_use`, and `tool_result` blocks can carry the marker; thinking b
 
 Hydra holds back its notes about heads it turned off (a missing tool, a deleted head file) until pi's first system message, which records the session's tools, is in the conversation; until then only the user is warned. On 2026-10-04 (Opus 5.5, pi 1.0.1, all extensions loaded), a Hydra note there followed by adding `grep` with `/reload` cost a cache miss on the next request: 3,849 tokens read and 14,189 written, against 17,041 read without the note. The note alone, and the tool change alone, kept the cache. With the note withheld, the same steps read 17,047 ([records](../experiments/README.md#a-note-before-pis-first-system-message-october-2026)).
 
+Changing the `hydra` tool's description doesn't throw the cache away either. On 2026-10-04 (Opus 5.5), a session resumed right after switching to a Hydra with a changed description read 17,122 tokens from cache and wrote 1,458, against 17,122 and 12 for a resume without the change ([records](../experiments/README.md#a-changed-hydra-tool-description-october-2026)).
+
 Anthropic receives one combined user handoff. In a July 2026 A/B, a separate system envelope tied review accuracy at 64.4%, reduced parse validity from 100% to 96.7%, helped Opus but regressed Sonnet, and added 744 ms mean latency. A model-specific capability gate was rejected, so all Anthropic models keep the combined form.
 
 ### OpenAI Codex
