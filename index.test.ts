@@ -831,6 +831,37 @@ describe("heads with an end: once and ends_when", () => {
 		await h.waitCalls(1);
 	});
 
+	it("the timeout warning names only the one-off that is still unfinished, not one that already reported", async () => {
+		const h = await harness({ heads: [] });
+		(h.ctx as { mode: string }).mode = "print";
+		for (const head of ["alpha", "beta"]) {
+			await h.hydraTool({ action: "manage_heads", operation: "add", head, lifetime: "once", instructions: "Check.", tools: [] });
+		}
+		let respondFirst!: (response: AssistantMessage) => void;
+		let respondSecond!: (response: AssistantMessage) => void;
+		await h.observe(
+			new Promise<AssistantMessage>((resolve) => { respondFirst = resolve; }),
+			new Promise<AssistantMessage>((resolve) => { respondSecond = resolve; }),
+		);
+		await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(2));
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const end = h.emit({ type: "agent_end", messages: [answer([text("I will wait for the checks.")])] });
+			respondFirst(noop());
+			await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+			await end;
+		} finally {
+			vi.useRealTimers();
+		}
+		const reported = h.calls().map((call) => call.head);
+		expect(reported).toHaveLength(1);
+		const stuck = reported[0] === "alpha" ? "beta" : "alpha";
+		const warnings = h.notify.mock.calls.filter(([message]) => String(message).includes("did not finish")).map(([message]) => message);
+		expect(warnings).toEqual([`hydra: one-off head ${stuck} did not finish within 10 minutes; this headless run ends without waiting for its feedback`]);
+		respondSecond(noop());
+		await h.waitCalls(2);
+	});
+
 	it("a print-mode run stops waiting as soon as it is cancelled, since the feedback could no longer start a turn", async () => {
 		const h = await harness({ heads: [] });
 		const runSignal = new AbortController();

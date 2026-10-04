@@ -1271,7 +1271,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const oneOffs = [...unfinishedOneOffs];
 		const finished = await scheduler.settled(oneOffs, ONE_OFF_HEADLESS_WAIT_MS, runSignal);
 		if (!finished && !runSignal?.aborted) {
-			notifyUser(ctx, `hydra: one-off head ${oneOffs.join(", ")} did not finish within ${ONE_OFF_HEADLESS_WAIT_MS / 60000} minutes; this headless run ends without waiting for its feedback`, "warning");
+			const stuck = oneOffs.filter((head) => unfinishedOneOffs.has(head));
+			notifyUser(ctx, `hydra: one-off head ${stuck.join(", ")} did not finish within ${ONE_OFF_HEADLESS_WAIT_MS / 60000} minutes; this headless run ends without waiting for its feedback`, "warning");
 		}
 	});
 
