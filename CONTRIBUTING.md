@@ -76,5 +76,5 @@ You don't need the `openai-cache-clean` branch. It holds earlier research and it
 Pushing a `v<version>` tag makes GitHub Actions publish to npm, with a provenance record and no token.
 
 1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version, set the same version in `package.json`, and merge that to `main`.
-2. Tag the merge commit `v<version>` and push the tag: `git tag v<version> && git push origin v<version>`.
+2. Tag the merge commit and push the tag: `git tag v<version> && git push origin v<version>`.
 3. The `publish` job checks that the tag matches `package.json`, runs the checks and tests, and publishes. `npm view pi-hydra _npmUser` should then name GitHub Actions.
