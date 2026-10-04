@@ -43,7 +43,7 @@ import {
 } from "./protocol.ts";
 import type { ManageHeadsParams, RawHydraToolParams } from "./protocol.ts";
 import { HeadScheduler } from "./scheduler.ts";
-import { buildJudgeReport, classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS } from "./judge.ts";
+import { classifyJudgeResponse, JUDGE_ERROR_DESCRIPTIONS } from "./judge.ts";
 import type { JudgeResult } from "./judge.ts";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats.ts";
 import type { HydraCall, ObserveKind } from "./stats.ts";
@@ -407,7 +407,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	const deliveryLedger = new DeliveryLedger();
 	// One error notice per head and error type on the current branch; a
 	// failure that repeats every check must not flood the conversation.
-	const reportedErrors = new Set<string>();
 	let branchGeneration = 0;
 	// One-off heads asked for since the last review point. They start with the
 	// next one, so their copy of the conversation includes the request itself.
@@ -451,8 +450,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
-		// Another branch's conversation may not contain the notice.
-		reportedErrors.clear();
 		registry.resetForBranch();
 		if (config) {
 			registry.applyConfig(registryGateway(ctx), config);
@@ -736,7 +733,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 		stats.record(call);
 		pi.appendEntry<HydraCall>("hydra-call", call);
-		reportJudgeFailure(job, outcome);
 
 		registry.revertDiagnosticAfterFire(registryGateway(job.ctx), job.head);
 		updateFooter(job.ctx);
@@ -1032,15 +1028,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					),
 			} satisfies AgentTool,
 		];
-	}
-
-	// The head cannot report its own failed check, so Hydra steers for it.
-	function reportJudgeFailure(job: Observation, result: Pick<JudgeResult, "errorKind" | "attemptedTools">) {
-		const report = buildJudgeReport(result);
-		const key = `${job.head}:${result.errorKind}`;
-		if (!report || reportedErrors.has(key)) return;
-		reportedErrors.add(key);
-		steerForHead(job.ctx, job.head, "hydra error notice", report, job.runSignal);
 	}
 
 	// Hydra's own messages go out as the head's steer. The label tells them
@@ -1627,13 +1614,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
 			// Includes deprecated print decisions from saved sessions.
 			const counts: Record<Action, number> = { noop: 0, print: 0, note: 0, steer: 0 };
+			const failed = new Map<string, number>();
 			let totalDuration = 0;
 			for (const call of calls) {
 				for (const action of call.actions?.length ? call.actions : [call.action]) {
 					counts[action]++;
 				}
+				if (call.judgeErrorKind) failed.set(call.judgeErrorKind, (failed.get(call.judgeErrorKind) ?? 0) + 1);
 				totalDuration += call.durationMs;
 			}
+			const failedTotal = [...failed.values()].reduce((sum, n) => sum + n, 0);
+			const failedKinds = [...failed].map(([kind, n]) => `${n} ${kind}`).join(", ");
 			const recent = calls
 				.slice(-10)
 				.map(
@@ -1655,6 +1646,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 					`  total input (uncached): ${input.toLocaleString()} tokens`,
 					`  mean duration: ${(totalDuration / calls.length).toFixed(0)}ms`,
 					`  decision groups: ${counts.noop} noop / ${counts.print} print / ${counts.note} note / ${counts.steer} steer`,
+					`  failed checks (counted as noop): ${failedTotal}${failedTotal > 0 ? ` (${failedKinds})` : ""}`,
 					"",
 					`recent (last ${Math.min(10, calls.length)}):`,
 					recent,

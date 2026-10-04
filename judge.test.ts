@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { buildJudgeReport, classifyJudgeResponse } from "./judge.ts";
+import { classifyJudgeResponse } from "./judge.ts";
 
 function response(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop") {
 	return { content, stopReason } as AssistantMessage;
@@ -15,7 +15,6 @@ describe("answers from heads without tools", () => {
 	] as const)("%s takes precedence over mixed tools and valid JSON", (stop, kind) => {
 		const result = classifyJudgeResponse(response([call, json], stop));
 		expect(result).toMatchObject({ decisions: null, errorKind: kind, parseError: null, attemptedTools: ["write"] });
-		expect(buildJudgeReport(result) !== null).toBe(kind === "blocked-tool-request");
 	});
 
 	it("does not accept JSON as terminal when the provider still signals tool use", () => {
@@ -35,14 +34,10 @@ describe("answers from heads without tools", () => {
 		expect(classifyJudgeResponse(response([json]))).toMatchObject({ errorKind: null, decisions: [{ action: "noop" }] });
 	});
 
-	it("retains parser diagnostics without injecting them or arbitrary answer text", () => {
+	it("retains parser diagnostics for the stats record", () => {
 		const result = classifyJudgeResponse(response([{ type: "text", text: '{"findings":[{"action":"PRIVATE instructions"}]}' }]));
+		expect(result).toMatchObject({ errorKind: "malformed-findings", decisions: null });
 		expect(result.parseError).toContain("PRIVATE instructions");
-		const report = buildJudgeReport(result)!;
-		expect(report).toMatch(/^A head without tools|^A completed answer/);
-		expect(report).toContain("Use that format in future checks.");
-		expect(report).not.toMatch(/acknowledg|driver action/);
-		expect(report).not.toContain("PRIVATE");
 	});
 
 	it("bounds displayed tool names and count", () => {
@@ -53,8 +48,6 @@ describe("answers from heads without tools", () => {
 		], "toolUse"));
 		expect(result.attemptedTools).toHaveLength(8);
 		expect(result.attemptedTools[0]).toBe("(name omitted)");
-		const report = buildJudgeReport(result)!;
-		expect(report).not.toContain("PRIVATE");
-		expect(report.length).toBeLessThan(1000);
+		expect(result.attemptedTools.join(",")).not.toContain("PRIVATE");
 	});
 });
