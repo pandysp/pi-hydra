@@ -148,10 +148,6 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 - **Tool defaults:** a head with omitted `tools:` receives all hydra-supported standard tools; use `tools: []` when review alone is intended.
 - **Advice can pass for the user's words:** a head's steer reaches the main assistant where your own messages do. When Pi summarizes a long conversation, the summary can list a head's advice as what you asked for, and the main assistant then follows it as your request ([#31](https://github.com/pandysp/pi-hydra/issues/31)).
 
-## Where this is going
-
-The main open direction is mid-generation observation. Today hydra judges complete captured requests, so it can steer between turns but cannot evaluate an unfinished response while it streams. Doing that would require reasoning over partial output without prompt-cache parity.
-
 ## History
 
 hydra began as **andon**, a bash and tmux observer around Claude Code. The pi extension replaced its hand-maintained prompt normalization with first-class provider hooks and Pi's own agent loop. The archived implementation and original manufacturing metaphor live in [`archive/`](archive/README.md).

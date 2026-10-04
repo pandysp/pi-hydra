@@ -96,13 +96,6 @@
         "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:15",
         "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:126"
       ]
-    },
-    {
-      "path": "README.md",
-      "fragment": "where-this-is-going",
-      "provenance": [
-        "repo@4b140d77023446406bd6e41cb5559866bedf595f:README.md:125"
-      ]
     }
   ]
 }

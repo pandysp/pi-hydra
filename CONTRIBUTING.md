@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and PRs are welcome. See the [architecture and module map](docs/architecture.md#module-map) for how the code is organized.
+Issues and pull requests are welcome. [VISION.md](VISION.md) says what fits the project, and the [module map](docs/architecture.md#module-map) how the code is organized. If you use an agent, start it in the repository so it loads [AGENTS.md](AGENTS.md).
 
 ## Setup
 
@@ -12,86 +12,69 @@ cd pi-hydra
 npm ci
 ```
 
-This installs the exact versions in `package-lock.json`, just as the PR check in
-[CI](.github/workflows/ci.yml) does. All four Pi development packages are pinned
-together. A separate `latest-pi` job tests their `latest` releases daily and on
-manual dispatch, so a new Pi release cannot change what an existing PR tests.
-Both jobs run the same checks; neither ignores failures. These are a development
-baseline and a current-release check, not a promise to support older Pi versions.
+If you installed Hydra with `pi install`, remove that copy first (`pi remove npm:pi-hydra`, or `pi remove git:github.com/pandysp/pi-hydra` for an older install). Otherwise Pi loads Hydra twice.
 
-To reproduce the latest-Pi check, or deliberately update the development baseline:
+After an edit, run `/reload` in Pi. If you move the clone, recreate the link. Pi ignores a broken link without a warning, and Hydra then has no commands, flags or checks.
+
+To try message delivery, run `/hydra-heads test`. A hidden test head sends one `steer` and then turns itself off.
+
+`npm ci` installs the Pi versions pinned in `package-lock.json`, the same ones CI tests pull requests with, so a new Pi release does not change what a pull request is tested against. A separate `latest-pi` job in [CI](.github/workflows/ci.yml) tests the newest Pi every day. Neither is a promise to support older Pi versions. To test the newest Pi locally or to move the pin:
 
 ```bash
-npm ci
 npm install --save-dev --save-exact @earendil-works/pi-agent-core@latest \
   @earendil-works/pi-ai@latest @earendil-works/pi-coding-agent@latest \
   @earendil-works/pi-tui@latest
-npm ls --depth=0
-npm run check
+npm run check && npm test
+```
+
+Commit the changed `package.json` and `package-lock.json` only when you move the pin. For a test only, use a throwaway clone.
+
+## Before a pull request
+
+```bash
+npm run check    # types, module state, links, doc claims
 npm test
 ```
 
-This updates `package.json` and `package-lock.json`. Commit both only when updating
-the baseline; use a disposable checkout for a compatibility-only check.
+- Back every claim about cache behavior with a measurement in [`docs/providers.md`](docs/providers.md).
+- If you change how Hydra replays requests or places cache markers, run the [verification procedures](docs/providers.md#verification-procedures) and put the numbers in the pull request.
+- If `npm run check` reports a doc claim, review the code and the doc section it ties together, then update only that claim: `npm run update:doc-claims -- --reviewed --claim=<id>`.
+- Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed option fails without an error.
+- If you change what heads send to the main assistant, also run a live session with a real model in a throwaway folder, in a session you can stop, and read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or an assistant that takes a head's message for the user's words.
+- If Pi already loads another copy of Hydra, for example while you work in a worktree, start Pi with `-ne` so Hydra is not loaded twice. `-ne` turns off every extension, and a missing one can cause misleading errors. So load all the others back with `-e`: the packages `pi list` shows, the paths in the `extensions` setting of `~/.pi/agent/settings.json` and the project's `.pi/settings.json`, the files in `~/.pi/agent/extensions/` and the project's `.pi/extensions/`, and the built-in extensions that setting does not turn off (`-e builtin:<name>`). Then add `-e <clone>/index.ts`.
+- A change users notice gets an entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request.
+- Keep pure logic in its matching root module and test it there.
+- Match the style of the file you edit.
 
-If you installed hydra via the README quickstart, run `pi remove npm:pi-hydra` first (or `pi remove git:github.com/pandysp/pi-hydra` for an older git install); the installed package and the symlink are separate load paths, and keeping both loads hydra twice.
-
-Edit, then reload pi (Ctrl-R or `/reload`) to pick up changes. If you move the clone, recreate the symlink: pi skips a dangling extension link silently, and hydra stops existing (no commands, no flags, no observations). Before sending a PR:
-
-```bash
-npm run check    # tsc, module-state, links, and code-to-doc claims
-npm test         # vitest
-```
-
-The Flue adapter lives in [flue-hydra](https://github.com/pandysp/flue-hydra), which builds on `utils.ts`, `judge.ts` and `delivery.ts` at a pinned commit of this repository. Changing what those files export or how heads are prompted affects it the next time it moves its pin.
-
-Smoke-test delivery with the hidden diagnostic head: `/hydra-heads test` forces a `steer`. It fires once and reverts. The revert prevents an infinite loop: a forced steer while idle injects a user message, which starts a run, whose run-end observation would otherwise steer again.
+[flue-hydra](README.md#flue-agents) uses `utils.ts`, `judge.ts` and `delivery.ts` from a pinned commit of this repository. If you change what they export or how heads are prompted, flue-hydra gets the change when it next moves its pin.
 
 ## What's welcome
 
-- New example heads; prototype them as head files (`~/.pi/agent/hydra/`, see [`docs/heads.md`](docs/heads.md)) and PR the ones that prove themselves into [`heads/`](heads)
-- Steps toward mid-generation observation (see "Where this is going" in the README)
-- Provider support beyond Anthropic and OpenAI Codex (needs a cache-parity story; read [`docs/providers.md`](docs/providers.md) first)
-- Replications or extensions of the [`experiments/`](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/experiments/INDEX.md)
+- Changes that make heads catch more or cost less, with a measurement that shows it.
+- Removing code, options and routes nobody needs.
+- New providers and agent hosts, once their cache behavior is measured ([VISION.md](VISION.md#out-of-scope)).
+- Better control over when heads run and when they stop, like one-off heads and heads that end themselves.
+- Plainer wording in docs, code comments and head instructions.
+- Example heads that proved themselves as head files ([`docs/heads.md`](docs/heads.md)), for [`heads/`](heads).
 
-## The bar
+The [open issues](https://github.com/pandysp/pi-hydra/issues) list concrete ideas.
 
-- Every claim about cache behavior must be backed by a measurement. [`docs/providers.md`](docs/providers.md) is the canonical owner of provider behavior, economics, dates, and evidence; other outward docs summarize and link to it.
-- If your change touches replay or marker logic, run the procedures in [`docs/providers.md`](docs/providers.md#verification-procedures) (cache parity, the headless cacheRead check, and the tripwire when transport logic is touched) and put the numbers in the PR.
-- `npm run check:links` validates local Markdown files and GitHub-compatible heading fragments, including the committed inventory of inbound links discovered outside this repository.
-- `npm run check:docs` binds public claims to both narrow code authority regions and canonical documentation sections. If either changes intentionally, review both sides and update only the affected claim explicitly: `npm run update:doc-claims -- --reviewed --claim=<id>`.
-- Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed hook fails without an error.
-- If your change affects what heads send to the main assistant, also run a live session with a real model in a throwaway folder, in a session you can stop. Read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or the assistant mistaking a head's message for the user's words. If pi already loads another copy of Hydra, for example while you work in a worktree, start pi with `-ne` so Hydra is not loaded twice. `-ne` turns off every extension, so load all the others back with `-e`: the packages `pi list` shows, the paths in the `extensions` setting of `~/.pi/agent/settings.json` and the project's `.pi/settings.json`, the files in `~/.pi/agent/extensions/` and the project's `.pi/extensions/`, and the built-in extensions that setting does not turn off (`-e builtin:<name>`). Then add `-e <clone>/index.ts`.
-- Keep pure logic in its matching root module and test it there.
-- Match the style of the file you are editing.
+## Branches
 
-## Branches and research
+Start from `main` and open pull requests against it. Keep each one focused: `main` is what the next release publishes, and `pi install git:…` installs it directly.
 
-Start product changes from `main` and open PRs against `main`. Keep each PR
-focused: `main` is what the next release publishes, and `pi install git:…`
-installs it directly.
+You don't need the `openai-cache-clean` branch. It holds earlier research and its evidence, and is never merged.
 
-Research lives on `openai-cache-clean`. Bring individual product changes into
-separate PRs from `main`; never merge the whole research branch. See its
-[research workflow](https://github.com/pandysp/pi-hydra/blob/openai-cache-clean/CONTRIBUTING.md#working-in-the-research-branch)
-for research-specific instructions.
+## Keep the npm package small
 
-## Keep the shipped package small
-
-- Every root `.ts` file except tests ships to npm (`files` in `package.json`), so keep experiments and retired code out of the root modules.
-- Commit generated files only when a test or manifest uses them; keep other
-  research outputs in the research archive.
-- Save evidence linked from docs in the repository or research archive,
-  not just in scratch folders that will be deleted.
+- Every root `.ts` file except tests ships to npm (`files` in `package.json`), so keep experiments and retired code out of them.
+- Commit generated files only when a test or manifest uses them.
+- Keep evidence that docs link to in the repository, not in scratch folders that get deleted.
 
 ## Releasing
 
-Pushing a `v<version>` tag publishes to npm from GitHub Actions, with a
-provenance record; no token is involved.
+Pushing a `v<version>` tag makes GitHub Actions publish to npm, with a provenance record and no token.
 
-1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version and
-   set the same version in `package.json`. Merge that to `main`.
+1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version, set the same version in `package.json`, and merge that to `main`.
 2. Tag the merge commit and push the tag: `git tag v0.1.1 && git push origin v0.1.1`.
-3. The `publish` job in `ci.yml` checks that the tag matches `package.json`,
-   runs the checks and tests, and publishes. Confirm with
-   `npm view pi-hydra _npmUser`, which names GitHub Actions.
+3. The `publish` job checks that the tag matches `package.json`, runs the checks and tests, and publishes. `npm view pi-hydra _npmUser` should then name GitHub Actions.
