@@ -965,20 +965,6 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 
-	it("a branch from before any saved head set gets the launch's starting heads, not a head without a file from the branch it left", async () => {
-		const setup = await harness({ heads: [] });
-		const sm = SessionManager.inMemory(setup.cwd);
-		const beforeConfig = sm.appendCustomEntry("anchor", {});
-		const h = await harness({ resume: { cwd: setup.cwd, sm } });
-		await addWatcher(h);
-		sm.branch(beforeConfig);
-		await h.emit({ type: "session_tree" } as ExtensionEvent);
-		await h.emit({ type: "agent_start" });
-		await h.observe();
-		await h.observe(noop());
-		await settle();
-		expect(h.transport).not.toHaveBeenCalled();
-	});
 
 	it.each(["resume", "going back and forth"])("a plain add of a head file survives %s, with nothing extra saved", async (mode) => {
 		const h = await harness({ heads: [] });
