@@ -22,7 +22,7 @@ Frontmatter keys:
 |---|---|---|
 | `name` | yes | the head's identity; what `/hydra-heads` and the `hydra` tool refer to. Files without a name are skipped with a warning. |
 | `description` | yes | one line, shown in completions, the picker, and tool replies. Files without one are skipped with a warning. |
-| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means every standard tool hydra can execute; `tools: []` means none (the head judges, never acts). |
+| `tools` | no | comma-separated tool names the head may execute (`tools: read, grep`). Omitted means the same tools as the main assistant; `tools: []` means none (the head judges, never acts). See [Tools](#tools-acting-heads). |
 | `autostart` | no | `true` joins the active set at session start; `false` is the same as leaving it out. Any other value makes the file invalid. Only consulted when the session has no saved head set and no `--hydra-heads` flag. |
 
 The filename is only storage: identity comes from `name`. By convention, name the file after the head.
@@ -79,11 +79,22 @@ A head without a file must have an end: `once` or `ends_when`. The `hydra` tool 
 
 ## Tools: acting heads
 
-By default a head may use the agent's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
+A head can use pi's standard tools (read, bash, edit, write, grep, find, ls) and the `hydra` tool itself, through pi's own agent loop, before it completes. Those eight are the only tools Hydra can run; other extensions' tools and MCP tools are not supported. A docs head updates notes while the agent works and usually completes with `none`, because its work product is the files it wrote; a research head looks something up and steers the finding in.
 
-`tools:` limits what a head can run; for a head without a file, the add call's `tools` does the same. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors and retries.
+`tools:` limits what a head can run; for a head without a file, the add call's `tools` does the same. For example, `tools: read, grep` allows only those tools; `tools: []` allows none. A head without a `tools:` line gets the same tools as the main assistant, and nothing more. `grep`, `find` and `ls` let a head search without `bash`, which can run any command. See [Failed checks](architecture.md#failed-checks) for errors and retries.
 
-A head can use `manage_heads` only if `tools` is omitted or includes `hydra`. Its request still contains the main assistant's original tool definitions so that cache reuse remains possible. These definitions do not grant permission to run those tools. The reverse also holds: a tool the head may use but the main assistant lacks (`grep`, `find` and `ls` are off by default in Pi) has no definition there, so the head knows it only by name. See [Completion channels](providers.md#completion-channels) for how each provider accepts the final answer.
+A head can only use tools the main assistant has. Its request reuses the main assistant's, tool definitions included, so the cache keeps working; those definitions don't grant permission to run a tool, its own list does. A tool the head may use but the main assistant lacks has no definition there, and the head never calls it. Measured on 2026-10-04 with a head allowed `read, grep, find, ls` while the main assistant lacked `grep`, `find` and `ls` (pi turns them off by default): on Opus 5.5 and gpt-6-astra the head gave up in 4 of 4 runs; with the tools, it found the file in 4 of 4. In the gpt-6-astra runs with the tools, the main assistant also lacked `hydra`, so those checks couldn't be handed in ([records](../experiments/README.md#tools-a-head-knows-only-by-name-october-2026)).
+
+So Hydra doesn't run a head that can't use its tools. Before each run and whenever heads change, it checks every active head; a head is turned off, with a warning and, once the session has started, a note to the main assistant, when:
+
+- its list names a tool the main assistant doesn't have, whether `grep` or `write`;
+- its list names a tool Hydra can't run, such as another extension's;
+- it finishes its check through the `hydra` tool (on OpenAI Codex and ChatGPT sign-in, see [Completion channels](providers.md#completion-channels)) and the main assistant doesn't have `hydra`;
+- `codemode` is active with `codemode.mode: "only"`, which hides every tool from the model.
+
+`manage_heads` refuses such a head instead. Turning a head off is saved like removing it, so it stays off until someone turns it on again. Hydra never switches tools on by itself; the warning names the missing tools and the fix.
+
+A head can use `manage_heads` only if its `tools` includes `hydra`, or it has no list and the main assistant has `hydra`.
 
 Authoring guidance for heads that act:
 

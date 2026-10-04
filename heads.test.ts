@@ -24,7 +24,7 @@ function createHarness(options: HarnessOptions = {}) {
 	for (const [name, content] of Object.entries(options.project ?? {})) files.set(`${PROJECT_DIR}/${name}`, content);
 	const announced: string[] = [];
 	const notified: string[] = [];
-	const steered: string[] = [];
+	const noted: string[] = [];
 	const warnedOnce: string[] = [];
 	const persisted: string[][] = [];
 	let footerRefreshes = 0;
@@ -52,7 +52,7 @@ function createHarness(options: HarnessOptions = {}) {
 		isDirectory: (path) => path === PROJECT_DIR && listDir(PROJECT_DIR).length > 0,
 		announce: (message) => announced.push(message),
 		notify: (message, level) => notified.push(`${level}: ${message}`),
-		steer: (head, message) => steered.push(`[${head}] ${message}`),
+		note: (head, message) => noted.push(`[${head}] ${message}`),
 		warnOnce: (message) => warnedOnce.push(message),
 		persistConfig: (config) => persisted.push([...config.heads]),
 		onActiveSetChanged: () => {
@@ -65,7 +65,7 @@ function createHarness(options: HarnessOptions = {}) {
 		files,
 		announced,
 		notified,
-		steered,
+		noted,
 		warnedOnce,
 		persisted,
 		footer: () => footerRefreshes,
@@ -128,7 +128,7 @@ describe("head discovery", () => {
 		h.files.delete(`${USER_DIR}/security.md`);
 		h.registry.discover(h.gateway, "/repo");
 		expect(h.registry.activeSet()).toEqual(["quality"]);
-		expect(h.steered).toEqual(["[security] this head's file is missing or invalid, so it is no longer active."]);
+		expect(h.noted).toEqual(["[security] this head's file is missing or invalid, so it is no longer active."]);
 		expect(h.notified).toEqual([]);
 		expect(h.footer()).toBe(footerBefore + 1);
 	});
@@ -162,11 +162,11 @@ describe("head discovery", () => {
 		]);
 	});
 
-	it("warns about tools hydra cannot execute without dropping the head", () => {
+	it("loads a head that lists a tool Hydra cannot run; turning it on blocks it", () => {
 		const h = createHarness({ user: { "quality.md": headFile("quality", "tools: read, telepathy\n") } });
 		h.registry.discover(h.gateway, "/repo");
-		expect(h.registry.get("quality")).toBeDefined();
-		expect(h.warnedOnce[0]).toContain("lists tools hydra cannot execute: telepathy");
+		expect(h.registry.get("quality")?.tools).toEqual(["read", "telepathy"]);
+		expect(h.warnedOnce).toEqual([]);
 	});
 });
 
@@ -243,7 +243,7 @@ describe("active set", () => {
 		expect(h.registry.activeSet()).toEqual(["quality"]);
 		expect(h.notified).toContain("warning: hydra: saved head no longer exists: ghost");
 		// Restoring happens while idle; a steer would start an unprompted turn.
-		expect(h.steered).toEqual([]);
+		expect(h.noted).toEqual([]);
 
 		h.registry.applyConfig(h.gateway, { heads: [] });
 		expect(h.registry.activeSet()).toEqual([]);

@@ -31,8 +31,7 @@ import {
 	savedHeadList,
 	selectFinalAssistant,
 	summarizeLoopUsage,
-	usesSplitObservationHandoff,
-} from "./utils.ts";
+	usesSplitObservationHandoff, headToolBlockMessage, headToolMismatch } from "./utils.ts";
 
 function blocks(message: PayloadMessage): PayloadBlock[] {
 	if (!Array.isArray(message.content)) {
@@ -1128,5 +1127,47 @@ describe("headLoopMessages", () => {
 		expect(headLoopMessages([user, note, custom], true, (role) => dropped.push(role))).toEqual([user, note]);
 		expect(headLoopMessages([user, note], false, (role) => dropped.push(role))).toEqual([user]);
 		expect(dropped).toEqual(["custom"]);
+	});
+});
+
+describe("headToolMismatch", () => {
+	const piDefaults = ["read", "bash", "edit", "write", "hydra"];
+	const anthropic = { finishesThroughHydra: false, codemodeOnly: false };
+
+	it("never blocks a head without tools", () => {
+		expect(headToolMismatch([], [], { finishesThroughHydra: true, codemodeOnly: true })).toBeNull();
+	});
+
+	it("lists every listed tool the main assistant lacks, read-only or not", () => {
+		expect(headToolMismatch(["read", "grep", "write"], ["read"], anthropic)).toEqual({ missing: ["grep", "write"], unsupported: [], hiddenByCodemode: false });
+	});
+
+	it("needs nothing listed from a head without a list, except hydra where it finishes through it", () => {
+		expect(headToolMismatch(undefined, ["read"], anthropic)).toBeNull();
+		expect(headToolMismatch(undefined, ["read"], { ...anthropic, finishesThroughHydra: true })?.missing).toEqual(["hydra"]);
+		expect(headToolMismatch(["read"], ["read"], { ...anthropic, finishesThroughHydra: true })?.missing).toEqual(["hydra"]);
+	});
+
+	it("blocks tools Hydra can't run even when they are active", () => {
+		expect(headToolMismatch(["read", "web_search"], [...piDefaults, "web_search"], anthropic)?.unsupported).toEqual(["web_search"]);
+	});
+
+	it("treats codemode only as hiding everything, but only while codemode is active", () => {
+		expect(headToolMismatch(["read"], [...piDefaults, "codemode"], { ...anthropic, codemodeOnly: true })?.hiddenByCodemode).toBe(true);
+		expect(headToolMismatch(["read"], piDefaults, { ...anthropic, codemodeOnly: true })).toBeNull();
+	});
+});
+
+describe("headToolBlockMessage", () => {
+	it("names the missing tools and both fixes", () => {
+		expect(headToolBlockMessage("finder", { missing: ["grep", "find"], unsupported: [], hiddenByCodemode: false }, "is off")).toBe(
+			'head finder is off: the main assistant doesn\'t have grep, find. To fix: add "+grep", "+find" to defaultTools in settings.json and run /reload. If that doesn\'t help, or you started pi with --tools or --no-tools, add them there and restart pi (pi --continue keeps the conversation). Then turn the head back on.',
+		);
+	});
+
+	it("gives only the advice that applies", () => {
+		expect(headToolBlockMessage("finder", { missing: [], unsupported: [], hiddenByCodemode: true }, "can't be added")).toBe(
+			'head finder can\'t be added: codemode.mode is "only", which hides all tools from the model; set it to "on". Then add it again.',
+		);
 	});
 });

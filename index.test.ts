@@ -37,7 +37,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-async function harness(options: { flag?: string; autostart?: boolean; heads?: string[]; resume?: { cwd: string; sm: SessionManager }; tools?: string; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean } = {}) {
+async function harness(options: { flag?: string; autostart?: boolean; heads?: string[]; resume?: { cwd: string; sm: SessionManager }; tools?: string | null; api?: "anthropic-messages" | "openai-codex-responses" | "openai-responses"; provider?: string; oauth?: boolean; baseUrl?: string; transport?: "websocket" | "auto"; changeAuthAfter?: number; failAuthAfter?: number; authorizationHeaderAfter?: number; modelAuthHeader?: boolean; activeTools?: string[]; settings?: { codemode?: { mode?: "on" | "only" } } } = {}) {
 	boundary.transport = options.transport ?? "websocket";
 	let currentOAuth = options.oauth ?? true;
 	let authChecks = 0;
@@ -45,7 +45,7 @@ async function harness(options: { flag?: string; autostart?: boolean; heads?: st
 	const cwd = options.resume?.cwd ?? mkdtempSync(join(process.cwd(), ".observer-test-"));
 	boundary.agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
-	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\nautostart: ${options.autostart ?? false}\ntools: ${options.tools ?? "[]"}\n---\nFollow these test instructions.\n`);
+	writeFileSync(join(cwd, ".pi", "hydra", "critic.md"), `---\nname: critic\ndescription: Test observer\nautostart: ${options.autostart ?? false}\n${options.tools === null ? "" : `tools: ${options.tools ?? "[]"}\n`}---\nFollow these test instructions.\n`);
 	const sm = options.resume?.sm ?? SessionManager.inMemory(cwd);
 	const root = options.resume ? sm.getBranch()[0].id : sm.appendCustomEntry("hydra-config", { heads: options.heads ?? ["critic"] });
 	const handlers = new Map<string, Handler>();
@@ -84,6 +84,9 @@ async function harness(options: { flag?: string; autostart?: boolean; heads?: st
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		registerFlag: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), registerMessageRenderer: vi.fn(),
 		getFlag: () => options.flag,
+		// Every tool Hydra can run is active unless a test says otherwise.
+		getActiveTools: () => options.activeTools ?? ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"],
+		getSettings: () => options.settings ?? {},
 		appendEntry: (type: string, data: unknown) => sm.appendCustomEntry(type, data),
 		// Delivery itself is Pi's; consumer.test.ts covers it in a real session.
 		sendMessage: vi.fn(),
@@ -926,7 +929,7 @@ describe("heads with an end: once and ends_when", () => {
 
 	it("refuses tools Hydra cannot run for a head without a file", async () => {
 		const h = await harness({ heads: [] });
-		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: ["imaginary-mcp"] })).rejects.toThrow('Hydra cannot run "imaginary-mcp" for a head');
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: ["imaginary-mcp"] })).rejects.toThrow("head single can't be added: it lists tools Hydra can't run: imaginary-mcp. Remove them from its tools");
 		await h.observe();
 		await settle();
 		expect(h.transport).not.toHaveBeenCalled();
@@ -1197,5 +1200,130 @@ describe("heads with an end: once and ends_when", () => {
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('head file "refactor-review" is ignored'), "warning");
 		await h.hydraTool({ action: "manage_heads", operation: "remove", head: "refactor-review" });
 		expect(h.configs().at(-1)).toEqual({ heads: [] });
+	});
+});
+
+describe("heads and the main assistant's tools", () => {
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+	// The main assistant's tools under pi's defaults: grep, find and ls are off.
+	const piDefaults = ["read", "bash", "edit", "write", "hydra"];
+	const notes = (h: Awaited<ReturnType<typeof harness>>) =>
+		vi.mocked(h.pi.sendMessage).mock.calls.map(([message]) => message as { customType: string; content: string });
+
+	it("turns off a head whose listed tool the main assistant lacks, with the fix, before any check, and saves that", async () => {
+		const h = await harness({ tools: "read, grep", activeTools: piDefaults });
+		const off = "hydra: head critic is off: the main assistant doesn't have grep. To fix: add \"+grep\" to defaultTools in settings.json and run /reload.";
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining(off), "warning");
+		// Before pi's first system message only the user is told (consumer.test.ts shows the note later).
+		expect(notes(h)).toEqual([]);
+		expect(vi.mocked(h.pi.sendUserMessage)).not.toHaveBeenCalled();
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+	});
+
+	it("keeps a turned-off head off when the session is resumed, even once the main assistant has the tool", async () => {
+		const h = await harness({ tools: "read, grep", activeTools: piDefaults });
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		const resumed = await harness({ resume: { cwd: h.cwd, sm: h.sm }, tools: "read, grep", activeTools: [...piDefaults, "grep"] });
+		await resumed.observe(noop());
+		await settle();
+		expect(resumed.transport).not.toHaveBeenCalled();
+	});
+
+	it("turns off a head whose file gained a missing tool, before the next run", async () => {
+		const h = await harness({ tools: "read", activeTools: piDefaults });
+		writeFileSync(join(h.cwd, ".pi", "hydra", "critic.md"), "---\nname: critic\ndescription: Test observer\ntools: read, find\n---\nFollow these test instructions.\n");
+		await h.emit({ type: "before_agent_start", prompt: "next", systemPrompt: "" } as unknown as ExtensionEvent);
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head critic is off: the main assistant doesn't have find."), "warning");
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("turns off a head that /hydra-heads turns on while the main assistant lacks its tools", async () => {
+		const h = await harness({ heads: [], tools: "read, ls", activeTools: piDefaults });
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")![1] as unknown as { handler: (args: string, ctx: unknown) => Promise<void> };
+		await command.handler("critic", h.ctx);
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head critic is off: the main assistant doesn't have ls."), "warning");
+		await h.observe(noop());
+		await settle();
+		expect(h.transport).not.toHaveBeenCalled();
+	});
+
+	it("refuses to add a head whose tools the main assistant lacks, naming them all", async () => {
+		const h = await harness({ heads: [], activeTools: piDefaults });
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: ["read", "grep", "ls"] }))
+			.rejects.toThrow("head single can't be added: the main assistant doesn't have grep, ls. To fix: add \"+grep\", \"+ls\" to defaultTools");
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" })).resolves.toBeDefined();
+	});
+
+	it("reads codemode.mode from pi's live settings", async () => {
+		const h = await harness({ tools: "read", activeTools: [...piDefaults, "codemode"], settings: { codemode: { mode: "only" } } });
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('hydra: head critic is off: codemode.mode is "only", which hides all tools from the model; set it to "on". Then turn the head back on.'), "warning");
+	});
+
+	it("needs hydra for a head with tools only where it finishes through the hydra tool", async () => {
+		const codex = await harness({ api: "openai-codex-responses", tools: "read", activeTools: ["read"] });
+		expect(codex.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head critic is off: the main assistant doesn't have hydra."), "warning");
+		const anthropic = await harness({ tools: "read", activeTools: ["read"] });
+		await anthropic.observe(noop());
+		await anthropic.waitCalls(1);
+	});
+
+	it("checks the heads a diagnostic head hands back when it has fired", async () => {
+		const active = [...piDefaults];
+		const h = await harness({ tools: "read", activeTools: active });
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")![1] as unknown as { handler: (args: string, ctx: unknown) => Promise<void> };
+		await command.handler("test", h.ctx);
+		// The main assistant loses read while the diagnostic holds the set.
+		active.splice(active.indexOf("read"), 1);
+		await h.observe(answer([tool("hydra", { action: "complete_observation", delivery: "none", message: "" })], "toolUse"));
+		await h.waitCalls(1);
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head critic is off: the main assistant doesn't have read."), "warning");
+		await h.observe(noop());
+		await settle();
+		expect(h.calls().map((call) => call.head)).toEqual(["test"]);
+	});
+
+	it("re-adding an active head checks its file again", async () => {
+		const h = await harness({ tools: "read", activeTools: piDefaults });
+		// pi's first system message is in, so notes would go out.
+		h.sm.appendMessage({ role: "system", content: "", timestamp: Date.now() } as unknown as Message);
+		writeFileSync(join(h.cwd, ".pi", "hydra", "critic.md"), "---\nname: critic\ndescription: Test observer\ntools: read, grep\n---\nFollow these test instructions.\n");
+		await expect(h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" })).rejects.toThrow("head critic is off: the main assistant doesn't have grep.");
+		expect(h.configs().at(-1)).toEqual({ heads: [] });
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head critic is off"), "warning");
+		// The error reaches the main assistant; no second message about it.
+		expect(vi.mocked(h.pi.sendMessage)).not.toHaveBeenCalled();
+	});
+
+	it("drops a waiting one-off whose tool went away when heads change", async () => {
+		const active = [...piDefaults, "grep"];
+		const h = await harness({ heads: [], activeTools: active });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "single", lifetime: "once", instructions: "Check.", tools: ["read", "grep"] });
+		active.splice(active.indexOf("grep"), 1);
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "critic" });
+		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining("hydra: head single is off: the main assistant doesn't have grep."), "warning");
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.calls().map((call) => call.head)).toEqual(["critic"]);
+	});
+
+	it("doesn't ask hydra of a head without a list that gets no tools at all, since it answers with JSON", async () => {
+		const h = await harness({ api: "openai-codex-responses", tools: null, activeTools: [] });
+		await h.observe(noop());
+		await h.waitCalls(1);
+	});
+
+	it("lets a head without a list use only the main assistant's tools, hydra included", async () => {
+		const h = await harness({ tools: null, activeTools: ["read"] });
+		await h.observe(answer([tool("bash", { command: "touch made-by-bash" })], "toolUse"), answer([tool("hydra", { action: "manage_heads", operation: "remove", head: "critic", message: "x" })], "toolUse"), noop());
+		await h.waitCalls(1);
+		expect(existsSync(join(h.cwd, "made-by-bash"))).toBe(false);
+		expect(JSON.stringify(h.payloads.at(-1))).toContain("not found");
+		expect(JSON.stringify(h.payloads.at(-1))).toContain('Head \\"critic\\" is not allowed to manage heads');
+		expect(h.configs().at(-1)).toEqual({ heads: ["critic"] });
 	});
 });

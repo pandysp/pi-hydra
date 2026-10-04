@@ -70,7 +70,7 @@ A reusable head is fully defined by one Markdown file. A head added without a fi
 - `~/.pi/agent/hydra/*.md` for user heads;
 - the nearest ancestor `.pi/hydra/*.md` for project heads.
 
-Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told as that head's steer](#messages-hydra-sends-for-a-head). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
+Project heads shadow same-named user heads. Discovery runs at session start, every agent run, and every hydra tool call. Changes discovered at one of those points affect observations scheduled afterward; vanished or invalid files are pruned rather than observed with an empty instruction, and the main assistant is [told with a note](#messages-hydra-sends-for-a-head). Before each run Hydra also turns off heads that can't use their tools ([Tools](heads.md#tools-acting-heads)). A header key other than `name`, `description`, `tools` or `autostart` makes the file invalid, so a retired or misspelled setting is reported instead of ignored. A head file that appears under the name of an active head without a file is ignored, with a warning, until that head leaves.
 
 The active set is session state. Startup precedence is an explicit `--hydra-heads` flag, then the saved session set, then `autostart` markers for a fresh session. Navigating to another point in the conversation starts from no heads, then applies that point's saved set, or the launch default (flag, else autostart) when it has none. Nothing of the branch left behind survives: saved heads that no longer exist, a damaged saved head or a flag that matches nothing leave fewer heads, with a warning, not the old ones. Full authoring behavior belongs in [Writing heads](heads.md).
 
@@ -101,7 +101,7 @@ In an open session:
 - `steer` sends the finding as a user message before the main assistant's next model request. If it is idle, the message starts a new run.
 - No finding means no message. Hydra saves the result as `noop`.
 
-During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` messages as a `note`: it adds them to the conversation without starting a turn. `note` is Hydra's own route, never a head's choice.
+During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` messages as a `note`: it adds them to the conversation without starting a turn. Hydra also tells the main assistant with a `note` when it turns a head off. `note` is Hydra's own route, never a head's choice.
 
 All findings from a head's answer go in one `steer` message for the main assistant. Every accepted finding appears once.
 
@@ -111,7 +111,7 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or its file disappeared or became invalid while it was active. Each message goes out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless it comes from a review of a cancelled run (see above). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or Hydra turned it off because its file disappeared or became invalid, or because the main assistant lacks a tool it needs ([Tools](heads.md#tools-acting-heads)). The first two go out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless they come from a review of a cancelled run (see above). A head Hydra turned off goes out as a `note`: that usually happens as a run starts, where a steer would start a second prompt, and it needs no answer. Before pi's first system message Hydra sends no note at all, only the user's warning ([why](providers.md#anthropic)). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 

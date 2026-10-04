@@ -93,7 +93,7 @@ Heads live in two places:
 
 Tool permissions are intentionally explicit in their meaning:
 
-- omit `tools:` to grant every standard tool hydra can execute;
+- omit `tools:` to give the head the same tools as the main assistant;
 - list names to narrow access, such as `tools: read, grep`;
 - use `tools: []` for a judge-only head with no executable tools.
 
@@ -145,7 +145,7 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 - **Measured providers only:** unverified provider/API pairs are skipped rather than risk unsafe or full-price replay.
 - **Between-call review:** a single long generation is not judged token by token. Findings act at checkpoints.
 - **Variable overhead:** multiple always-on heads can cost more in aggregate than the driver.
-- **Tool defaults:** a head with omitted `tools:` receives all hydra-supported standard tools; use `tools: []` when review alone is intended.
+- **Tool defaults:** a head with omitted `tools:` receives the main assistant's tools; use `tools: []` when review alone is intended. A head that lists a tool the main assistant lacks doesn't run ([Tools](docs/heads.md#tools-acting-heads)).
 - **Advice can pass for the user's words:** a head's steer reaches the main assistant where your own messages do. When Pi summarizes a long conversation, the summary can list a head's advice as what you asked for, and the main assistant then follows it as your request ([#31](https://github.com/pandysp/pi-hydra/issues/31)).
 
 ## History

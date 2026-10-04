@@ -346,6 +346,15 @@ export function usesSplitObservationHandoff(api: string | undefined, provider?: 
 	return api !== undefined && api !== "anthropic-messages" && provider !== "ds4";
 }
 
+/**
+ * Whether a head finishes its check by calling the `hydra` tool. Heads with
+ * tools do on the routes that split the handoff; everywhere else they answer
+ * with JSON (docs/providers.md#completion-channels).
+ */
+export function finishesThroughHydraTool(tools: string[] | undefined, api: string | undefined, provider?: string): boolean {
+	return headActs(tools) && usesSplitObservationHandoff(api, provider);
+}
+
 export interface ObservationProtocolOptions {
 	/** Which heads are on. Only shown to a head allowed to change that. */
 	activeHeads?: readonly string[];
@@ -644,6 +653,67 @@ export interface AddedHead {
 // What hydra can execute for a head: the seven standard tools plus its own.
 // Hydra has no execute for other extensions' tools or MCP.
 export const EXECUTABLE_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"];
+
+/** What keeps a head from using the tools it needs. */
+export interface HeadToolMismatch {
+	/** Tools Hydra could run that the main assistant doesn't have active. */
+	missing: string[];
+	/** Listed tools Hydra can never run, active or not. */
+	unsupported: string[];
+	/** `codemode.mode: "only"` with codemode active hides every tool. */
+	hiddenByCodemode: boolean;
+}
+
+/**
+ * A head can only call tools the main assistant's request declares, because
+ * its request replays that one (VISION.md, prompt caching). A tool it knows
+ * only by name it never calls (docs/heads.md#tools-acting-heads). So a head
+ * that needs a tool the main assistant lacks must not run at all.
+ *
+ * Returns null when the head can run. Heads without tools never mismatch.
+ * Heads without a list need nothing listed: they get the main assistant's
+ * tools. Every head that finishes through `hydra` needs it.
+ */
+export function headToolMismatch(
+	tools: string[] | undefined,
+	active: readonly string[],
+	options: { finishesThroughHydra: boolean; codemodeOnly: boolean },
+): HeadToolMismatch | null {
+	if (!headActs(tools)) return null;
+	const listed = tools ?? [];
+	const needed = options.finishesThroughHydra && !listed.includes("hydra") ? [...listed, "hydra"] : listed;
+	const unsupported = listed.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool));
+	const missing = needed.filter((tool) => EXECUTABLE_TOOL_NAMES.includes(tool) && !active.includes(tool));
+	const hiddenByCodemode = options.codemodeOnly && active.includes("codemode");
+	if (unsupported.length === 0 && missing.length === 0 && !hiddenByCodemode) return null;
+	return { missing, unsupported, hiddenByCodemode };
+}
+
+/**
+ * The one message for a blocked head: what it can't use and how to fix it.
+ * `state` is "is off" for a head Hydra turned off, "can't be added" for a
+ * refused add. Callers add the "hydra: " prefix where the user reads it.
+ */
+export function headToolBlockMessage(head: string, mismatch: HeadToolMismatch, state: "is off" | "can't be added"): string {
+	const parts = [`head ${head} ${state}`];
+	if (mismatch.missing.length > 0) {
+		const names = mismatch.missing.join(", ");
+		const plus = mismatch.missing.map((tool) => `"+${tool}"`).join(", ");
+		parts.push(
+			`: the main assistant doesn't have ${names}. To fix: add ${plus} to defaultTools in settings.json and run /reload. If that doesn't help, or you started pi with --tools or --no-tools, add them there and restart pi (pi --continue keeps the conversation).`,
+		);
+	} else {
+		parts.push(":");
+	}
+	if (mismatch.hiddenByCodemode) {
+		parts.push(` codemode.mode is "only", which hides all tools from the model; set it to "on".`);
+	}
+	if (mismatch.unsupported.length > 0) {
+		parts.push(` it lists tools Hydra can't run: ${mismatch.unsupported.join(", ")}. Remove them from its tools (usable: ${EXECUTABLE_TOOL_NAMES.join(", ")}).`);
+	}
+	parts.push(state === "is off" ? " Then turn the head back on." : " Then add it again.");
+	return parts.join("");
+}
 
 /**
  * The saved `added` record. An entry the add call could not have produced is

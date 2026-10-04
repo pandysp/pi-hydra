@@ -47,7 +47,7 @@ export const hydraToolParameters = Type.Object(
 		tools: Type.Optional(
 			Type.Array(Type.String(), {
 				description:
-					`manage_heads add with instructions only: tools that head may use for its work, from exactly these names: ${EXECUTABLE_TOOL_NAMES.join(", ")}. Omit for all of them; [] for none (it only judges). Every head can always report back.`,
+					`manage_heads add with instructions only: tools that head may use for its work, from exactly these names: ${EXECUTABLE_TOOL_NAMES.join(", ")}. Omit for the main assistant's own tools; [] for none (it only judges). Every head can always report back.`,
 			}),
 		),
 		delivery: Type.Optional(
@@ -248,11 +248,12 @@ export function hydraToolDescription(userHeadDir: string): string {
 		"Heads are Markdown files in",
 		`${userHeadDir} (user) and .pi/hydra (project).`,
 		"The file header must have `name:` and `description:`. Omit `tools:` to",
-		"allow all tools, use `[]` for no tools, or list allowed tool names",
-		"separated by commas. `autostart: true` activates the head in new",
-		"sessions. No other header keys are allowed. The body gives the head's",
-		"instructions: what to check, when to act, what work to do, and how to",
-		"finish and report. Hydra rereads the files on every call.",
+		"give the head the main assistant's tools, use `[]` for no tools, or",
+		"list allowed tool names separated by commas. `autostart: true`",
+		"activates the head in new sessions. No other header keys are allowed.",
+		"The body gives the head's instructions: what to check, when to act,",
+		"what work to do, and how to finish and report. Hydra rereads the files",
+		"on every call.",
 	].join(" ");
 }
 
