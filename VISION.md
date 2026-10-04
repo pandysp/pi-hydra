@@ -4,7 +4,7 @@ pi-hydra gives a Pi session extra perspectives while the work happens, from the 
 
 ## Principles
 
-- **Reuse the context, never rebuild it.** A head sees the main assistant's real provider request. Anything that changes the part heads share with the main assistant, such as the `hydra` tool definition, changes what the cache can reuse and has to say so.
+- **Reuse the context, never rebuild it.** A head sees the main assistant's real provider request. Anything that changes the part heads share with the main assistant, such as the `hydra` tool definition, costs cache reuse.
 - **Measure before claiming.** Provider and cache behavior is a measurement, not an assumption. Unmeasured provider paths are skipped, not guessed ([providers](docs/providers.md)).
 - **The smallest mechanism that works.** Before adding a field, flag, mode or file, name the existing path that already gives the same outcome. A second path is justified only when the first cannot express the need.
 - **Fail loudly.** Invalid input is an error with its reason. Anything Hydra drops, skips or cannot restore is reported. Broken state is not silently repaired.
