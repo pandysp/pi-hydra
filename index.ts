@@ -405,8 +405,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// branch on restore. Pending deliveries never cross branch navigation.
 	const stats = new StatsLog();
 	const deliveryLedger = new DeliveryLedger();
-	// One error notice per head and error type on the current branch; a
-	// failure that repeats every check must not flood the conversation.
 	let branchGeneration = 0;
 	// One-off heads asked for since the last review point. They start with the
 	// next one, so their copy of the conversation includes the request itself.

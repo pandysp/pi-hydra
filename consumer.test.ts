@@ -163,6 +163,24 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it("a failed check from a head without tools runs nothing and sends nothing", async () => {
+		const blocked: AssistantMessage["content"] = [{ type: "toolCall", id: "blocked-write", name: "write", arguments: { path: "observer.txt", content: "PRIVATE-ARGUMENT" } }];
+		const h = await consumer(true, blocked);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		h.hold.resolve();
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expect(existsSync(join(h.cwd, "observer.txt"))).toBe(false);
+		expect((h.entries("hydra-call")[0] as any).data).toMatchObject({ action: "noop", judgeErrorKind: "blocked-tool-request", attemptedTools: ["write"] });
+		expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
+		expect(JSON.stringify(h.driverPayloads)).not.toContain("PRIVATE-ARGUMENT");
+		expect(h.driverPayloads).toHaveLength(3);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("a steer during the final response is read on one additional model call", async () => {
 		const h = await consumer(true);
 		const observer = deferred();
