@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2
+
 - The `hydra` tool draws its own row: `hydra add critic` when collapsed, every argument when expanded, then the result. Extensions that redraw tool rows, for example to hide finished ones, can now handle it, which they cannot do with pi's generic row.
 - A head that lists a tool the main assistant doesn't have no longer runs and quietly fails: Hydra turns it off, or refuses to add it, with a warning naming the missing tools and the fix. pi turns `grep`, `find` and `ls` off by default, so a head with `tools: read, grep` now needs `"+grep"` in `defaultTools`. See [Tools](docs/heads.md#tools).
 - When a head's file disappears while it is active, Hydra now tells the main assistant with a note instead of a steer, so the notice no longer wakes an idle main assistant.
