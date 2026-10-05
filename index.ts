@@ -55,9 +55,12 @@ import {
 	classifyCodexShareLoss,
 	decisionFromCompletion,
 	EXECUTABLE_TOOL_NAMES,
+	finishesThroughHydraTool,
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
+	headToolBlockMessage,
+	headToolMismatch,
 	headInstructions,
 	headLoopMessages,
 	isAnthropicPayload,
@@ -157,7 +160,7 @@ interface ObservationSeed {
 	turnIndex: number;
 	head: string;
 	instruction: string; // frozen at scheduling time; delivery facts are not
-	tools: string[] | undefined; // executable allowance: undefined = all, [] = judge-only
+	tools: string[]; // what the head may run: its list, or the main assistant's tools for a head without one; [] = judge-only
 	kind: ObserveKind;
 	// A one-off head is never in the active set: it was asked for one check,
 	// and this seed is that check.
@@ -239,11 +242,71 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			isDirectory,
 			announce: (message) => ctx.ui.notify(message, "info"),
 			notify: (message, level) => notifyUser(ctx, message, level),
-			steer: (head, message) => steerForHead(ctx, head, "head file missing or invalid", message, runSignal),
+			// The user must hear of it even when the main assistant can't yet.
+			note: (head, message) => {
+				if (!noteForHead(ctx, head, "head file missing or invalid", message, runSignal)) {
+					notifyUser(ctx, `hydra: head ${head}: ${message}`, "warning");
+				}
+			},
 			warnOnce: (message) => warnOnce(ctx, message),
 			persistConfig: (config) => pi.appendEntry<HydraConfig>("hydra-config", config),
-			onActiveSetChanged: () => updateFooter(ctx),
+			onActiveSetChanged: () => {
+				dropHeadsLackingTools(ctx, runSignal);
+				updateFooter(ctx);
+			},
 		};
+	}
+
+	// Judged by the tools the user allowed the main assistant right now: a head
+	// sees only what the main assistant's request declares (utils.ts
+	// headToolMismatch).
+	function toolMismatchFor(ctx: ExtensionContext, tools: string[] | undefined) {
+		return headToolMismatch(tools, pi.getActiveTools(), {
+			// From the tools the head actually gets, as observationHandoffFor decides.
+			finishesThroughHydra: finishesThroughHydraTool(effectiveHeadTools(tools), ctx.model?.api, ctx.model?.provider),
+			codemodeOnly: pi.getSettings().codemode?.mode === "only",
+		});
+	}
+
+	// A head without a list gets the main assistant's tools, `hydra` included,
+	// and nothing more.
+	function effectiveHeadTools(tools: string[] | undefined): string[] {
+		if (tools !== undefined) return tools;
+		const active = pi.getActiveTools();
+		return EXECUTABLE_TOOL_NAMES.filter((tool) => active.includes(tool));
+	}
+
+	// Turns off every active head that can't use its tools, with the fix for
+	// the user and a note for the main assistant. Saved like a removal.
+	function dropHeadsLackingTools(ctx: ExtensionContext, runSignal?: AbortSignal) {
+		const blocked = registry.activeSet().flatMap((name) => {
+			const mismatch = toolMismatchFor(ctx, registry.headTools(name));
+			return mismatch ? [{ name, mismatch }] : [];
+		});
+		// A one-off waiting for its check counts too: it would run without them.
+		for (const [name, oneOff] of heldOneOffs) {
+			const mismatch = toolMismatchFor(ctx, oneOff.tools);
+			if (mismatch) {
+				heldOneOffs.delete(name);
+				blocked.push({ name, mismatch });
+			}
+		}
+		if (blocked.length === 0) return;
+		// Saved like a removal: nothing brings these heads back on its own.
+		const gateway = registryGateway(ctx, runSignal);
+		const remaining = registry.activeSet().filter((name) => !blocked.some((head) => head.name === name));
+		if (remaining.length !== registry.activeSet().length) {
+			if (remaining.length > 0) {
+				registry.setHeadSet(gateway, remaining);
+			} else {
+				registry.clearHeadSet(gateway);
+			}
+		}
+		for (const { name, mismatch } of blocked) {
+			const message = headToolBlockMessage(name, mismatch, "is off");
+			notifyUser(ctx, `hydra: ${message}`, "warning");
+			noteForHead(ctx, name, "head lacks tools", message, runSignal);
+		}
 	}
 
 	// Asked of pi rather than read from the settings file here, so which file
@@ -277,7 +340,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function observationHandoffFor(
 		ctx: ExtensionContext,
 		name: string,
-		tools: string[] | undefined,
+		tools: string[],
 		instruction: string,
 		endsWhen: string | undefined,
 	): Pick<Observation, "prompt" | "envelope" | "completionMode"> {
@@ -289,8 +352,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		}
 		const deliveryContext = deliveryLedger.contextFor(name);
 		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext, endsWhen };
-		const split = usesSplitObservationHandoff(ctx.model?.api, ctx.model?.provider);
 		if (!headActs(tools)) {
+			const split = usesSplitObservationHandoff(ctx.model?.api, ctx.model?.provider);
 			return split
 				? {
 						prompt: headInstructions(instruction),
@@ -302,7 +365,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						completionMode: "enum",
 					};
 		}
-		return split
+		return finishesThroughHydraTool(tools, ctx.model?.api, ctx.model?.provider)
 			? {
 					prompt: headInstructions(instruction),
 					envelope: buildObservationEnvelope(name, tools, protocol),
@@ -988,7 +1051,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let standardObservationTools: AgentTool[] | null = null;
 	function observationTools(
 		ctx: ExtensionContext,
-		allowed: string[] | undefined,
+		allowed: string[],
 		job: Observation,
 		state: ObservationToolState,
 	): AgentTool[] {
@@ -1004,7 +1067,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			];
 		}
 		const workTools =
-			allowed === undefined ? standardObservationTools : standardObservationTools.filter((tool) => allowed.includes(tool.name));
+			standardObservationTools.filter((tool) => allowed.includes(tool.name));
 		// Heads with tools get the shared hydra tool. Codex uses it to finish;
 		// Anthropic returns JSON. Each action checks its own permission.
 		// Heads without tools never enter this loop.
@@ -1032,6 +1095,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// apart from the head's findings.
 	function steerForHead(ctx: ExtensionContext, head: string, reason: string, fact: string, runSignal?: AbortSignal) {
 		routeDecision(ctx, { action: "steer", reason, message: `automatic notice: ${fact}` }, head, runSignal);
+	}
+
+	// Tells the main assistant without starting a turn (safe in
+	// before_agent_start), but never before pi's first system message:
+	// docs/providers.md#anthropic.
+	// Returns whether the note went out.
+	function noteForHead(ctx: ExtensionContext, head: string, reason: string, fact: string, runSignal?: AbortSignal): boolean {
+		const recordsTools = ctx.sessionManager.getBranch().some((entry) => entry.type === "message" && entry.message.role === "system");
+		if (!recordsTools) return false;
+		routeDecision(ctx, { action: "note", reason, message: `automatic notice: ${fact}` }, head, runSignal);
+		return true;
 	}
 
 	function deliveryGateway(ctx: ExtensionContext): DeliveryGateway {
@@ -1069,7 +1143,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			dropHeldOneOffs(ctx, "its run was cancelled");
 			return;
 		}
-		const seed = (head: string, instruction: string, tools: string[] | undefined, oneOff: boolean) => {
+		const seed = (head: string, instruction: string, tools: string[], oneOff: boolean) => {
 			if (oneOff) unfinishedOneOffs.add(head);
 			scheduler.schedule({
 				endsWhen: oneOff ? undefined : registry.endsWhen(head),
@@ -1089,11 +1163,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 		if (includeActive) {
 			for (const name of registry.activeSet()) {
-				seed(name, registry.get(name)?.prompt ?? "", registry.headTools(name), false);
+				seed(name, registry.get(name)?.prompt ?? "", effectiveHeadTools(registry.headTools(name)), false);
 			}
 		}
 		for (const [name, oneOff] of heldOneOffs) {
-			seed(name, oneOff.instruction, oneOff.tools, true);
+			seed(name, oneOff.instruction, effectiveHeadTools(oneOff.tools), true);
 		}
 		heldOneOffs.clear();
 	}
@@ -1158,9 +1232,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				codexShareLostReason ??= classifyCodexShareLoss(driverTransport(ctx));
 			}
 		}
-		// Pick up head edits made since the last run (the in-session tuning loop).
-		registry.discover(registryGateway(ctx), ctx.cwd);
+		checkHeadsBeforeRun(ctx);
 	});
+
+	// Picks up head edits made since the last run (the in-session tuning loop),
+	// then turns off heads that can't use their tools. Covers autostart,
+	// restored sessions and tree navigation, which change no active set.
+	function checkHeadsBeforeRun(ctx: ExtensionContext) {
+		registry.discover(registryGateway(ctx), ctx.cwd);
+		dropHeadsLackingTools(ctx);
+		updateFooter(ctx);
+	}
+
+	// Before a prompt's first request; agent_start is one request late
+	// (measured). pi skips this hook for runs started by a message that
+	// triggers a turn and for its own continuations, so agent_start checks
+	// again for those. Running twice changes nothing.
+	pi.on("before_agent_start", (_event, ctx) => checkHeadsBeforeRun(ctx));
 
 	pi.on("turn_start", (event) => {
 		currentTurnIndex = event.turnIndex;
@@ -1360,12 +1448,6 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			if (registry.activeSet().some((active) => active in DIAGNOSTIC_PROMPTS)) {
 				throw new Error("A diagnostic head is running and holds the active set. Add heads after it has fired.");
 			}
-			if (source.kind === "inline") {
-				const unusable = (source.tools ?? []).filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool));
-				if (unusable.length > 0) {
-					throw new Error(`Hydra cannot run ${unusable.map((tool) => `"${tool}"`).join(", ")} for a head. Usable tools: ${EXECUTABLE_TOOL_NAMES.join(", ")}.`);
-				}
-			}
 			const plain = source.kind === "file" && lifetime.kind === "ongoing" && lifetime.endsWhen === undefined;
 			if (source.kind === "inline") {
 				if (registry.exists(name)) {
@@ -1376,6 +1458,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			} else if (!registry.get(name) && !plain) {
 				// Diagnostic heads take over the whole set; they have no lifetime.
 				throw new Error(`"${name}" is a diagnostic head and cannot take a lifetime or ends_when.`);
+			}
+			// Discovery above may have just reread a file that now lists a tool
+			// the main assistant lacks. An active head is turned off then. The
+			// error tells the main assistant, so no note on top.
+			const mismatch = toolMismatchFor(ctx, source.kind === "inline" ? source.tools : registry.headTools(name));
+			if (mismatch) {
+				const active = registry.isActive(name);
+				const message = headToolBlockMessage(name, mismatch, active ? "is off" : "can't be added");
+				if (active) {
+					registry.removeHead(gateway, name);
+					notifyUser(ctx, `hydra: ${message}`, "warning");
+				}
+				throw new Error(message);
 			}
 			if (registry.isActive(name)) {
 				if (!plain) {
@@ -1441,7 +1536,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			};
 		}
 
-		if (job.tools !== undefined && !job.tools.includes("hydra")) {
+		if (!job.tools.includes("hydra")) {
 			throw new Error(`Head "${job.head}" is not allowed to manage heads`);
 		}
 		const result = executeHeadManagement(params, ctx, job.runSignal);
@@ -1528,7 +1623,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						item.source === "project" ? "project" : item.source === "call" ? "no file" : null,
 						registry.endsWhen(item.name) !== undefined ? `until ${registry.endsWhen(item.name)}` : null,
 						item.autostart ? "autostart" : null,
-						headActs(item.tools) ? "acting" : null,
+						headActs(item.tools) ? "tools" : null,
 					].filter((tag): tag is string => tag !== null);
 					const row =
 						(i === cursor ? theme.fg("accent", "❯ ") : "  ") +

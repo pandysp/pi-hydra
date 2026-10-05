@@ -34,6 +34,8 @@ async function observation(
 	const pi = {
 		registerFlag() {},
 		getFlag: (name: string) => name === "hydra-heads" ? "long-check" : undefined,
+		getActiveTools: () => ["read", "bash", "edit", "write", "grep", "find", "ls", "hydra"],
+		getSettings: () => ({}),
 		registerCommand: (name: string, command: Command) => commands.set(name, command),
 		registerMessageRenderer() {},
 		registerTool() {},

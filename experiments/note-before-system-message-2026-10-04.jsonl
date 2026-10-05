@@ -1,0 +1,5 @@
+{"run":"addgrep","hydraNoteBeforeFirstSystemMessage":"false","toolChangeBeforeReload":"+grep","requests":[{"cacheRead":3410,"cacheWrite":13631,"input":4},{"cacheRead":17041,"cacheWrite":929,"input":2}]}
+{"run":"nochange","hydraNoteBeforeFirstSystemMessage":"false","toolChangeBeforeReload":"none","requests":[{"cacheRead":3527,"cacheWrite":13513,"input":4},{"cacheRead":17040,"cacheWrite":12,"input":4}]}
+{"run":"noteonly","hydraNoteBeforeFirstSystemMessage":"true","toolChangeBeforeReload":"none","requests":[{"cacheRead":3434,"cacheWrite":13716,"input":2},{"cacheRead":17150,"cacheWrite":187,"input":4}]}
+{"run":"note-addgrep","hydraNoteBeforeFirstSystemMessage":"true","toolChangeBeforeReload":"+grep","requests":[{"cacheRead":3434,"cacheWrite":13718,"input":2},{"cacheRead":3849,"cacheWrite":14189,"input":2},{"cacheRead":18040,"cacheWrite":78,"input":4}]}
+{"run":"note-addgrep-fixed","hydraNoteBeforeFirstSystemMessage":"guarded","toolChangeBeforeReload":"+grep","requests":[{"cacheRead":3527,"cacheWrite":13520,"input":4},{"cacheRead":17047,"cacheWrite":929,"input":2}]}

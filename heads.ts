@@ -13,7 +13,7 @@
  * the gateway, built per call in index.ts.
  */
 import { dirname, join } from "node:path";
-import { EXECUTABLE_TOOL_NAMES, parseHeadFile, sanitizeHeadSet, savedAddedHeads, savedHeadList } from "./utils.ts";
+import { parseHeadFile, sanitizeHeadSet, savedAddedHeads, savedHeadList } from "./utils.ts";
 import type { AddedHead, HeadDefinition, HydraConfig } from "./utils.ts";
 
 // Diagnostic heads force a fixed decision so the delivery pipeline can be
@@ -37,8 +37,8 @@ export interface HeadRegistryGateway {
 	announce(message: string): void;
 	/** Warning/error with the headless stderr fallback. */
 	notify(message: string, level: "warning" | "error"): void;
-	/** Tells the main assistant on a head's behalf, as that head's steer would. */
-	steer(head: string, message: string): void;
+	/** Tells the main assistant on a head's behalf, without starting a turn. */
+	note(head: string, message: string): void;
 	/** Deduped warning; the dedup set is shared with the engine in index.ts. */
 	warnOnce(message: string): void;
 	persistConfig(config: HydraConfig): void;
@@ -125,14 +125,6 @@ export class HeadRegistry {
 				gateway.warnOnce(`hydra: duplicate head "${head.name}" in ${dir}; keeping the first file`);
 				continue;
 			}
-			// An entry outside EXECUTABLE_TOOL_NAMES can never run, so discovery
-			// warns about it; the head still loads, since the rest of its list works.
-			const unexecutable = head.tools?.filter((tool) => !EXECUTABLE_TOOL_NAMES.includes(tool)) ?? [];
-			if (unexecutable.length > 0) {
-				gateway.warnOnce(
-					`hydra: head "${head.name}" lists tools hydra cannot execute: ${unexecutable.join(", ")} (valid: ${EXECUTABLE_TOOL_NAMES.join(", ")})`,
-				);
-			}
 			loaded.set(head.name, { ...head, source });
 		}
 		return loaded;
@@ -189,7 +181,7 @@ export class HeadRegistry {
 			this.activeHeads = pruned;
 			gateway.onActiveSetChanged();
 			for (const name of dropped) {
-				gateway.steer(name, "this head's file is missing or invalid, so it is no longer active.");
+				gateway.note(name, "this head's file is missing or invalid, so it is no longer active.");
 			}
 		}
 	}
@@ -376,6 +368,7 @@ export class HeadRegistry {
 		if (head in DIAGNOSTIC_PROMPTS && this.activeHeads.length === 1 && this.activeHeads[0] === head) {
 			this.activeHeads = this.productHeads;
 			gateway.persistConfig(this.savedConfig());
+			gateway.onActiveSetChanged();
 			gateway.announce(
 				`hydra: diagnostic head "${head}" fired once; reverting to ${this.productHeads.join("+") || "no heads"}`,
 			);

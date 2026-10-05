@@ -323,3 +323,19 @@ SPLIT_HANDOFF_LOG=/tmp/x.jsonl node experiments/split-handoff.mjs cell chatgpt g
 Live pi sessions on the local [pi-ds4](https://github.com/mitsuhiko/pi-ds4) provider (DeepSeek V4 Flash Q2 on an Apple M4 Max), driven through pi's own interface with `/hydra-debug` on: the same three-step coding task each run, navigator and simplifier heads without tools, and in the live runs one head that reads files. A/B runs switched the handoff form for heads without tools, each starting with an empty ds4 disk cache; live runs compared every head request against the main assistant's request as in [Cache parity](../docs/providers.md#cache-parity). GPT-6 Luna sessions on Codex and ChatGPT sign-in ran the same way.
 
 `ds4-heads-2026-10-02.jsonl` holds the runs behind [providers.md](../docs/providers.md#ds4): one `run` line per run (form, cache at start, cache-parity result) followed by its `check` lines, Hydra's per-check records without the heads' answers.
+
+## Tools a head knows only by name (October 2026)
+
+Live pi sessions (pi 1.0.1, all extensions loaded) with one head, `finder`, whose file had `tools: read, grep, find, ls` and the job to find which file under `src/` contains `ZEBRA-42`. The main assistant either had pi's default tools, so no `grep`, `find` or `ls`, or was started with `--tools` including them. Two runs per cell, on Opus 5.5 and gpt-6-astra.
+
+`name-only-tools-2026-10-04.jsonl` holds the head's check from each run: the main assistant's tools, the tools the head used, and its answer. Without the tools, the head never called them and gave up (4/4). With them, it used `grep` and found the file (4/4). In the gpt-6-astra runs with the tools, `--tools` also left out `hydra`, so the head could not finish its check and Hydra recorded it as a noop; its answer still names the file. [heads.md](../docs/heads.md#tools) reports the result.
+
+## A note before pi's first system message (October 2026)
+
+Interactive pi sessions on Opus 5.5 (pi 1.0.1, all extensions loaded, driven through tmux): a first prompt, then `/reload`, then a second prompt. The runs vary two things: whether Hydra's "head is off" note sat before pi's first system message (a head blocked at session start), and whether `"+grep"` was added to `defaultTools` before `/reload`. `note-addgrep-fixed` is the same as `note-addgrep` with Hydra holding back that note.
+
+`note-before-system-message-2026-10-04.jsonl` holds the main assistant's cache usage per request for each run. Only the note followed by the tool change lost the cache on the second request; [providers.md](../docs/providers.md#anthropic) reports the result.
+
+## A changed hydra tool description (October 2026)
+
+Two pi sessions on Opus 5.5 (pi 1.0.1, all extensions loaded): one prompt with Hydra from `main`, then `--continue` right away with either this branch, whose `hydra` tool description changed, or `main` again. `hydra-description-change-2026-10-04.jsonl` holds the main assistant's cache usage per request. The changed description cost a cache write of about 1,450 tokens on the resumed request, not a cache miss; [providers.md](../docs/providers.md#anthropic) reports the result.

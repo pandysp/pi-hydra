@@ -53,11 +53,11 @@
       ],
       "doc": {
         "path": "docs/heads.md",
-        "fragment": "tools-acting-heads"
+        "fragment": "tools"
       },
       "baseline": {
         "codeHash": "8911028dfd085e04a5d40d519930c0296fcbdf0daf3ebf9f24f03f5255c5dc64",
-        "docHash": "8370f74e130bcc43a9b45efb039cfe1bbc129c4dfed1afeddbea13be322ed89a"
+        "docHash": "a5ab2bdb3f1c62a096c13462c25790fca1d679ee5ab5641eec048c491d8ab98e"
       }
     },
     {
@@ -89,7 +89,7 @@
         "fragment": "prompt-construction"
       },
       "baseline": {
-        "codeHash": "37e3ce98d32bda7c5cc2ff593a8a9664cd16a3616041c5b3694265429f89c9a8",
+        "codeHash": "17413589ea886264d43c00c3eb08cd47bc74ae91676e9f3d55da159d6eeb4e75",
         "docHash": "f26b5ea50d8f55b8a132ccc6bf259852b28b7b0aa2091605756f817e02022c20"
       }
     },
@@ -108,7 +108,7 @@
       },
       "baseline": {
         "codeHash": "4bcdfd1a9e388d4ab691a48755257abe75ba14a064a8873575f431b78e516331",
-        "docHash": "3842490b0c71a8387e26efa0bd02ab52e0c0f4f55bf9600ea03178b4a2a94731"
+        "docHash": "23a26e124ed70e958cdb6a2d26effdd7edd8a829a3c3d898b3e531833f05b006"
       }
     },
     {
@@ -145,8 +145,8 @@
         "fragment": "delivery"
       },
       "baseline": {
-        "codeHash": "768022b054cfec915735cac342c63144e98ce6f9df3b4505ec45cf181c3cf5a7",
-        "docHash": "717952bbdaadf0e544734d82d7d1c89df2e6a21aef74cbdc4639077f9eb62ada"
+        "codeHash": "47c7354f3668d99977c92160bfa0a8cbb3b8a1a4db189e2624198c902624298e",
+        "docHash": "3637b80ce9e31ec68dc7568d44475d4717ef0b4424a6cae7dd240c00615873d3"
       }
     },
     {
@@ -168,8 +168,8 @@
         "fragment": "heads-are-files"
       },
       "baseline": {
-        "codeHash": "435fa542a665d3a386c98e051e963d93e21b8b5545baaaae565f66510c392a21",
-        "docHash": "a2c8bafb92df9a663898c6f797c0f18beb015f36c726b679379c435bed8a68ee"
+        "codeHash": "2780d33ac6c0f79cdfbcb41d9b6dcad390558d9f2bdfb602abddb55fc1c4e5b2",
+        "docHash": "7ab4b0ebe68280a6ac825a7ecdc2672f1562e4d3fdd22fcb432fdbe7394f1536"
       }
     },
     {

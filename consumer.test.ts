@@ -116,7 +116,7 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	});
 	await loader.reload();
 	const sm = SessionManager.create(cwd, join(cwd, "sessions"));
-	const { session } = await createAgentSession({ cwd, agentDir, modelRuntime, model, settingsManager, sessionManager: sm, resourceLoader: loader, tools: ["checkpoint", "write", "hydra"], thinkingLevel });
+	const { session } = await createAgentSession({ cwd, agentDir, modelRuntime, model, settingsManager, sessionManager: sm, resourceLoader: loader, tools: ["checkpoint", "read", "write", "hydra"], thinkingLevel });
 	const errors: ExtensionError[] = [];
 	await session.bindExtensions({ onError: error => errors.push(error) });
 	expect(errors).toEqual([]);
@@ -416,6 +416,46 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it("a head whose tools the main assistant lacks is off before the first request; the user is warned, the main assistant isn't told yet", async () => {
+		// The main assistant here has checkpoint, read, write and hydra; grep is off.
+		const h = await consumer(false, undefined, "read, grep");
+		await h.session.prompt("Finish now.");
+		await h.session.waitForIdle();
+		const off = "head critic is off: the main assistant doesn't have grep.";
+		expect(h.observerPayloads).toHaveLength(0);
+		expect(h.driverPayloads).toHaveLength(1);
+		expect(saved(h, "Finish now.")).toHaveLength(1);
+		// No note before pi's first system message, or a later tool change costs a cache miss.
+		expect(h.entries("hydra-feedback")).toHaveLength(0);
+		expect(vi.mocked(process.stderr.write).mock.calls.some(([written]) => String(written).includes(`hydra: ${off}`))).toBe(true);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a head turned off later in the session is noted in the next request, without a run of its own", async () => {
+		const h = await consumer(false, [{ type: "text", text: '{"findings":[]}' }], "read");
+		await h.session.prompt("Finish now.");
+		await vi.waitFor(() => expect(h.entries("hydra-call")).toHaveLength(1));
+		await h.session.waitForIdle();
+		writeFileSync(join(h.cwd, ".pi", "hydra", "critic.md"), "---\nname: critic\ndescription: Fixture\ntools: read, grep\nautostart: true\n---\nCheck the visible work.\n");
+		await h.session.prompt("Next task.");
+		await h.session.waitForIdle();
+		const off = "[pi-hydra critic] automatic notice: head critic is off: the main assistant doesn't have grep.";
+		expect(h.driverPayloads).toHaveLength(2);
+		expect(seenIn(h.driverPayloads[1], off)).toHaveLength(1);
+		expect(saved(h, "Next task.")).toHaveLength(1);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("a head file deleted before the first prompt is reported to the user", async () => {
+		const h = await consumer(false, undefined, "read");
+		rmSync(join(h.cwd, ".pi", "hydra", "critic.md"));
+		await h.session.prompt("Finish now.");
+		await h.session.waitForIdle();
+		expect(h.observerPayloads).toHaveLength(0);
+		expect(vi.mocked(process.stderr.write).mock.calls.some(([written]) => String(written).includes("hydra: head critic: this head's file is missing or invalid"))).toBe(true);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("a vanished active head is saved and read within the next run", async () => {
 		const h = await consumer(false, [{ type: "text", text: '{"findings":[]}' }]);
 		await h.session.prompt("Finish now.");
@@ -426,7 +466,8 @@ describe("Pi consumer context and session", () => {
 		await h.session.waitForIdle();
 		const gone = "automatic notice: this head's file is missing or invalid";
 		expect(h.driverPayloads.slice(1).some(p => seenIn(p, gone).length === 1)).toBe(true);
-		expect(saved(h, gone)).toHaveLength(1);
+		// A note, not a user message: it starts no run of its own.
+		expect(h.entries("hydra-feedback").filter(e => JSON.stringify(e).includes(gone))).toHaveLength(1);
 		expect(h.errors).toEqual([]);
 	});
 });
