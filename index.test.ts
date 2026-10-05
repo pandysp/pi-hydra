@@ -496,6 +496,7 @@ describe("observation loop stops", () => {
 		await new Promise(resolve => setTimeout(resolve, 50));
 		expect(h.transport).not.toHaveBeenCalled();
 		expect(h.notify).toHaveBeenCalledWith('hydra: one-off head "single" did not start: the model was switched', "warning");
+		expect(vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1]).toBe("hydra: no heads | (no obs yet)");
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {
@@ -630,6 +631,21 @@ describe("heads with an end: once and ends_when", () => {
 		expect(JSON.stringify(h.configs())).not.toContain("cache-check");
 	});
 
+	it("the footer shows a one-off head from the add until its check is done", async () => {
+		const h = await harness({ heads: [] });
+		const footer = () => vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1];
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "reviewer", ends_when: "the commit lands", instructions: "Review.", tools: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		expect(footer()).toBe("hydra: reviewer+cache-check (once) | (no obs yet)");
+		let finish!: (message: AssistantMessage) => void;
+		await h.observe(noop(), new Promise<AssistantMessage>((resolve) => { finish = resolve; }));
+		await h.waitCalls(1);
+		expect(footer()).toContain("hydra:reviewer+cache-check (once) ");
+		finish(noop());
+		await h.waitCalls(2);
+		await vi.waitFor(() => expect(footer()).toMatch(/^hydra:reviewer hit .*\(2 obs\)$/));
+	});
+
 	it("a one-off head runs on the first response of a run too", async () => {
 		const h = await harness({ heads: [] });
 		await h.emit({ type: "agent_end", messages: [] });
@@ -702,6 +718,7 @@ describe("heads with an end: once and ends_when", () => {
 		(h.ctx as { signal?: AbortSignal }).signal = AbortSignal.abort();
 		await h.observe();
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('one-off head cache-check did not start: its run was cancelled'), "warning");
+		expect(vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1]).toBe("hydra: no heads | (no obs yet)");
 		expect(h.transport).not.toHaveBeenCalled();
 	});
 

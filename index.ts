@@ -412,6 +412,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				: null;
 			if (blocked !== null && seed.oneOff) {
 				unfinishedOneOffs.delete(seed.head);
+				updateFooter(seed.ctx);
 				notifyUser(seed.ctx, `hydra: one-off head "${seed.head}" did not start: ${blocked}`, "warning");
 			}
 			return blocked === null && (seed.oneOff || registry.isActive(seed.head));
@@ -429,7 +430,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			try {
 				await observe(job, signal);
 			} finally {
-				if (seed.oneOff) unfinishedOneOffs.delete(seed.head);
+				if (seed.oneOff) {
+					unfinishedOneOffs.delete(seed.head);
+					updateFooter(seed.ctx);
+				}
 			}
 		},
 		onError: (seed, error) => notifyUser(seed.ctx, `hydra: observe error: ${errorText(error)}`, "error"),
@@ -478,14 +482,18 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		if (heldOneOffs.size === 0) return;
 		notifyUser(ctx, `hydra: one-off ${heldOneOffs.size === 1 ? "head" : "heads"} ${[...heldOneOffs.keys()].join(", ")} did not start: ${why}`, "warning");
 		heldOneOffs.clear();
+		updateFooter(ctx);
 	}
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
 	function updateFooter(ctx: ExtensionContext) {
-		const activeHeads = registry.activeSet();
-		const headLabel = activeHeads.length > 0 ? activeHeads.join("+") : "no heads";
+		// A one-off head counts from the moment it is asked for until its check
+		// is finished or skipped.
+		const oneOffs = [...heldOneOffs.keys(), ...unfinishedOneOffs].map((name) => `${name} (once)`);
+		const heads = [...registry.activeSet(), ...oneOffs];
+		const headLabel = heads.length > 0 ? heads.join("+") : "no heads";
 		const calls = stats.all();
 		if (calls.length === 0) {
 			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
@@ -1514,6 +1522,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						? { instruction: source.instructions, tools: source.tools }
 						: { instruction: head?.prompt ?? "", tools: registry.headTools(name) },
 				);
+				updateFooter(ctx);
 				return reply(`${receipt}\nIt checks once, starting with the next response; its feedback arrives later. Observing with: ${activeLabel()}.`, true);
 			}
 			registry.addHead(gateway, name, {

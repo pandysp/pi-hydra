@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Pi's background cache refresh no longer costs the run-end check. Pi keeps the prompt cache warm by replaying the last request, and Hydra used to take that replay for the request to review; when the refresh came after the final answer, no run-end check ran. Pi's catalog refreshes only Anthropic models; if the model in use gets a cache lifetime on another route, Hydra now warns once, since it cannot recognize that refresh.
+- The footer now lists a one-off head (`lifetime: "once"`) as `name (once)`, from the moment it is added until its check has finished or was skipped. Before, it never appeared there, so it was easy to miss that a check was still coming.
 
 ## 0.1.2
 
