@@ -522,6 +522,8 @@ describe("Pi consumer context and session", () => {
 
 describe("Pi's cache refresh", () => {
 	const noFindings: AssistantMessage["content"] = [{ type: "text", text: '{"findings":[]}' }];
+	// Pi caps the output at the room left in the context window, down to one token.
+	const nearlyFull = (api: ExtensionAPI) => api.on("before_provider_request", (event) => ({ ...(event.payload as object), max_tokens: 1 }));
 	// Pi recorded at least one refresh, each one went out with the one-token cap
 	// Hydra recognizes refreshes by, and the run-end check still reviewed the final answer.
 	function expectRefreshedAndReviewed(h: Awaited<ReturnType<typeof consumer>>) {
@@ -560,8 +562,6 @@ describe("Pi's cache refresh", () => {
 	});
 
 	it("a real request capped at one token, as Pi does near a full context, is still reviewed", async () => {
-		// Pi caps the output at the room left in the context window, down to one token.
-		const nearlyFull = (api: ExtensionAPI) => api.on("before_provider_request", (event) => ({ ...(event.payload as object), max_tokens: 1 }));
 		const h = await consumer(true, noFindings, "[]", "fixture-key", "off", nearlyFull);
 		const running = h.session.prompt("Work through checkpoints.");
 		await h.entered.promise;
@@ -573,7 +573,6 @@ describe("Pi's cache refresh", () => {
 	});
 
 	it("a retry with a nearly full context, which repeats the request at one token, is still reviewed", async () => {
-		const nearlyFull = (api: ExtensionAPI) => api.on("before_provider_request", (event) => ({ ...(event.payload as object), max_tokens: 1 }));
 		const h = await consumer(false, noFindings, "[]", "fixture-key", "off", nearlyFull, { failFirstFinalAnswer: true });
 		await h.session.prompt("Finish now.");
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
