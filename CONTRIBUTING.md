@@ -36,7 +36,7 @@ npm run check    # types, module state, links, doc claims
 npm test
 ```
 
-- Back every claim about cache behavior with a measurement in [`docs/providers.md`](docs/providers.md).
+- Back every claim about cache behavior with a measurement in [`docs/providers.md`](docs/providers.md): the date, model, setup and numbers. Don't commit raw data or measurement scripts; the numbers in the docs are the record.
 - If you change how Hydra replays requests or places cache markers, run the [verification procedures](docs/providers.md#verification-procedures) and put the numbers in the pull request.
 - If `npm run check` reports a doc claim, review the code and the doc section it ties together, then update only that claim: `npm run update:doc-claims -- --reviewed --claim=<id>`.
 - Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed option fails without an error.
@@ -69,7 +69,6 @@ You don't need the `openai-cache-clean` branch. It holds earlier research and it
 
 - Every root `.ts` file except tests ships to npm (`files` in `package.json`), so keep experiments and retired code out of them.
 - Commit generated files only when a test or manifest uses them.
-- Keep evidence that docs link to in the repository, not in scratch folders that get deleted.
 
 ## Releasing
 

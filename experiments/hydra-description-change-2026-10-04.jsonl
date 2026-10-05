@@ -1,2 +1,0 @@
-{"run":"switch","secondRun":"this branch (new hydra description)","requests":[{"cacheRead":3527,"cacheWrite":13595,"input":4,"cost":0.1095414},{"cacheRead":17122,"cacheWrite":1458,"input":2,"cost":0.0151564}]}
-{"run":"control","secondRun":"main (unchanged)","requests":[{"cacheRead":17032,"cacheWrite":90,"input":4,"cost":0.0042024},{"cacheRead":17122,"cacheWrite":12,"input":4,"cost":0.0035964000000000005}]}
