@@ -27,7 +27,7 @@ export const hydraToolParameters = Type.Object(
 		lifetime: Type.Optional(
 			StringEnum(HEAD_LIFETIMES, {
 				description:
-					'manage_heads add only. "ongoing" (default): the head checks after each response of the main assistant until it is removed or its ends_when is met. "once": one check, which starts with your next response and sees the conversation up to this call; it runs in the background, then the head is gone and nothing is saved. Its feedback reaches you later, like any head\'s.',
+					'manage_heads add only. "ongoing" (default): the head checks after each response of the main assistant until it is removed or its ends_when is met. "once": one check, which starts with your next response and sees the conversation up to this call; it runs in the background, then the head is gone and nothing is saved. Its feedback reaches you later, and if it sends none, Hydra tells you how the check ended.',
 			}),
 		),
 		ends_when: Type.Optional(

@@ -3,7 +3,8 @@
 ## Unreleased
 
 - Pi's background cache refresh no longer costs the run-end check. Pi keeps the prompt cache warm by replaying the last request, and Hydra used to take that replay for the request to review; when the refresh came after the final answer, no run-end check ran. Pi's catalog refreshes only Anthropic models; if the model in use gets a cache lifetime on another route, Hydra now warns once, since it cannot recognize that refresh.
-- The footer now lists a one-off head (`lifetime: "once"`) as `name (once)`, from the moment it is added until its check has finished or was skipped. Before, it never appeared there, so it was easy to miss that a check was still coming.
+- The footer, `/hydra-heads` and the `hydra` tool's replies now list a one-off head (`lifetime: "once"`) as `name (once)`, from the moment it is added until its check has finished or was skipped. Before, it never appeared there, so it was easy to miss that a check was still coming.
+- When a one-off head ends without a message of its own, Hydra now tells the main assistant: the check found nothing, failed, stopped early or did not start. Before, a head that found nothing said nothing, and a main assistant that stopped to wait for it never heard back. See [Heads for a moment](docs/heads.md#heads-for-a-moment).
 
 ## 0.1.2
 

@@ -414,6 +414,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				unfinishedOneOffs.delete(seed.head);
 				updateFooter(seed.ctx);
 				notifyUser(seed.ctx, `hydra: one-off head "${seed.head}" did not start: ${blocked}`, "warning");
+				tellOneOffEnded(seed.ctx, seed.head, seed.branchGeneration, seed.runSignal, `its one check did not start: ${blocked}.`);
 			}
 			return blocked === null && (seed.oneOff || registry.isActive(seed.head));
 		},
@@ -427,12 +428,17 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				...seed,
 				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.endsWhen),
 			};
+			let result: CheckResult | undefined;
 			try {
-				await observe(job, signal);
+				result = await observe(job, signal);
 			} finally {
 				if (seed.oneOff) {
 					unfinishedOneOffs.delete(seed.head);
 					updateFooter(seed.ctx);
+					if (!result?.delivered) {
+						const what = !result ? "stopped before it finished" : result.failure ? `failed (${result.failure})` : "found nothing to report";
+						tellOneOffEnded(seed.ctx, seed.head, seed.branchGeneration, seed.runSignal, `its one check ${what}, so it sent no message.`);
+					}
 				}
 			}
 		},
@@ -476,23 +482,38 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	let branchGeneration = 0;
 	// One-off heads asked for since the last review point. They start with the
 	// next one, so their copy of the conversation includes the request itself.
-	const heldOneOffs = new Map<string, { instruction: string; tools: string[] | undefined }>();
+	const heldOneOffs = new Map<string, { instruction: string; tools: string[] | undefined; branchGeneration: number }>();
 
 	function dropHeldOneOffs(ctx: ExtensionContext, why: string) {
 		if (heldOneOffs.size === 0) return;
 		notifyUser(ctx, `hydra: one-off ${heldOneOffs.size === 1 ? "head" : "heads"} ${[...heldOneOffs.keys()].join(", ")} did not start: ${why}`, "warning");
+		for (const [name, oneOff] of heldOneOffs) {
+			tellOneOffEnded(ctx, name, oneOff.branchGeneration, ctx.signal, `its one check did not start: ${why}.`);
+		}
 		heldOneOffs.clear();
 		updateFooter(ctx);
+	}
+
+	// Adding a one-off promises the main assistant that it hears back, so it
+	// is told when the head ends without a message of its own. Not after a
+	// branch switch: the notice would land in a conversation that never asked
+	// for the head. Nor at session end, with nobody left to read it.
+	function tellOneOffEnded(ctx: ExtensionContext, head: string, generation: number, runSignal: AbortSignal | undefined, fact: string) {
+		if (shuttingDown || generation !== branchGeneration) return;
+		steerForHead(ctx, head, "one-off ended", `${fact} This head is gone.`, runSignal);
+	}
+
+	// Every head that will still check: the active ones, then each one-off
+	// from the moment it is asked for until its check is finished or skipped.
+	function headLabels(): string[] {
+		return [...registry.activeSet(), ...[...heldOneOffs.keys(), ...unfinishedOneOffs].map((name) => `${name} (once)`)];
 	}
 	const warnedProviders = new Set<string>();
 	let debugDir: string | null = null;
 	let debugSeq = 0;
 
 	function updateFooter(ctx: ExtensionContext) {
-		// A one-off head counts from the moment it is asked for until its check
-		// is finished or skipped.
-		const oneOffs = [...heldOneOffs.keys(), ...unfinishedOneOffs].map((name) => `${name} (once)`);
-		const heads = [...registry.activeSet(), ...oneOffs];
+		const heads = headLabels();
 		const headLabel = heads.length > 0 ? heads.join("+") : "no heads";
 		const calls = stats.all();
 		if (calls.length === 0) {
@@ -559,7 +580,14 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		};
 	}
 
-	async function observe(job: Observation, signal: AbortSignal) {
+	// What a finished check sent the main assistant, for a one-off's notice.
+	// Undefined when the check stopped before it was recorded.
+	interface CheckResult {
+		delivered: boolean;
+		failure: string | null;
+	}
+
+	async function observe(job: Observation, signal: AbortSignal): Promise<CheckResult | undefined> {
 		if (signal.aborted) return;
 		const model = job.ctx.model;
 		if (!model) {
@@ -714,6 +742,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const thinking = response.content.flatMap((block) => (block.type === "thinking" ? [block.thinking] : [])).join("\n");
 		let decisions = outcomeDecisions;
 		let done = outcome.done === true;
+		let failure: string | null = errorKind ?? null;
 		if (errorKind) {
 			const detail = parseError ? ` (${clip(parseError, 200)})` : response.errorMessage ? ` (${clip(response.errorMessage, 500)})` : "";
 			const tools = attemptedTools.length > 0 ? `; attempted tools: ${attemptedTools.join(", ")}` : "";
@@ -739,15 +768,13 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// head saying done keeps running; the record shows it said so.
 		const ends = done && !job.oneOff && job.endsWhen !== undefined && registry.endsWhen(job.head) === job.endsWhen;
 		if ((!decisions || decisions.length === 0) && loopStopReason !== null) {
-			decisions = [{
-				action: "noop",
-				reason: loopStopReason === "share-loss" ? "codex cache sharing lost mid-observation" : "head deactivated mid-observation",
-				message: "",
-			}];
+			failure = loopStopReason === "share-loss" ? "codex cache sharing lost mid-observation" : "head deactivated mid-observation";
+			decisions = [{ action: "noop", reason: failure, message: "" }];
 		}
 		if (!decisions || decisions.length === 0) {
 			if (job.completionMode === "enum") throw new Error("classifyJudgeResponse returned neither findings nor an error");
 			const reason = job.completionMode === "json" ? "unparseable Anthropic decision" : "missing completion tool call";
+			failure = reason;
 			// Every miss is shown: each one is a separate observation lost, and a
 			// head that keeps missing is the signal the user needs to see.
 			notifyUser(
@@ -814,6 +841,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			registry.removeHead(registryGateway(job.ctx, job.runSignal), job.head);
 			steerForHead(job.ctx, job.head, "head ended", `done, so this head has ended. It was to end when: ${job.endsWhen}`, job.runSignal);
 		}
+		return { delivered: decisions.some((decision) => decision.action === "steer" || decision.action === "note"), failure };
 	}
 
 	// Judge-only heads make one call and run no tools. Output that will not
@@ -1455,7 +1483,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const receipt = formatHeadManagementReceipt(params.operation, name, params.message, lifetimeLabel);
 		const gateway = registryGateway(ctx, runSignal);
 		registry.discover(gateway, ctx.cwd);
-		const activeLabel = () => (registry.activeSet().length > 0 ? registry.activeSet().join(", ") : "none");
+		const activeLabel = () => headLabels().join(", ") || "none";
 		const reply = (text: string, changed = false) => ({
 			content: [{ type: "text" as const, text }],
 			details: {
@@ -1519,11 +1547,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				heldOneOffs.set(
 					name,
 					source.kind === "inline"
-						? { instruction: source.instructions, tools: source.tools }
-						: { instruction: head?.prompt ?? "", tools: registry.headTools(name) },
+						? { instruction: source.instructions, tools: source.tools, branchGeneration }
+						: { instruction: head?.prompt ?? "", tools: registry.headTools(name), branchGeneration },
 				);
 				updateFooter(ctx);
-				return reply(`${receipt}\nIt checks once, starting with the next response; its feedback arrives later. Observing with: ${activeLabel()}.`, true);
+				return reply(`${receipt}\nIt checks once, starting with the next response. You hear back when it has finished, also when it found nothing. Observing with: ${activeLabel()}.`, true);
 			}
 			registry.addHead(gateway, name, {
 				withoutFile: source.kind === "inline" ? { instructions: source.instructions, tools: source.tools } : undefined,
@@ -1727,7 +1755,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				} else {
 					const roster = registry.list().map((head) => `  ${head.name} (${head.source === "call" ? "no file" : head.source}): ${head.description}`);
 					ctx.ui.notify(
-						[`hydra: active: ${registry.activeSet().join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
+						[`hydra: active: ${headLabels().join(", ") || "none"}`, ...(roster.length > 0 ? ["available:", ...roster] : [`no heads in ${userHeadDir}`])].join("\n"),
 						"info",
 					);
 				}
