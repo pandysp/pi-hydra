@@ -16,10 +16,11 @@ function deferred() {
 
 // A real Anthropic SSE response, consumed by pi-ai's own serializer/parser.
 // No network server: only the fetch boundary is replaced.
-function response(content: AssistantMessage["content"]): Response {
+// largeUsage reports an uncached 10k-token prompt, enough for Pi to decide a cache refresh pays off.
+function response(content: AssistantMessage["content"], largeUsage = false): Response {
 	const events: unknown[] = [{ type: "message_start", message: {
 		id: "msg_fixture", type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null,
-		usage: { input_tokens: 10, output_tokens: 0, cache_read_input_tokens: 90, cache_creation_input_tokens: 0 },
+		usage: { input_tokens: largeUsage ? 10000 : 10, output_tokens: 0, cache_read_input_tokens: largeUsage ? 0 : 90, cache_creation_input_tokens: 0 },
 	} }];
 	for (const [index, block] of content.entries()) {
 		if (block.type === "toolCall") {
@@ -36,6 +37,21 @@ function response(content: AssistantMessage["content"]): Response {
 	return new Response(events.map(event => `event: ${(event as { type: string }).type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 }
 
+// The same response, with its body held back for 1.4 s after the first event.
+async function delayedResponse(content: AssistantMessage["content"], largeUsage = false): Promise<Response> {
+	const encoded = await response(content, largeUsage).text();
+	const split = encoded.indexOf("\n\n") + 2;
+	const encoder = new TextEncoder();
+	return new Response(new ReadableStream({
+		async start(controller) {
+			controller.enqueue(encoder.encode(encoded.slice(0, split)));
+			await new Promise(resolve => setTimeout(resolve, 1400));
+			controller.enqueue(encoder.encode(encoded.slice(split)));
+			controller.close();
+		},
+	}), { headers: { "content-type": "text/event-stream" } });
+}
+
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
 	for (const cleanup of cleanups.splice(0)) await cleanup();
@@ -46,9 +62,17 @@ afterEach(async () => {
 // The default first check steers with this message; later checks find nothing.
 const STEER = "FIXTURE-STEER";
 
+// Turns on Pi's cache refresh, with an 11-second cache lifetime.
+type Warming = {
+	forceRefresh?: boolean; // refresh even when Pi would decide against it
+	largeUsage?: boolean; // prices and usage that make a refresh pay off
+	slowFinalAnswer?: boolean; // the final answer takes 1.4 s to arrive
+	delayRunEnd?: boolean; // the run ends 1.4 s after each turn
+};
+
 // busy: the driver calls the checkpoint tool before its final answer, twice
 // for true or the given number of times; the last call holds until released.
-async function consumer(busy: boolean | number, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void) {
+async function consumer(busy: boolean | number, firstObserverResponse?: AssistantMessage["content"], headTools = "[]", apiKey = "fixture-key", thinkingLevel: "off" | "medium" = "off", beforeHydra?: (api: ExtensionAPI) => void, warming?: Warming) {
 	const cwd = mkdtempSync(join(process.cwd(), ".consumer-test-"));
 	const agentDir = join(cwd, "agent");
 	mkdirSync(join(cwd, ".pi", "hydra"), { recursive: true });
@@ -58,7 +82,7 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	initTheme("dark", false);
 	// Keep Hydra's headless warnings out of the test output.
 	vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-	const settingsManager = SettingsManager.inMemory({ transport: "websocket", compaction: { enabled: false }, retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ transport: "websocket", ...(warming ? { cacheWarming: "streaming" as const } : {}), compaction: { enabled: false }, retry: { enabled: false } });
 	const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(agentDir, "models-store.json"), allowModelNetwork: false });
 	const checkpointCalls = busy === true ? 2 : busy || 0;
 	const driverPayloads: any[] = [];
@@ -80,15 +104,22 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			return response([{ type: "text", text: '{"findings":[]}' }]);
 		}
 		driverPayloads.push(payload);
-		if (driverPayloads.length <= checkpointCalls) return response([{ type: "toolCall", id: `checkpoint-${driverPayloads.length}`, name: "checkpoint", arguments: {} }]);
+		const largeUsage = warming?.largeUsage;
+		// A cache refresh replays the last request; Pi discards its answer.
+		if (payload.max_tokens === 1) return response([{ type: "text", text: "." }], largeUsage);
+		const turn = driverPayloads.filter(item => item.max_tokens !== 1).length;
+		if (turn <= checkpointCalls) return response([{ type: "toolCall", id: `checkpoint-${turn}`, name: "checkpoint", arguments: {} }], largeUsage);
 		if (pauseFinalDriver) await finalDriver.promise;
-		return response([{ type: "text", text: "Driver done." }]);
+		const answer: AssistantMessage["content"] = [{ type: "text", text: "Driver done." }];
+		return warming?.slowFinalAnswer ? delayedResponse(answer, largeUsage) : response(answer, largeUsage);
 	});
 	modelRuntime.registerProvider("anthropic", {
 		api: "anthropic-messages", apiKey, baseUrl: "https://fixture.invalid",
 		streamSimple: (model, context, options) => streamSimple(model, context, { ...options, fetch: fetchFixture }),
 		models: [{
-			id: "fixture", name: "Fixture", input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000, maxTokens: 4096,
+			id: "fixture", name: "Fixture", input: ["text"], contextWindow: 200000, maxTokens: 4096,
+			cost: warming?.largeUsage ? { input: 12, output: 12, cacheRead: 1, cacheWrite: 15 } : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			...(warming ? { promptCache: { short: 11, long: 11 } } : {}),
 			// A thinking driver gets current Claude's request shape: the effort travels in a system message at the end.
 			...(thinkingLevel === "off" ? { reasoning: false } : { reasoning: true, compat: { supportsMidConvoEffort: true, forceAdaptiveThinking: true } }),
 		}],
@@ -105,6 +136,8 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			vi.spyOn(pi, "sendUserMessage");
 			beforeHydra?.(api);
 			hydraExtension(pi);
+			if (warming?.forceRefresh) api.on("cache_warming_decision", () => ({ action: "warm" }));
+			if (warming?.delayRunEnd) api.on("turn_end", async () => { await new Promise(resolve => setTimeout(resolve, 1400)); });
 			api.registerTool({ name: "checkpoint", label: "Checkpoint", description: "Test checkpoint", parameters: Type.Object({}),
 				execute: async () => {
 					checkpoints++;
@@ -469,5 +502,54 @@ describe("Pi consumer context and session", () => {
 		// A note, not a user message: it starts no run of its own.
 		expect(h.entries("hydra-feedback").filter(e => JSON.stringify(e).includes(gone))).toHaveLength(1);
 		expect(h.errors).toEqual([]);
+	});
+});
+
+describe("Pi's cache refresh", () => {
+	const noFindings: AssistantMessage["content"] = [{ type: "text", text: '{"findings":[]}' }];
+	// Pi recorded at least one refresh, each one went out with the one-token cap
+	// Hydra recognizes refreshes by, and the run-end check still reviewed the final answer.
+	function expectRefreshedAndReviewed(h: Awaited<ReturnType<typeof consumer>>) {
+		const refreshes = h.sm.getBranch().filter(e => e.type === "usage" && e.kind === "cache_warm");
+		expect(refreshes.length).toBeGreaterThan(0);
+		expect(h.driverPayloads.filter(payload => payload.max_tokens === 1)).toHaveLength(refreshes.length);
+		expect(h.entries("hydra-call").map(entry => (entry as { data: { kind?: string } }).data.kind)).toContain("run-end");
+		const head = h.observerPayloads.at(-1);
+		expect(head.max_tokens).toBe(4096);
+		const lastAnswer = head.messages.filter((message: any) => message.role === "assistant").at(-1);
+		expect(JSON.stringify(lastAnswer.content)).toContain("Driver done.");
+	}
+
+	it("a refresh during a slow final answer keeps the run-end check", async () => {
+		const h = await consumer(false, noFindings, "[]", "fixture-key", "off", undefined, { forceRefresh: true, slowFinalAnswer: true });
+		await h.session.prompt("Finish now.");
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expectRefreshedAndReviewed(h);
+	});
+
+	it("a refresh Pi chooses during a long run keeps the run-end check", async () => {
+		const h = await consumer(true, noFindings, "[]", "fixture-key", "off", undefined, { largeUsage: true, slowFinalAnswer: true });
+		const running = h.session.prompt("Finish now.");
+		await h.entered.promise;
+		h.hold.resolve();
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expectRefreshedAndReviewed(h);
+	});
+
+	it("a refresh after the final answer, before the run ends, keeps the run-end check", async () => {
+		const h = await consumer(false, noFindings, "[]", "fixture-key", "off", undefined, { largeUsage: true, delayRunEnd: true });
+		await h.session.prompt("Finish now.");
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expectRefreshedAndReviewed(h);
+	});
+
+	it("Pi's catalog gives a cache lifetime only to Anthropic models, the ones whose refresh Hydra recognizes", async () => {
+		const agentDir = mkdtempSync(join(process.cwd(), ".consumer-test-"));
+		cleanups.push(async () => rmSync(agentDir, { recursive: true, force: true }));
+		const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(agentDir, "models-store.json"), allowModelNetwork: false });
+		const refreshed = modelRuntime.getAllModels().filter(model => "promptCache" in model && model.promptCache && Object.keys(model.promptCache).length > 0);
+		expect(refreshed.length).toBeGreaterThan(0);
+		expect(new Set(refreshed.map(model => (model as Model<"anthropic-messages">).api))).toEqual(new Set(["anthropic-messages"]));
 	});
 });

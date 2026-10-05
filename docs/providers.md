@@ -41,6 +41,8 @@ On both OpenAI routes, the merge is marker-free and implicit caching controls th
 
 M is selected by identity: hydra records the response message's own timestamp at `message_start` and requires an exact match at run end. Wall-clock comparisons lost M nondeterministically in same-millisecond measurements. Errored or aborted final requests correctly attach nothing.
 
+Pi keeps a prompt cache warm by replaying the last request with a one-token cap. Hydra skips these replays (`max_tokens: 1`) when it captures the request to review. Measured on 2026-10-05 with `claude-opus-5-5` and a refresh between the final answer and the end of the run: the run-end check ran in 2 of 2 sessions with the skip, and in 0 of 2 without it. Pi only refreshes models with a cache lifetime, and its catalog gave one only to Anthropic models when checked on 2026-10-05, in Pi 1.0.0's built-in catalog and in a catalog Pi had downloaded. A later catalog update or a custom model with a cache lifetime on another route would be refreshed with a cap Hydra does not recognize; Hydra warns once when the model in use is such a model.
+
 ## Provider payload mechanics
 
 ### Anthropic

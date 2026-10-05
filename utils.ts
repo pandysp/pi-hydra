@@ -900,6 +900,13 @@ export interface AnthropicPayload {
 	[key: string]: unknown;
 }
 
+// Pi refreshes the prompt cache of a model with a cache lifetime, but Hydra
+// recognizes that refresh only in Anthropic's request shape (`max_tokens: 1`).
+export function hasUnrecognizedCacheRefresh(model: { api?: string; promptCache?: Record<string, number | undefined> } | undefined): boolean {
+	const lifetime = Object.values(model?.promptCache ?? {}).some((seconds) => seconds !== undefined);
+	return lifetime && model?.api !== "anthropic-messages";
+}
+
 export function isAnthropicPayload(value: unknown): value is AnthropicPayload {
 	return (
 		typeof value === "object" &&
