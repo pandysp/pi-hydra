@@ -40,7 +40,7 @@ npm test
 - If `npm run check` reports a doc claim, review the code and the doc section it ties together, then update only that claim: `npm run update:doc-claims -- --reviewed --claim=<id>`.
 - Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed option fails without an error.
 - If you change what heads send to the main assistant, also run a live session with a real model, in a session you can stop, and read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or an assistant that takes a head's message for the user's words.
-- To run Pi with the Hydra of the clone or worktree you are in, use `npm run pi` (arguments for Pi go after `--`). It starts Pi in a throwaway folder with this copy of Hydra in place of the installed one and all your other extensions. Don't use `-ne` for this: it also turns off the others, for example the one that signs you in, and the errors that follow point elsewhere.
+- To run Pi with the Hydra of the clone or worktree you are in, use `npm run pi` (arguments for Pi go after `--`). It starts Pi in a throwaway folder with this copy of Hydra in place of the installed one and all your other extensions. Don't use `-ne` for this: it also turns off your other extensions, and the errors that follow can point elsewhere.
 - A change users notice gets an entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request.
 - Keep pure logic in its matching root module and test it there.
 - Match the style of the file you edit.
