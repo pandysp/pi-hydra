@@ -62,8 +62,10 @@ afterEach(async () => {
 // The default first check steers with this message; later checks find nothing.
 const STEER = "FIXTURE-STEER";
 
-// Turns on Pi's cache refresh, with an 11-second cache lifetime.
+// Turns on Pi's cache refresh, with an 11-second cache lifetime, and the timing
+// and failures the refresh tests need.
 type Warming = {
+	failFirstFinalAnswer?: boolean; // the final answer first fails with a retryable error, and Pi retries
 	forceRefresh?: boolean; // refresh even when Pi would decide against it
 	largeUsage?: boolean; // prices and usage that make a refresh pay off
 	slowFinalAnswer?: boolean; // the final answer takes 1.4 s to arrive
@@ -82,7 +84,7 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	initTheme("dark", false);
 	// Keep Hydra's headless warnings out of the test output.
 	vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-	const settingsManager = SettingsManager.inMemory({ transport: "websocket", ...(warming ? { cacheWarming: "streaming" as const } : {}), compaction: { enabled: false }, retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ transport: "websocket", ...(warming ? { cacheWarming: "streaming" as const } : {}), compaction: { enabled: false }, retry: warming?.failFirstFinalAnswer ? { enabled: true, maxRetries: 1, baseDelayMs: 1, provider: { maxRetries: 0 } } : { enabled: false } });
 	const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(agentDir, "models-store.json"), allowModelNetwork: false });
 	const checkpointCalls = busy === true ? 2 : busy || 0;
 	const driverPayloads: any[] = [];
@@ -92,6 +94,8 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	const finalDriver = deferred();
 	let pauseFinalDriver = false;
 	let realRequests = 0;
+	let pendingRefreshes = 0;
+	let failedFinalAnswer = false;
 	let observerHold: Promise<void> | null = null;
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 		const request = new Request(input, init);
@@ -104,12 +108,18 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			if (observerPayloads.length === 1) return response([{ type: "text", text: `{"findings":[{"action":"steer","reason":"check","message":"${STEER}"}]}` }]);
 			return response([{ type: "text", text: '{"findings":[]}' }]);
 		}
-		// A cache refresh replays the last request with a one-token cap; Pi discards its answer.
-		const refresh = payload.max_tokens === 1 && JSON.stringify(payload.messages) === JSON.stringify(driverPayloads.at(-1)?.messages);
 		driverPayloads.push(payload);
 		const largeUsage = warming?.largeUsage;
-		if (refresh) return response([{ type: "text", text: "." }], largeUsage);
+		// A cache refresh replays the last request with a one-token cap; Pi discards its answer.
+		if (pendingRefreshes > 0 && payload.max_tokens === 1) {
+			pendingRefreshes--;
+			return response([{ type: "text", text: "." }], largeUsage);
+		}
 		const turn = ++realRequests;
+		if (warming?.failFirstFinalAnswer && turn > checkpointCalls && !failedFinalAnswer) {
+			failedFinalAnswer = true;
+			return new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }), { status: 529, headers: { "content-type": "application/json" } });
+		}
 		if (turn <= checkpointCalls) return response([{ type: "toolCall", id: `checkpoint-${turn}`, name: "checkpoint", arguments: {} }], largeUsage);
 		if (pauseFinalDriver) await finalDriver.promise;
 		const answer: AssistantMessage["content"] = [{ type: "text", text: "Driver done." }];
@@ -138,7 +148,10 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			vi.spyOn(pi, "sendUserMessage");
 			beforeHydra?.(api);
 			hydraExtension(pi);
-			if (warming?.forceRefresh) api.on("cache_warming_decision", () => ({ action: "warm" }));
+			if (warming) api.on("cache_warming_decision", (event) => {
+				if (warming.forceRefresh || event.action === "warm") pendingRefreshes++;
+				return warming.forceRefresh ? { action: "warm" } : undefined;
+			});
 			if (warming?.delayRunEnd) api.on("turn_end", async () => { await new Promise(resolve => setTimeout(resolve, 1400)); });
 			api.registerTool({ name: "checkpoint", label: "Checkpoint", description: "Test checkpoint", parameters: Type.Object({}),
 				execute: async () => {
@@ -556,6 +569,16 @@ describe("Pi's cache refresh", () => {
 		await running;
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expect(h.driverPayloads.every(payload => payload.max_tokens === 1)).toBe(true);
+		expect(h.entries("hydra-call").map(entry => (entry as { data: { kind?: string } }).data.kind)).toContain("run-end");
+	});
+
+	it("a retry with a nearly full context, which repeats the request at one token, is still reviewed", async () => {
+		const nearlyFull = (api: ExtensionAPI) => api.on("before_provider_request", (event) => ({ ...(event.payload as object), max_tokens: 1 }));
+		const h = await consumer(false, noFindings, "[]", "fixture-key", "off", nearlyFull, { failFirstFinalAnswer: true });
+		await h.session.prompt("Finish now.");
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expect(h.driverPayloads).toHaveLength(2);
+		expect(JSON.stringify(h.driverPayloads[1].messages)).toBe(JSON.stringify(h.driverPayloads[0].messages));
 		expect(h.entries("hydra-call").map(entry => (entry as { data: { kind?: string } }).data.kind)).toContain("run-end");
 	});
 

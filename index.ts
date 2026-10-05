@@ -1264,10 +1264,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// replace the request a head reviews and lose the run-end check. Pi only
 		// refreshes models with a cache lifetime, which its catalog gives only to
 		// Anthropic models; they carry the cap as `max_tokens`. A real request can
-		// carry the same cap when the context is nearly full, but it always adds
-		// messages, so only a one-token copy of the captured messages is skipped.
+		// carry the same cap when the context is nearly full. It adds messages,
+		// unless it is a retry, which starts a new run. So only a one-token copy of
+		// a request already captured in this run is skipped.
 		const payload = event.payload as { max_tokens?: unknown; messages?: unknown } | null;
-		if (payload?.max_tokens === 1 && isAnthropicPayload(capturedPayload)
+		if (capturedThisRun && payload?.max_tokens === 1 && isAnthropicPayload(capturedPayload)
 			&& JSON.stringify(payload.messages) === JSON.stringify(capturedPayload.messages)) {
 			return;
 		}
