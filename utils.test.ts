@@ -15,6 +15,7 @@ import {
 	formatHeadManagementReceipt,
 	hasDriverContinuationError,
 	headActs,
+	hasUnrecognizedCacheRefresh,
 	isAnthropicPayload,
 	isFullInputTransport,
 	isOpenAIResponsesPayload,
@@ -150,6 +151,16 @@ describe("formatHeadManagementReceipt", () => {
 	it("rejects empty names and explanations", () => {
 		expect(() => formatHeadManagementReceipt("add", " ", "needed")).toThrow("non-empty head");
 		expect(() => formatHeadManagementReceipt("remove", "quality", " ")).toThrow("non-empty message");
+	});
+});
+
+describe("hasUnrecognizedCacheRefresh", () => {
+	it("is true only for a model Pi refreshes on a route other than Anthropic's", () => {
+		expect(hasUnrecognizedCacheRefresh({ api: "openai-responses", promptCache: { short: 300 } })).toBe(true);
+		expect(hasUnrecognizedCacheRefresh({ api: "anthropic-messages", promptCache: { short: 300, long: 3600 } })).toBe(false);
+		expect(hasUnrecognizedCacheRefresh({ api: "openai-codex-responses" })).toBe(false);
+		expect(hasUnrecognizedCacheRefresh({ api: "openai-responses", promptCache: {} })).toBe(false);
+		expect(hasUnrecognizedCacheRefresh(undefined)).toBe(false);
 	});
 });
 

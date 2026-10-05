@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pi's background cache refresh no longer costs the run-end check. Pi keeps the prompt cache warm by replaying the last request, and Hydra used to take that replay for the request to review; when the refresh came after the final answer, no run-end check ran. Pi's catalog refreshes only Anthropic models; if the model in use gets a cache lifetime on another route, Hydra now warns once, since it cannot recognize that refresh.
+
 ## 0.1.2
 
 - The `hydra` tool draws its own row: `hydra add critic` when collapsed, every argument when expanded, then the result. Extensions that redraw tool rows, for example to hide finished ones, can now handle it, which they cannot do with pi's generic row.

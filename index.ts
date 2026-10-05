@@ -63,6 +63,7 @@ import {
 	headToolMismatch,
 	headInstructions,
 	headLoopMessages,
+	hasUnrecognizedCacheRefresh,
 	isAnthropicPayload,
 	isOpenAIResponsesPayload,
 	mergeObservationPayload,
@@ -1254,7 +1255,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		currentTurnIndex = event.turnIndex;
 	});
 
-	pi.on("before_provider_request", (event) => {
+	pi.on("before_provider_request", (event, ctx) => {
+		if (hasUnrecognizedCacheRefresh(ctx.model)) {
+			warnOnce(ctx, `hydra: pi may refresh the prompt cache of ${ctx.model!.provider}/${ctx.model!.id}, but Hydra recognizes refreshes only on Anthropic; a refresh after the final answer can skip the run-end check`);
+		}
+		// Pi keeps the prompt cache warm by replaying the last request with a
+		// one-token cap. That replay is not the driver's work: capturing it would
+		// replace the request a head reviews and lose the run-end check. Pi only
+		// refreshes models with a cache lifetime, which its catalog gives only to
+		// Anthropic models; they carry the cap as `max_tokens`. A real request can
+		// carry the same cap when the context is nearly full. It adds messages,
+		// unless it is a retry, which starts a new run. So only a one-token copy of
+		// a request already captured in this run is skipped.
+		const payload = event.payload as { max_tokens?: unknown; messages?: unknown } | null;
+		if (capturedThisRun && payload?.max_tokens === 1 && isAnthropicPayload(capturedPayload)
+			&& JSON.stringify(payload.messages) === JSON.stringify(capturedPayload.messages)) {
+			return;
+		}
 		if (registry.activeSet().length === 0 && heldOneOffs.size === 0) {
 			// Throw the old snapshot away rather than keeping it. An
 			// observation still running from before must count as out of date,
