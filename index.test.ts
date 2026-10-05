@@ -647,10 +647,15 @@ describe("heads with an end: once and ends_when", () => {
 		await vi.waitFor(() => expect(footer()).toMatch(/^hydra:reviewer hit .*\(2 obs\)$/));
 	});
 
-	it("the reply to adding a one-off lists it with the other heads", async () => {
+	it("the reply to adding a one-off and /hydra-heads list it with the other heads", async () => {
 		const h = await harness();
 		const reply = await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
 		expect(reply.content[0].text).toContain("You hear back when it has finished, also when it found nothing. Observing with: critic, cache-check (once).");
+		// Without a UI, /hydra-heads lists the heads instead of opening the picker.
+		(h.ctx as { hasUI: boolean }).hasUI = false;
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")![1] as unknown as { handler: (args: string, ctx: unknown) => Promise<void> };
+		await command.handler("", h.ctx);
+		expect(h.notify).toHaveBeenLastCalledWith(expect.stringMatching(/^hydra: active: critic, cache-check \(once\)\n/), "info");
 	});
 
 	describe("a one-off head that sends no message of its own is reported to the main assistant", () => {
