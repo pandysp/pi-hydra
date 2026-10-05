@@ -22,7 +22,7 @@ import {
 	getAgentDir,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentEndEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentEndEvent, ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type {
 	Action,
@@ -1570,6 +1570,23 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				throw new Error("complete_observation is only available while hydra is running a head observation");
 			}
 			return executeHeadManagement(params, ctx);
+		},
+		// Hydra's own row, so extensions that redraw tool rows (for example to hide finished ones) can
+		// handle it; pi's generic row is not available to them. Collapsed: what changed. Expanded: every argument.
+		renderCall(args: RawHydraToolParams, theme: Theme, context: { expanded: boolean }) {
+			// While the model is still writing the call, args can be partial.
+			const params = args ?? {};
+			const summary = [params.operation ?? params.action, params.head].filter((part) => typeof part === "string").join(" ");
+			let text = theme.fg("toolTitle", theme.bold("hydra")) + (summary ? ` ${theme.fg("muted", summary)}` : "");
+			if (context.expanded) {
+				const lines = Object.entries(params).map(([key, value]) => `  ${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+				if (lines.length > 0) text += `\n${theme.fg("muted", lines.join("\n"))}`;
+			}
+			return new Text(text, 0, 0);
+		},
+		renderResult(result: { content: { type: string; text?: string }[] }, _options: unknown, theme: Theme) {
+			const output = result.content.filter((block) => block.type === "text").map((block) => block.text ?? "").join("\n").trim();
+			return new Text(output ? theme.fg("toolOutput", output) : "", 0, 0);
 		},
 	};
 	pi.registerTool(hydraToolDefinition);
