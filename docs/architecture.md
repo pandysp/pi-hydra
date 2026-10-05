@@ -101,7 +101,7 @@ How a head finishes depends on the provider; see [Completion channels](providers
 In an open session:
 
 - `steer` sends the finding as a user message before the main assistant's next model request. If it is idle, the message starts a new run.
-- No finding means no message. Hydra saves the result as `noop`.
+- No finding means no message. Hydra saves the result as `noop`. A `once` head is the exception: Hydra tells the main assistant how its check ended ([below](#messages-hydra-sends-for-a-head)).
 
 During shutdown, and for reviews of a run the user cancelled, Hydra sends `steer` messages as a `note`: it adds them to the conversation without starting a turn. Hydra also tells the main assistant with a `note` when it turns a head off. `note` is Hydra's own route, never a head's choice.
 
@@ -113,7 +113,9 @@ Hydra tracks which messages are waiting and which arrived. Heads are told who re
 
 ### Messages Hydra sends for a head
 
-Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, or Hydra turned it off because its file disappeared or became invalid, or because the main assistant lacks a tool it needs ([Tools](heads.md#tools)). The first two go out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless they come from a review of a cancelled run (see above). A head Hydra turned off goes out as a `note`: that usually happens as a run starts, where a steer would start a second prompt, and it needs no answer. Before pi's first system message Hydra sends no note at all, only the user's warning ([why](providers.md#anthropic)). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+Hydra speaks for a head only when the head cannot: it changed the active heads (removing itself ends its turn), it reported `done` for its `ends_when` condition and was removed, it was a `once` head that ended without a message of its own, or Hydra turned it off because its file disappeared or became invalid, or because the main assistant lacks a tool it needs ([Tools](heads.md#tools)). The first three go out as that head's `steer`, through the same route and with the same timing as a head's own steer, including waking an idle main assistant, unless they come from a review of a cancelled run (see above). A head Hydra turned off goes out as a `note`: that usually happens as a run starts, where a steer would start a second prompt, and it needs no answer. Before pi's first system message Hydra sends no note at all, only the user's warning ([why](providers.md#anthropic)). Steers reach the model as user messages, so every head message starts with `[pi-hydra <head>]`, and the ones Hydra sends for a head continue with `automatic notice:`. A head reports its own changes when the main assistant needs to know them; Hydra does not announce writes.
+
+The notice for a `once` head says whether its check found nothing, failed, stopped before it finished, or did not start. The main assistant was told when it added the head that it would hear back, so it may be waiting. There is no notice after a branch switch, where it would land in a conversation that never asked for the head, or at session end.
 
 A missing saved head on resume is shown to the user only. That check runs while the main assistant is idle, and a steer there would start an unprompted response.
 
@@ -125,7 +127,7 @@ A head with tools receives Pi's normal tool errors and can try again within its 
 
 A head without tools gets no retry or further model call. Tool requests never run, even if they come with valid-looking JSON. One invalid finding makes Hydra reject the entire answer. Invalid or empty answers, unfinished or cut-short responses, provider errors and responses the provider reports as stopped are failed checks. An answer containing only thinking is still empty. Hydra records these failures as `noop`, not as a deliberate choice to say nothing. If Hydra cancels the check or switches conversation branches before it finishes, it drops the result instead.
 
-A failed check sends nothing to the main assistant. Hydra warns you with the error type, saves it with the check, and `/hydra-stats` counts failed checks by type. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain. The saved record never includes rejected tool arguments; Hydra does not guess why a check failed.
+A failed check sends nothing to the main assistant, except the notice for a `once` head that its check failed. Hydra warns you with the error type, saves it with the check, and `/hydra-stats` counts failed checks by type. Provider errors, provider-stopped responses and cut-short or unfinished responses take priority over any tool requests or JSON they contain. The saved record never includes rejected tool arguments; Hydra does not guess why a check failed.
 
 A failed send is a warning; Pi reports asynchronous send errors through its extension error channel.
 

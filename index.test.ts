@@ -496,6 +496,8 @@ describe("observation loop stops", () => {
 		await new Promise(resolve => setTimeout(resolve, 50));
 		expect(h.transport).not.toHaveBeenCalled();
 		expect(h.notify).toHaveBeenCalledWith('hydra: one-off head "single" did not start: the model was switched', "warning");
+		expect(vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1]).toBe("hydra: no heads | (no obs yet)");
+		expect(h.steers()).toEqual(["[pi-hydra single] automatic notice: its one check did not start: the model was switched. This head is gone."]);
 	});
 
 	it("stops a Codex head sharing the driver's session once sharing becomes unsafe", async () => {
@@ -630,6 +632,78 @@ describe("heads with an end: once and ends_when", () => {
 		expect(JSON.stringify(h.configs())).not.toContain("cache-check");
 	});
 
+	it("the footer shows a one-off head from the add until its check is done", async () => {
+		const h = await harness({ heads: [] });
+		const footer = () => vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1];
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "reviewer", ends_when: "the commit lands", instructions: "Review.", tools: [] });
+		await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		expect(footer()).toBe("hydra: reviewer+cache-check (once) | (no obs yet)");
+		let finish!: (message: AssistantMessage) => void;
+		await h.observe(noop(), new Promise<AssistantMessage>((resolve) => { finish = resolve; }));
+		await h.waitCalls(1);
+		expect(footer()).toContain("hydra:reviewer+cache-check (once) ");
+		finish(noop());
+		await h.waitCalls(2);
+		await vi.waitFor(() => expect(footer()).toMatch(/^hydra:reviewer hit .*\(2 obs\)$/));
+	});
+
+	it("the reply to adding a one-off and /hydra-heads list it with the other heads", async () => {
+		const h = await harness();
+		const reply = await h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+		expect(reply.content[0].text).toContain("You hear back when it has finished, also when it found nothing. Observing with: critic, cache-check (once).");
+		// Without a UI, /hydra-heads lists the heads instead of opening the picker.
+		(h.ctx as { hasUI: boolean }).hasUI = false;
+		const command = vi.mocked(h.pi.registerCommand).mock.calls.find(([name]) => name === "hydra-heads")![1] as unknown as { handler: (args: string, ctx: unknown) => Promise<void> };
+		await command.handler("", h.ctx);
+		expect(h.notify).toHaveBeenLastCalledWith(expect.stringMatching(/^hydra: active: critic, cache-check \(once\)\n/), "info");
+	});
+
+	describe("a one-off head that sends no message of its own is reported to the main assistant", () => {
+		const notice = (head: string, fact: string) => `[pi-hydra ${head}] automatic notice: ${fact} This head is gone.`;
+		const add = (h: Awaited<ReturnType<typeof harness>>) => h.hydraTool({ action: "manage_heads", operation: "add", head: "cache-check", lifetime: "once", instructions: "Check.", tools: [] });
+
+		it.each([
+			["found nothing", noop(), "its one check found nothing to report, so it sent no message."],
+			["its check failed", answer([text("not JSON")]), "its one check failed (malformed-findings), so it sent no message."],
+		])("when it %s", async (_case, response, fact) => {
+			const h = await harness({ heads: [] });
+			await add(h);
+			await h.observe(response);
+			await h.waitCalls(1);
+			await vi.waitFor(() => expect(h.steers()).toEqual([notice("cache-check", fact)]));
+		});
+
+		it("when its check stopped before it finished", async () => {
+			const h = await harness({ heads: [], api: "openai-responses" });
+			await add(h);
+			h.changeAuth();
+			await h.observe();
+			await vi.waitFor(() => expect(h.steers()).toEqual([notice("cache-check", "its one check stopped before it finished, so it sent no message.")]));
+			expect(h.calls()).toEqual([]);
+		});
+
+		it("but not when the head sent its own message", async () => {
+			const h = await harness({ heads: [] });
+			await add(h);
+			await h.observe(findings({ findings: [{ action: "steer", reason: "r", message: "FOUND IT" }] }));
+			await h.waitCalls(1);
+			await settle();
+			expect(h.steers()).toEqual(["[pi-hydra cache-check] FOUND IT"]);
+		});
+
+		it("but not for a check left behind when the conversation switched branches while it ran", async () => {
+			const h = await harness({ heads: [] });
+			await add(h);
+			let finish!: (message: AssistantMessage) => void;
+			await h.observe(new Promise<AssistantMessage>((resolve) => { finish = resolve; }));
+			await vi.waitFor(() => expect(h.transport).toHaveBeenCalledTimes(1));
+			await h.emit({ type: "session_tree" } as ExtensionEvent);
+			finish(noop());
+			await settle();
+			expect(h.steers()).toEqual([]);
+		});
+	});
+
 	it("a one-off head runs on the first response of a run too", async () => {
 		const h = await harness({ heads: [] });
 		await h.emit({ type: "agent_end", messages: [] });
@@ -702,7 +776,12 @@ describe("heads with an end: once and ends_when", () => {
 		(h.ctx as { signal?: AbortSignal }).signal = AbortSignal.abort();
 		await h.observe();
 		expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('one-off head cache-check did not start: its run was cancelled'), "warning");
+		expect(vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1]).toBe("hydra: no heads | (no obs yet)");
 		expect(h.transport).not.toHaveBeenCalled();
+		// The main assistant hears of it without a new turn.
+		expect(h.steers()).toEqual([]);
+		expect(JSON.stringify(vi.mocked(h.pi.sendMessage).mock.calls)).toContain("[pi-hydra cache-check] automatic notice: its one check did not start: its run was cancelled. This head is gone.");
+		expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.anything(), { triggerTurn: false });
 	});
 
 	it.each([
@@ -716,6 +795,9 @@ describe("heads with an end: once and ends_when", () => {
 		await h.observe();
 		await settle();
 		expect(h.transport).not.toHaveBeenCalled();
+		// Nobody is left to tell, or the notice would land in a conversation that never asked for the head.
+		expect(h.steers()).toEqual([]);
+		expect(h.pi.sendMessage).not.toHaveBeenCalled();
 	});
 
 	it.each(["openai-codex-responses", "openai-responses"] as const)("%s: a judging head with ends_when gets its condition in the split envelope and ends through the findings JSON", async (api) => {
