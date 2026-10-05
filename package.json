@@ -32,7 +32,8 @@
 		"check:links": "node scripts/check-links.mjs",
 		"check:docs": "node scripts/check-doc-claims.mjs",
 		"update:doc-claims": "node scripts/check-doc-claims.mjs --update",
-		"test": "vitest run"
+		"test": "vitest run",
+		"pi": "node scripts/pi.mjs"
 	},
 	"devDependencies": {
 		"@earendil-works/pi-agent-core": "1.0.0",
