@@ -91,6 +91,7 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 	const entered = deferred();
 	const finalDriver = deferred();
 	let pauseFinalDriver = false;
+	let realRequests = 0;
 	let observerHold: Promise<void> | null = null;
 	const fetchFixture = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 		const request = new Request(input, init);
@@ -103,11 +104,12 @@ async function consumer(busy: boolean | number, firstObserverResponse?: Assistan
 			if (observerPayloads.length === 1) return response([{ type: "text", text: `{"findings":[{"action":"steer","reason":"check","message":"${STEER}"}]}` }]);
 			return response([{ type: "text", text: '{"findings":[]}' }]);
 		}
+		// A cache refresh replays the last request with a one-token cap; Pi discards its answer.
+		const refresh = payload.max_tokens === 1 && JSON.stringify(payload.messages) === JSON.stringify(driverPayloads.at(-1)?.messages);
 		driverPayloads.push(payload);
 		const largeUsage = warming?.largeUsage;
-		// A cache refresh replays the last request; Pi discards its answer.
-		if (payload.max_tokens === 1) return response([{ type: "text", text: "." }], largeUsage);
-		const turn = driverPayloads.filter(item => item.max_tokens !== 1).length;
+		if (refresh) return response([{ type: "text", text: "." }], largeUsage);
+		const turn = ++realRequests;
 		if (turn <= checkpointCalls) return response([{ type: "toolCall", id: `checkpoint-${turn}`, name: "checkpoint", arguments: {} }], largeUsage);
 		if (pauseFinalDriver) await finalDriver.promise;
 		const answer: AssistantMessage["content"] = [{ type: "text", text: "Driver done." }];
@@ -542,6 +544,19 @@ describe("Pi's cache refresh", () => {
 		await h.session.prompt("Finish now.");
 		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 		expectRefreshedAndReviewed(h);
+	});
+
+	it("a real request capped at one token, as Pi does near a full context, is still reviewed", async () => {
+		// Pi caps the output at the room left in the context window, down to one token.
+		const nearlyFull = (api: ExtensionAPI) => api.on("before_provider_request", (event) => ({ ...(event.payload as object), max_tokens: 1 }));
+		const h = await consumer(true, noFindings, "[]", "fixture-key", "off", nearlyFull);
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		h.hold.resolve();
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		expect(h.driverPayloads.every(payload => payload.max_tokens === 1)).toBe(true);
+		expect(h.entries("hydra-call").map(entry => (entry as { data: { kind?: string } }).data.kind)).toContain("run-end");
 	});
 
 	it("Pi's catalog gives a cache lifetime only to Anthropic models, the ones whose refresh Hydra recognizes", async () => {
