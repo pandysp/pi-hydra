@@ -7,6 +7,7 @@
 - Hydra no longer warns about unsupported tools in head files that aren't on; it blocks such a head when it is turned on.
 - The example `tuner` head no longer lists `ls`, which pi turns off by default. A copy you made earlier still lists it, so Hydra now turns it off; remove `ls` from its `tools:` line, or add `"+ls"` to `defaultTools`.
 - The `hydra` tool now says that a head without a tool list gets the main assistant's tools, not all tools.
+- `/hydra-heads` marks a head that can use tools with `tools` instead of `acting`.
 
 ## 0.1.1
 

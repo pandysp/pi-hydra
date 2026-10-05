@@ -1623,7 +1623,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						item.source === "project" ? "project" : item.source === "call" ? "no file" : null,
 						registry.endsWhen(item.name) !== undefined ? `until ${registry.endsWhen(item.name)}` : null,
 						item.autostart ? "autostart" : null,
-						headActs(item.tools) ? "acting" : null,
+						headActs(item.tools) ? "tools" : null,
 					].filter((tag): tag is string => tag !== null);
 					const row =
 						(i === cursor ? theme.fg("accent", "❯ ") : "  ") +
