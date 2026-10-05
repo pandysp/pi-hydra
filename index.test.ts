@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Api, AssistantMessage, Message, Model, ToolCall } from "@earendil-works/pi-ai";
 import type { streamSimple } from "@earendil-works/pi-ai/compat";
-import { convertToLlm, SessionManager } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, initTheme, SessionManager, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@earendil-works/pi-coding-agent";
 import hydraExtension from "./index.ts";
 import type { HydraCall } from "./stats.ts";
@@ -1323,5 +1323,22 @@ describe("heads and the main assistant's tools", () => {
 		expect(JSON.stringify(h.payloads.at(-1))).toContain("not found");
 		expect(JSON.stringify(h.payloads.at(-1))).toContain('Head \\"critic\\" is not allowed to manage heads');
 		expect(h.configs().at(-1)).toEqual({ heads: ["critic"] });
+	});
+});
+
+describe("the hydra tool row", () => {
+	it("draws its own row: what changed when collapsed, every argument when expanded, then the result", async () => {
+		const h = await harness();
+		initTheme("dark");
+		const [definition] = vi.mocked(h.pi.registerTool).mock.calls[0];
+		const args = { action: "manage_heads", operation: "add", head: "critic", lifetime: "once", message: "Check the plan once." };
+		const row = new ToolExecutionComponent("hydra", "call-1", args, undefined, definition as never, { requestRender() {} } as never, h.cwd);
+		row.setArgsComplete();
+		row.markExecutionStarted();
+		row.updateResult({ content: [{ type: "text", text: "Added critic for one check." }], isError: false }, false);
+		const plain = () => row.render(120).map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean);
+		expect(plain()).toEqual(["hydra add critic", "Added critic for one check."]);
+		row.setExpanded(true);
+		expect(plain()).toEqual(["hydra add critic", "action: manage_heads", "operation: add", "head: critic", "lifetime: once", "message: Check the plan once.", "Added critic for one check."]);
 	});
 });
