@@ -164,7 +164,7 @@ The five review examples are designed to catch different things rather than repe
 ### Simplifier
 **Lens:** unnecessary complexity, abstractions that do not earn their keep, code that could be deleted, over-built solutions.
 **Why:** Every other head adds requirements. This one argues for removing code instead.
-**Boundary:** Do not comment on unrelated bugs or security. You argue for less, not more.
+**Boundary:** Do not comment on unrelated bugs or security. You argue for less, not more. You decide whether effort or structure is needed, not whether a claim is proven.
 
 ### API Design
 **Lens:** contract clarity, compatibility, consistency, error shapes, naming, ergonomics.
@@ -174,7 +174,7 @@ The five review examples are designed to catch different things rather than repe
 ### Navigator
 **Lens:** done declared without proof, moved goalposts, quietly dropped requirements, guesses where a question was owed, unchecked assumptions, building before understanding, symptom fixes where the user wants the cause.
 **Why:** The other reviewers judge the code; this one judges the trajectory against the ask, like the non-typing partner in pair programming. In human-AI sessions the human plans and the agent executes, and the common failure is the plan quietly coming apart: requirements dropped, wrong problem solved, victory declared on green tests alone.
-**Boundary:** Do not comment on the code itself. Steer at the level of the goal.
+**Boundary:** Do not comment on the code itself. Steer at the level of the goal. You decide whether a claim is proven, not how much effort is worth spending.
 
 ## More head ideas
 
