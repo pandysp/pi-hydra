@@ -6,15 +6,14 @@ Issues and pull requests are welcome. [VISION.md](VISION.md) says what fits the 
 
 ```bash
 git clone https://github.com/pandysp/pi-hydra
-mkdir -p ~/.pi/agent/extensions
-ln -sfn "$(pwd)/pi-hydra" ~/.pi/agent/extensions/hydra
 cd pi-hydra
 npm ci
+pi install "$(pwd)"
 ```
 
-If you installed Hydra with `pi install`, remove that copy first (`pi remove npm:pi-hydra`, or `pi remove git:github.com/pandysp/pi-hydra` for an older install). Otherwise Pi loads Hydra twice.
+If Hydra is already installed, remove that copy first (`pi remove npm:pi-hydra`, `pi remove git:github.com/pandysp/pi-hydra`, or a link in `~/.pi/agent/extensions/`). Otherwise Pi loads Hydra twice.
 
-After an edit, run `/reload` in Pi. If you move the clone, recreate the link. Pi ignores a broken link without a warning, and Hydra then has no commands, flags or checks.
+After an edit, run `/reload` in Pi. If you move the clone, run `pi install` again at its new place and `pi remove` the old path. Pi skips a path that no longer exists without a warning, and Hydra then has no commands, flags or checks.
 
 To try message delivery, run `/hydra-heads test`. A hidden test head sends one `steer` and then turns itself off.
 
@@ -40,8 +39,8 @@ npm test
 - If you change how Hydra replays requests or places cache markers, run the [verification procedures](docs/providers.md#verification-procedures) and put the numbers in the pull request.
 - If `npm run check` reports a doc claim, review the code and the doc section it ties together, then update only that claim: `npm run update:doc-claims -- --reviewed --claim=<id>`.
 - Every option Hydra passes to Pi's agent loop or session needs a test that shows its effect in a real loop. Pi ignores option names it does not know, so a renamed option fails without an error.
-- If you change what heads send to the main assistant, also run a live session with a real model in a throwaway folder, in a session you can stop, and read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or an assistant that takes a head's message for the user's words.
-- If Pi already loads another copy of Hydra, for example while you work in a worktree, start Pi with `-ne` so Hydra is not loaded twice. `-ne` turns off every extension, and a missing one can cause misleading errors. So load all the others back with `-e`: the packages `pi list` shows, the paths in the `extensions` setting of `~/.pi/agent/settings.json` and the project's `.pi/settings.json`, the files in `~/.pi/agent/extensions/` and the project's `.pi/extensions/`, and the built-in extensions that setting does not turn off (`-e builtin:<name>`). Then add `-e <clone>/index.ts`.
+- If you change what heads send to the main assistant, also run a live session with a real model, in a session you can stop, and read how the main assistant takes the messages. Tests cannot show a head that wakes the assistant on every check, or an assistant that takes a head's message for the user's words.
+- To run Pi with the Hydra of the clone or worktree you are in, use `npm run pi` (arguments for Pi go after `--`). It starts Pi in a throwaway folder with this copy of Hydra in place of the installed one and all your other extensions. Don't use `-ne` for this: it also turns off your other extensions, and the errors that follow can point elsewhere.
 - A change users notice gets an entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request.
 - Keep pure logic in its matching root module and test it there.
 - Match the style of the file you edit.
