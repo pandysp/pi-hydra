@@ -359,6 +359,38 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	// A cancel keeps a queued steer: pi sends it with the next prompt, and the
+	// TUI's Escape moves it into the editor (session.clearQueue()) for the user
+	// to send or drop. Only a run that ends without a cancel decides it was lost.
+	for (const after of ["pi keeps the queue", "the user sends the restored text", "the user drops the restored text"] as const) {
+		it(`a steer queued when the user cancels mid-answer is judged after the next run (${after})`, async () => {
+			const h = await consumer(true);
+			const stderr = process.stderr.write as unknown as ReturnType<typeof vi.fn>;
+			const warnings = () => stderr.mock.calls.filter(([text]) => String(text).includes("never reached the driver"));
+			const observerGate = deferred();
+			h.holdObserver(observerGate.promise);
+			const finalAnswer = h.holdFinalDriver();
+			const running = h.session.prompt("Work through checkpoints.");
+			await h.entered.promise;
+			h.hold.resolve();
+			await vi.waitFor(() => expect(h.driverPayloads).toHaveLength(3));
+			observerGate.resolve();
+			await vi.waitFor(() => expect(h.pi.sendUserMessage).toHaveBeenCalledTimes(1));
+			const restored = after === "pi keeps the queue" ? [] : h.session.clearQueue().steering;
+			const aborted = h.session.abort();
+			finalAnswer.resolve();
+			await Promise.all([running, aborted]);
+			expect(warnings()).toHaveLength(0);
+			await h.session.prompt(after === "the user sends the restored text" ? restored.join("\n\n") : "Next prompt.");
+			await h.session.waitForIdle();
+			const arrived = after !== "the user drops the restored text";
+			expect(seenIn(h.driverPayloads.at(-1), STEER)).toHaveLength(arrived ? 1 : 0);
+			expect(h.entries("hydra-delivery")).toHaveLength(arrived ? 1 : 0);
+			expect(warnings()).toHaveLength(arrived ? 0 : 1);
+			expect(h.errors).toEqual([]);
+		});
+	}
+
 	it("a run cancelled during a tool gets no run-end review; the next run does", async () => {
 		const h = await consumer(true, [{ type: "text", text: '{"findings":[]}' }]);
 		const running = h.session.prompt("Work through checkpoints.");

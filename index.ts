@@ -1365,7 +1365,11 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		scheduleObservations(ctx, "piggyback", null, !firstResponse);
 	});
 
-	pi.on("agent_settled", (_event, ctx) => {
+	// A cancel does not lose queued feedback yet: pi sends it with the next
+	// prompt, and the TUI moves it into the editor, where the user may send it.
+	// So only a run that ends without a cancel decides what never arrived.
+	pi.on("agent_settled", (event, ctx) => {
+		if (event.aborted) return;
 		const orphaned = deliveryLedger.settle();
 		if (orphaned.length > 0) {
 			notifyUser(
