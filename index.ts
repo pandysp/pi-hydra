@@ -1282,9 +1282,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	// Before a prompt's first request; agent_start is one request late
-	// (measured). pi skips this hook for runs started by a message that
-	// triggers a turn and for its own continuations, so agent_start checks
-	// again for those. Running twice changes nothing.
+	// (measured). pi skips this hook for its own continuations, so
+	// agent_start checks again for those. Running twice changes nothing.
 	pi.on("before_agent_start", (_event, ctx) => checkHeadsBeforeRun(ctx));
 
 	pi.on("turn_start", (event) => {
