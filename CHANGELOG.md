@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Cancelling a run while a head's feedback is still queued no longer warns that the feedback "never reached the driver". pi keeps that feedback: it sends it with the next prompt, or in the TUI, Escape puts it in the editor for you to send or delete. Hydra now waits for the next run that ends without a cancel before it decides. Before, it warned at once and forgot the feedback, so feedback that did arrive later went unrecorded.
 - The example navigator and simplifier heads now split one question each: the navigator decides whether a claim is proven, the simplifier whether effort or structure is needed. Run together, they used to steer the main assistant both ways on the same point.
 - Pi's background cache refresh no longer costs the run-end check. Pi keeps the prompt cache warm by replaying the last request, and Hydra used to take that replay for the request to review; when the refresh came after the final answer, no run-end check ran. Pi's catalog refreshes only Anthropic models; if the model in use gets a cache lifetime on another route, Hydra now warns once, since it cannot recognize that refresh.
 - The footer, the `hydra` tool's replies and `/hydra-heads` in a run without a UI now list a one-off head (`lifetime: "once"`) as `name (once)`, from the moment it is added until its check has finished or was skipped. Before, it never appeared there, so it was easy to miss that a check was still coming.
