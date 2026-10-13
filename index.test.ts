@@ -376,7 +376,7 @@ describe("messages Hydra sends on a head's behalf", () => {
 		h.busy();
 		await h.observe(answer([text(JSON.stringify({ findings: [{ action: "steer", message: "NEVER ARRIVES", reason: "r" }] }))]));
 		await h.waitCalls(1);
-		await h.emit({ type: "agent_settled" });
+		await h.emit({ type: "agent_settled", aborted: false });
 		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("never reached the driver"));
 		stderr.mockRestore();
 	});
