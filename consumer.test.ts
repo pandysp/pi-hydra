@@ -211,6 +211,26 @@ describe("Pi consumer context and session", () => {
 		expect(h.errors).toEqual([]);
 	});
 
+	it("with a virtual model selected, heads check on the model it routed to", async () => {
+		const router = (api: ExtensionAPI) => api.registerVirtualModel({
+			provider: "router", id: "auto", name: "Auto",
+			route: (_request, ctx) => ({ model: ctx.modelRegistry.find("anthropic", "fixture")!, thinkingLevel: "off" }),
+		});
+		const h = await consumer(true, noFindings, "[]", "fixture-key", "off", router);
+		await h.session.setModel(h.session.modelRuntime.getModel("router", "auto")!);
+		expect(h.session.model?.api).toBe("pi-virtual");
+		const running = h.session.prompt("Work through checkpoints.");
+		await h.entered.promise;
+		h.hold.resolve();
+		await running;
+		await h.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		const calls = h.entries("hydra-call").map(entry => (entry as { data: { kind?: string; api?: string } }).data);
+		expect(calls.map(call => call.kind)).toEqual(["piggyback", "piggyback", "run-end"]);
+		expect(calls.every(call => call.api === "anthropic-messages")).toBe(true);
+		expect(h.observerPayloads).toHaveLength(3);
+		expect(h.errors).toEqual([]);
+	});
+
 	it("a failed check from a head without tools runs nothing and sends nothing", async () => {
 		const blocked: AssistantMessage["content"] = [{ type: "toolCall", id: "blocked-write", name: "write", arguments: { path: "observer.txt", content: "PRIVATE-ARGUMENT" } }];
 		const h = await consumer(true, blocked);

@@ -26,6 +26,7 @@ import type { AgentEndEvent, ExtensionAPI, ExtensionContext, Theme } from "@eare
 import { Box, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type {
 	Action,
+	AnsweringModel,
 	Decision,
 	HydraConfig,
 	ObservationUsage,
@@ -48,6 +49,7 @@ import type { JudgeResult } from "./judge.ts";
 import { hitBandsFor, parseBranchEntries, StatsLog } from "./stats.ts";
 import type { HydraCall, ObserveKind } from "./stats.ts";
 import {
+	answeringModelOf,
 	buildEnumeratedJudgeObservationEnvelope,
 	buildEnumeratedJudgeObservationPrompt,
 	buildObservationEnvelope,
@@ -74,6 +76,7 @@ import {
 	selectFinalAssistant,
 	summarizeLoopUsage,
 	usesSplitObservationHandoff,
+	VIRTUAL_MODEL_API,
 } from "./utils.ts";
 
 // Headless runs (`pi -p`) quit as soon as the agent stops, which would cut off
@@ -172,7 +175,7 @@ interface ObservationSeed {
 	// The reviewed run's cancel signal, copied when the review is scheduled:
 	// ctx.signal always returns the current run's.
 	runSignal: AbortSignal | undefined;
-	model: string | null; // provider/id that answered the captured request
+	model: AnsweringModel | null; // the model that answered the captured request; the head replays it there
 }
 
 interface Observation extends ObservationSeed {
@@ -264,7 +267,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function toolMismatchFor(ctx: ExtensionContext, tools: string[] | undefined) {
 		return headToolMismatch(tools, pi.getActiveTools(), {
 			// From the tools the head actually gets, as observationHandoffFor decides.
-			finishesThroughHydra: finishesThroughHydraTool(effectiveHeadTools(tools), ctx.model?.api, ctx.model?.provider),
+			finishesThroughHydra: finishesThroughHydraTool(effectiveHeadTools(tools), answeringModel(ctx)?.api, answeringModel(ctx)?.provider),
 			codemodeOnly: pi.getSettings().codemode?.mode === "only",
 		});
 	}
@@ -339,7 +342,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	}
 
 	function observationHandoffFor(
-		ctx: ExtensionContext,
+		model: AnsweringModel | null,
 		name: string,
 		tools: string[],
 		instruction: string,
@@ -354,7 +357,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		const deliveryContext = deliveryLedger.contextFor(name);
 		const protocol = { activeHeads: [...registry.activeSet()], deliveryContext, endsWhen };
 		if (!headActs(tools)) {
-			const split = usesSplitObservationHandoff(ctx.model?.api, ctx.model?.provider);
+			const split = usesSplitObservationHandoff(model?.api, model?.provider);
 			return split
 				? {
 						prompt: headInstructions(instruction),
@@ -366,7 +369,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 						completionMode: "enum",
 					};
 		}
-		return finishesThroughHydraTool(tools, ctx.model?.api, ctx.model?.provider)
+		return finishesThroughHydraTool(tools, model?.api, model?.provider)
 			? {
 					prompt: headInstructions(instruction),
 					envelope: buildObservationEnvelope(name, tools, protocol),
@@ -388,9 +391,19 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	// The model that answered that request, read from the answer itself: pi
 	// applies a model switch to the selection before a request already being
 	// prepared is sent, so the selection at capture time can be the new model.
-	// A check waiting behind a busy one can start after a switch and must not
-	// replay the old provider's request on the new one.
-	let responseModel: string | null = null;
+	// The head replays the request on that model, and a check waiting behind
+	// a busy one does not start once another model answers.
+	let responseModel: AnsweringModel | null = null;
+	// The model of the latest reply on this branch, kept across captures.
+	let lastAnswer: AnsweringModel | null = null;
+
+	// The model that answers the main assistant now: the selected one, unless
+	// that is a virtual model. A virtual model only routes, and its router may
+	// pick another model for each request, so the latest reply is the best
+	// record; undefined before the first one.
+	function answeringModel(ctx: ExtensionContext): AnsweringModel | undefined {
+		return ctx.model?.api === VIRTUAL_MODEL_API ? lastAnswer ?? undefined : ctx.model;
+	}
 	let capturedThisRun = false;
 	let awaitingFirstResponseOfRun = true;
 	let currentTurnIndex = 0;
@@ -405,11 +418,20 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Nor do reviews whose request a different model answered. A one-off
 		// that cannot start says why.
 		shouldRun: (seed) => {
+			const answering = answeringModel(seed.ctx);
+			// A seed without a model fails loudly in observe instead.
+			const switched = seed.model !== null &&
+				(answering === undefined || modelIdentity(seed.model.provider, seed.model.id) !== modelIdentity(answering.provider, answering.id));
 			const blocked =
 				seed.branchGeneration !== branchGeneration ? "the conversation switched branches"
 				: seed.runSignal?.aborted ? "its run was cancelled"
-				: seed.ctx.model === undefined || seed.model !== modelIdentity(seed.ctx.model.provider, seed.ctx.model.id) ? "the model was switched"
+				: switched ? "the model was switched"
 				: null;
+			// Branch switches and cancels are the user's own doing; a switched
+			// model skips checks the user may still expect.
+			if (blocked === "the model was switched" && !seed.oneOff && registry.isActive(seed.head)) {
+				warnOnce(seed.ctx, "hydra: a head's check did not start because the model was switched; heads check again once the new model answers");
+			}
 			if (blocked !== null && seed.oneOff) {
 				unfinishedOneOffs.delete(seed.head);
 				updateFooter(seed.ctx);
@@ -426,7 +448,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			// time.
 			const job: Observation = {
 				...seed,
-				...observationHandoffFor(seed.ctx, seed.head, seed.tools, seed.instruction, seed.endsWhen),
+				...observationHandoffFor(seed.model, seed.head, seed.tools, seed.instruction, seed.endsWhen),
 			};
 			let result: CheckResult | undefined;
 			try {
@@ -520,9 +542,9 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.setStatus("hydra", ctx.ui.theme.fg("muted", `hydra: ${headLabel} | (no obs yet)`));
 			return;
 		}
-		const { cost, meanHit } = stats.cumulative(ctx.model?.api);
+		const { cost, meanHit } = stats.cumulative(answeringModel(ctx)?.api);
 		const lastHit = calls[calls.length - 1].hitRatio;
-		const bands = hitBandsFor(ctx.model?.api);
+		const bands = hitBandsFor(answeringModel(ctx)?.api);
 		const hitColor = meanHit === null ? "muted" : meanHit >= bands.good ? "success" : meanHit >= bands.fair ? "warning" : "error";
 		const hitLabel = meanHit === null ? "hit n/a (this model)" : `hit ${meanHit.toFixed(1)}% (last ${lastHit.toFixed(1)}%)`;
 		ctx.ui.setStatus(
@@ -538,7 +560,8 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	function restoreFromBranch(ctx: ExtensionContext): boolean {
 		branchGeneration++;
 		dropHeldOneOffs(ctx, "the conversation switched branches");
-		const { calls: restoredCalls, config, deliveries } = parseBranchEntries(ctx.sessionManager.getBranch());
+		const { calls: restoredCalls, config, deliveries, answeredBy } = parseBranchEntries(ctx.sessionManager.getBranch());
+		lastAnswer = answeredBy ?? null;
 		stats.load(restoredCalls);
 		deliveryLedger.restore(deliveries);
 		registry.resetForBranch();
@@ -589,9 +612,16 @@ export default function hydraExtension(pi: ExtensionAPI) {
 
 	async function observe(job: Observation, signal: AbortSignal): Promise<CheckResult | undefined> {
 		if (signal.aborted) return;
-		const model = job.ctx.model;
+		// The head replays the request on the model that answered it, which
+		// under a virtual model is not the selected one.
+		if (!job.model) {
+			warnOnce(job.ctx, "hydra: a check was skipped because no reply named the model that answered the main assistant's request");
+			return;
+		}
+		// Typed like ctx.model: the provider check below narrows the API.
+		const model: Model<any> | undefined = job.ctx.modelRegistry.find(job.model.provider, job.model.id);
 		if (!model) {
-			warnOnce(job.ctx, "hydra: no model selected; observations skipped");
+			warnOnce(job.ctx, `hydra: checks skipped: ${job.model.provider}/${job.model.id} answered the main assistant, but pi's model registry does not list it`);
 			return;
 		}
 		// Cache replay has been measured on Anthropic, legacy OpenAI Codex,
@@ -1291,8 +1321,10 @@ export default function hydraExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
-		if (hasUnrecognizedCacheRefresh(ctx.model)) {
-			warnOnce(ctx, `hydra: pi may refresh the prompt cache of ${ctx.model!.provider}/${ctx.model!.id}, but Hydra recognizes refreshes only on Anthropic; a refresh after the final answer can skip the run-end check`);
+		const answering = answeringModel(ctx);
+		const answeringEntry = answering && ctx.modelRegistry.find(answering.provider, answering.id);
+		if (hasUnrecognizedCacheRefresh(answeringEntry)) {
+			warnOnce(ctx, `hydra: pi may refresh the prompt cache of ${answering!.provider}/${answering!.id}, but Hydra recognizes refreshes only on Anthropic; a refresh after the final answer can skip the run-end check`);
 		}
 		// Pi keeps the prompt cache warm by replaying the last request with a
 		// one-token cap. That replay is not the driver's work: capturing it would
@@ -1350,10 +1382,12 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// Remembering when it arrived is how the end-of-run trigger later
 		// recognizes it. Recorded even when no heads are active, since a head
 		// can be switched on part-way through.
+		const answer = event.message as AssistantMessage;
+		const answered = answeringModelOf(answer) ?? null;
+		lastAnswer = answered ?? lastAnswer;
 		if (capturedPayload && responseTimestamp === null) {
-			const answer = event.message as AssistantMessage;
 			responseTimestamp = answer.timestamp ?? null;
-			responseModel = modelIdentity(answer.provider, answer.model);
+			responseModel = answered;
 		}
 		// Marked even with no heads active: a head added later in this run has
 		// not reviewed the run so far, so its first check must not be skipped.
@@ -1413,7 +1447,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 		// wrong a second time costs the user their work. This is recorded even
 		// with no heads active, so that switching one on later is still safe.
 		// The message is only worth showing when heads exist.
-		if (ctx.model?.api === "openai-codex-responses" && codexShareLostReason === null && hasDriverContinuationError(event.messages)) {
+		if (answeringModel(ctx)?.api === "openai-codex-responses" && codexShareLostReason === null && hasDriverContinuationError(event.messages)) {
 			codexShareLostReason = "a driver continuation error (hydra backed off to keep the driver safe)";
 			if (registry.activeSet().length > 0) {
 				notifyUser(ctx, "hydra: the driver hit a continuation error; codex observations retreat to their own cache scope for the rest of this session", "warning");
@@ -1778,7 +1812,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("hydra: no observations yet", "info");
 				return;
 			}
-			const { cost, read, write, input, meanHit } = stats.cumulative(ctx.model?.api);
+			const { cost, read, write, input, meanHit } = stats.cumulative(answeringModel(ctx)?.api);
 			// Includes deprecated print decisions from saved sessions.
 			const counts: Record<Action, number> = { noop: 0, print: 0, note: 0, steer: 0 };
 			const failed = new Map<string, number>();
@@ -1806,7 +1840,7 @@ export default function hydraExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					`hydra stats (${calls.length} observations):`,
-					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(ctx.model?.api).target}`,
+					`  mean hit: ${meanHit === null ? "n/a (no observations on this model yet)" : `${meanHit.toFixed(2)}%`}   ← target: ${hitBandsFor(answeringModel(ctx)?.api).target}`,
 					`  total cost: $${cost.toFixed(4)}`,
 					`  total cache read: ${read.toLocaleString()} tokens`,
 					`  total cache write: ${write.toLocaleString()} tokens`,

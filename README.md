@@ -142,7 +142,7 @@ The current measured ranges, dated evidence, model coverage, and provider-specif
 ## Limitations
 
 - **Shared framing:** heads see the driver's context, so they inherit many of its assumptions and blind spots. hydra is continuous review, not independent assurance.
-- **One model:** a head must use the driver's model because the cache is model-specific.
+- **One model:** a head must use the driver's model because the cache is model-specific. Under a pi virtual model, that is the model it sent the request to.
 - **Measured providers only:** unverified provider/API pairs are skipped rather than risk unsafe or full-price replay.
 - **Between-call review:** a single long generation is not judged token by token. Findings act at checkpoints.
 - **Variable overhead:** multiple always-on heads can cost more in aggregate than the driver.

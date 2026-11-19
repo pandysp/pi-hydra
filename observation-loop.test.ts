@@ -61,6 +61,7 @@ async function observation(
 		modelRegistry: {
 			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "offline-fixture-only" }),
 			streamSimple: faux.streamSimple,
+			find: () => faux.getModel(),
 		},
 	} as unknown as ExtensionContext;
 	const fire = async (name: string, event: unknown) => {

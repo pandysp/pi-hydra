@@ -355,6 +355,26 @@ export function finishesThroughHydraTool(tools: string[] | undefined, api: strin
 	return headActs(tools) && usesSplitObservationHandoff(api, provider);
 }
 
+// pi's API id for a virtual model, which only picks a physical model for each
+// request (pi-coding-agent docs/virtual-models.md). pi does not export it.
+export const VIRTUAL_MODEL_API = "pi-virtual";
+
+/** The model that answered a request, as its reply names it. */
+export interface AnsweringModel {
+	provider: string;
+	id: string;
+	api: string;
+}
+
+/**
+ * The model a reply names. Under a virtual model that is the physical model it
+ * routed to, except when routing failed: pi then leaves the virtual model on
+ * the message, and nothing answered.
+ */
+export function answeringModelOf(message: { provider: string; model: string; api: string }): AnsweringModel | undefined {
+	return message.api === VIRTUAL_MODEL_API ? undefined : { provider: message.provider, id: message.model, api: message.api };
+}
+
 export interface ObservationProtocolOptions {
 	/** Which heads are on. Only shown to a head allowed to change that. */
 	activeHeads?: readonly string[];
