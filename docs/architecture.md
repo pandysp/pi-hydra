@@ -29,7 +29,7 @@ hydra reviews at two lifecycle points.
 
 On Anthropic, Pi's cache refreshes are not captured, so a refresh cannot replace the request a head reviews ([Run end](providers.md#run-end)).
 
-Each captured request remembers the model that answered it, read from the answer: pi applies a model switch to the selection before a request it is already preparing goes out. A check is skipped if the selected model differs when it starts, so a check that waited behind a busy one does not replay one provider's request on another.
+Each captured request remembers the model that answered it, read from the answer: pi applies a model switch to the selection before a request it is already preparing goes out, and a pi virtual model only picks a model for each request. The head sends its request to the model that answered. A check is skipped if another model answers when it starts: the selected one, or under a virtual model the one that answered last. A check that waited behind a busy one therefore does not review a model the user has left. Hydra warns once when this skips a head's check; a branch switch or a cancel skips it without a warning.
 
 The provider-specific timing and cache consequences are canonical in [Provider lifecycle](providers.md#provider-lifecycle).
 
@@ -40,7 +40,7 @@ Each prompt combines the head's instructions with Hydra's rules:
 - The head file says what to check and how much to report.
 - Hydra says first that the head is not the main assistant and must not continue its task, then explains which tools are allowed, how to finish, who receives feedback, and what feedback has already been sent.
 
-`observationHandoffFor()` chooses the format below. Hidden test heads use a fixed prompt.
+`observationHandoffFor()` chooses the format below, by the model that answered the captured request; under a virtual model that is the model it routed to. Hidden test heads use a fixed prompt.
 
 | Provider | Where the instructions go | How the head finishes |
 |---|---|---|
@@ -139,7 +139,7 @@ hydra has no external database. It stores three custom entry types in Pi's sessi
 - `hydra-call` — usage, action, timing, tools, the head's answer and any error, and `doneIgnored` when a head without an end condition said `done`;
 - `hydra-delivery` — successful delivery receipts.
 
-Messages Hydra sends for a head are saved like that head's steers; the entries above are not model-visible. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
+Messages Hydra sends for a head are saved like that head's steers; the entries above are not model-visible. Switching conversation branches restores the records from the chosen branch. `/hydra-stats` and the footer use those same records and grade the hit rate against the provider of the model that answers now; under a virtual model, Hydra reads that from the branch's latest reply. `/hydra-debug` saves the main assistant's request and the head's request so you can compare them.
 
 ## Cache hit ratio
 

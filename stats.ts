@@ -4,8 +4,8 @@
  * rebuilding state from a session branch. Rendering (the footer and
  * /hydra-stats) stays in index.ts, which owns the UI.
  */
-import { DELIVERY_ACTIONS } from "./utils.ts";
-import type { Action, HydraConfig, PersistedDelivery } from "./utils.ts";
+import { answeringModelOf, DELIVERY_ACTIONS } from "./utils.ts";
+import type { Action, AnsweringModel, HydraConfig, PersistedDelivery } from "./utils.ts";
 import type { JudgeErrorKind } from "./judge.ts";
 
 export type ObserveKind = "piggyback" | "run-end";
@@ -169,21 +169,33 @@ export interface BranchEntryLike {
 	type: string;
 	customType?: string;
 	data?: unknown;
+	message?: unknown;
 }
 
 // Rebuild hydra's persisted facts from the entries of one session branch.
 // `config` stays undefined when no hydra-config entry exists at all: the
 // caller distinguishes "never configured" (autostart may seed) from a
 // deliberately emptied set, which arrives as `{ heads: [] }`.
+// `answeredBy` is the model of the branch's latest reply, which under a
+// virtual model is the only record of which model answers.
 export function parseBranchEntries(entries: Iterable<BranchEntryLike>): {
 	calls: HydraCall[];
 	config: HydraConfig | undefined;
 	deliveries: PersistedDelivery[];
+	answeredBy: AnsweringModel | undefined;
 } {
 	const calls: HydraCall[] = [];
 	const deliveries: PersistedDelivery[] = [];
 	let config: HydraConfig | undefined;
+	let answeredBy: AnsweringModel | undefined;
 	for (const entry of entries) {
+		if (entry.type === "message") {
+			const message = entry.message as { role?: unknown; provider: string; model: string; api: string } | undefined;
+			if (message?.role === "assistant") {
+				answeredBy = answeringModelOf(message) ?? answeredBy;
+			}
+			continue;
+		}
 		if (entry.type !== "custom") {
 			continue;
 		}
@@ -202,5 +214,5 @@ export function parseBranchEntries(entries: Iterable<BranchEntryLike>): {
 			if (data) deliveries.push(data);
 		}
 	}
-	return { calls, config, deliveries };
+	return { calls, config, deliveries, answeredBy };
 }

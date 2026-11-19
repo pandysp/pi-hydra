@@ -55,7 +55,7 @@ async function harness(options: { flag?: string; autostart?: boolean; heads?: st
 	const api = options.api ?? "anthropic-messages";
 	const model = { api, provider: options.provider ?? (api === "anthropic-messages" ? "anthropic" : api === "openai-responses" ? "openai" : "openai-codex"), baseUrl: options.baseUrl ?? "https://api.openai.com/v1", headers: options.modelAuthHeader ? { Authorization: "Bearer sk-fake" } : undefined, id: "test", contextWindow: 200000, maxTokens: 4096 } as Model<Api>;
 	// The main assistant's replies name the model that answered, as pi's do.
-	const driverAnswer = (value: string): AssistantMessage => ({ ...answer([text(value)]), provider: model.provider, model: model.id });
+	const driverAnswer = (value: string): AssistantMessage => ({ ...answer([text(value)]), api: model.api, provider: model.provider, model: model.id });
 	const transport = vi.fn((model: Model<Api>, context: { messages: Message[] }, opts: { onPayload: (payload: unknown) => unknown }) => {
 		const built = model.api === "anthropic-messages" ? { messages: context.messages } : { input: context.messages };
 		payloads.push(opts.onPayload(built));
@@ -77,6 +77,7 @@ async function harness(options: { flag?: string; autostart?: boolean; heads?: st
 				return { source: currentOAuth ? "OAuth" : "stored credential", auth: { apiKey: currentOAuth ? "test" : "api-key" } };
 			},
 			streamSimple: transport,
+			find: (provider: string, id: string) => provider === model.provider && id === model.id ? model : undefined,
 			isUsingOAuth: () => options.oauth ?? true,
 		},
 	} as unknown as ExtensionContext;
@@ -478,14 +479,32 @@ describe("observation loop stops", () => {
 		expect(h.transport).toHaveBeenCalledTimes(1);
 	});
 
-	it("skips a check whose request the old model answered after the model was switched", async () => {
+	it("skips a check whose request the old model answered after the model was switched, and warns once", async () => {
 		const h = await harness({ api: "openai-codex-responses" });
 		// pi applies a switch to the selection while a request already being
 		// prepared still goes to the old model, so the capture sees the new one.
 		(h.ctx as { model: Model<Api> }).model = { ...h.ctx.model!, api: "openai-responses", provider: "openai", baseUrl: "https://api.openai.com/v1" };
 		await h.observe(noop());
+		await h.observe(noop());
 		await new Promise(resolve => setTimeout(resolve, 50));
 		expect(h.transport).not.toHaveBeenCalled();
+		const switched = "hydra: a head's check did not start because the model was switched; heads check again once the new model answers";
+		expect(h.notify.mock.calls.filter(([message]) => message === switched)).toEqual([[switched, "warning"]]);
+	});
+
+	it("with a virtual model selected, a head checks on the model that answered, with that model's handoff and stats", async () => {
+		const h = await harness({ api: "openai-codex-responses" });
+		// pi's virtual model only routes; each reply names the model that answered.
+		const physical = h.ctx.model!;
+		(h.ctx as { model: Model<Api> }).model = { ...physical, api: "pi-virtual" as Api, id: "test-fast" };
+		await h.observe(noop());
+		await h.waitCalls(1);
+		expect(h.transport.mock.calls[0][0]).toBe(physical);
+		// Codex's split handoff: the rules arrive as a developer message.
+		expect((h.payloads[0] as { input: { role?: string }[] }).input.some((item) => item.role === "developer")).toBe(true);
+		expect(h.calls()[0].api).toBe("openai-codex-responses");
+		expect(vi.mocked(h.ctx.ui.setStatus).mock.calls.at(-1)?.[1]).not.toContain("n/a");
+		expect(h.notify).not.toHaveBeenCalledWith(expect.anything(), "warning");
 	});
 
 	it("a one-off whose request the old model answered does not start after the model was switched, and says so", async () => {

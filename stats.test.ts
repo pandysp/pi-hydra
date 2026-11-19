@@ -86,6 +86,18 @@ describe("parseBranchEntries", () => {
 		expect(calls[1].hitRatio).toBe(0);
 	});
 
+	it("names the model of the latest reply, skipping a reply whose routing failed", () => {
+		const reply = (provider: string, model: string, api: string): BranchEntryLike => ({ type: "message", message: { role: "assistant", provider, model, api } });
+		expect(parseBranchEntries([]).answeredBy).toBeUndefined();
+		const { answeredBy } = parseBranchEntries([
+			reply("anthropic", "claude", "anthropic-messages"),
+			reply("openai-codex", "gpt", "openai-codex-responses"),
+			{ type: "message", message: { role: "user" } },
+			reply("router", "auto", "pi-virtual"),
+		]);
+		expect(answeredBy).toEqual({ provider: "openai-codex", id: "gpt", api: "openai-codex-responses" });
+	});
+
 	it("keeps the last config and distinguishes absent from deliberately empty", () => {
 		expect(parseBranchEntries([]).config).toBeUndefined();
 		const { config } = parseBranchEntries([
